@@ -63,6 +63,14 @@ CURCOLOR = $004B1A          ; 1 byte
 ; long addressing.
 CTRL_DOWN = $004B1B         ; 1 byte
 
+; Parameter block for K_FS_READ / K_FS_WRITE. Calls taking more than three
+; arguments are passed a 24-bit pointer to little-endian fields
+; (KERNEL.md 5.3); reserved fields must be written as zero.
+FS_BLK    = $004B20         ; 10 bytes
+FS_BLK_H  = FS_BLK + 0      ; word  - file handle
+FS_BLK_A  = FS_BLK + 2      ; dword - address to read into / write from
+FS_BLK_N  = FS_BLK + 6      ; dword - byte count
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

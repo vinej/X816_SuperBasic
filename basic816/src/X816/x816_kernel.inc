@@ -29,6 +29,11 @@ KERN_CON_PUTRAW = KERN_TABLE + 7*4  ; C = col, X = row, Y = glyph
 KERN_CON_CURSOR = KERN_TABLE + 8*4  ; C = 1 blink, 0 off
 KERN_CON_COLOR  = KERN_TABLE + 9*4  ; C = fg, X = bg (0-15)
 
+; K_FS_OPEN modes (Y). WRITE creates the file if absent and TRUNCATES it
+; if present, which is what SAVE wants and is NOT what an append would.
+KFS_READ        = 0
+KFS_WRITE       = 1
+
 KERN_FS_OPEN    = KERN_TABLE + 16*4
 KERN_FS_CLOSE   = KERN_TABLE + 17*4
 KERN_FS_READ    = KERN_TABLE + 18*4

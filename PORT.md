@@ -301,11 +301,68 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   `floats_x816.s` + `ints_x816.s` carry IEEE-754 single add/sub/mul/div/
   compare and int32 mul/div; all of BASIC816's float and integer test
   suites are green. Transcendentals still THROW (§12).
-- **Phase 3 — files + full language pass.** LOAD/SAVE/DIR → `K_FS_*`/`K_DIR_*`;
-  sweep the statement sheet; stub C256-only statements.
+- **Phase 2b — finish the maths.** Transcendentals
+  (`SIN`/`COS`/`TAN`/`ASIN`/`ACOS`/`ATAN`/`LN`/`EXP`/`SQR`) still THROW;
+  `help/MATH.TXT` is the checklist. `SQR` is the one users hit first.
+  Also here: the two open corpus failures and the 2-ULP literal (§11).
+- **Phase 3 — files. LOAD/SAVE/BLOAD/BSAVE landed 2026-08-06.**
+  `help/FILE.TXT` is the feature list and the running score. The seam is
+  narrow: `dos.s` reaches the disk only through the Foenix `FK_*` entry
+  points, so `FK_LOAD` and `FK_SAVE` over `K_FS_*` in
+  `X816/kernel_x816.s` lit up all four statements without touching
+  portable code. Verified in the emulator by a `SAVE`/`NEW`/`LOAD`/`RUN`
+  round trip in `run-emu.sh` (with a negative control that breaks
+  `FK_SAVE` and confirms the check goes red), and independently by
+  reading the saved file back off the card image with pyfatfs.
+  **Two findings worth carrying:** the carry is INVERTED across this
+  seam — every `dos.s` call site reads carry *set* as success, the
+  kernel uses set for failure — and the original stub returned `SEC`,
+  which told `dos.s` that every disk operation had *succeeded*. `DIR`
+  was not refusing; it was printing an uninitialised entry buffer. The
+  remaining stubs now return `CLC`.
+  Still to do: `FK_DIROPEN`/`FK_DIRNEXT` (for `DIR`), `FK_DELETE`,
+  `FK_COPY`, `FK_RUN`. `DIR` needs a look at whether `dos.s`'s expected
+  directory-entry layout matches the kernel's entry buffer. New keywords
+  (`CD`, `MKDIR`, `RMDIR`, `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`) are a
+  separate step — the kernel already has the calls.
 - **Phase 4 — hardware.** First as `boot1.rom`, then shell-run `.bin` once
   the size cap question is settled. One change per round trip.
-- **Phase 5 — SuperBasic layer + platform showcase.** §8 tiers, in order.
+- **Phase 5 — the machine.** The `help/` pages are the specification for
+  this phase; each is a checklist of `[x]`/`[ ]` and they were written
+  against the real hardware, not against the C256's. Rough order, chosen
+  so that each step makes the next one testable:
+
+  1. `help/SYSTEM.TXT` — the three interrupt hooks (`ONVSYNC`,
+     `ONRASTER`, `ONCOLLISION`) over `K_IRQ_SET`, plus `QUIT`. **These
+     come first**: animation timing, sound envelopes, PCM refill and
+     collision detection are all blocked on "run this every frame", and
+     the kernel side is already done. The open problem is re-entering
+     the interpreter from an interrupt safely.
+  2. `help/TIME.TXT` — `TIMER`, `FRAMES`, `WAIT`, `VSYNC`. Cheap once
+     the hooks exist, and needed by everything animated.
+  3. `help/VIDEO.TXT` — `VPOKE`/`VPEEK`, `SCREEN`, `BORDER`, hardware
+     `SCROLLX`/`SCROLLY`, and the font words. Redefinable characters are
+     the best value-per-byte on any of these pages: no new hardware
+     support, and they give tiles and a custom alphabet at once.
+  4. `help/GRAPHIC.TXT` — bitmap drawing. Decide VERA 320x240 vs VERA2
+     640x480 first; VERA2 is the recommendation (framebuffer is plain
+     SDRAM at `$E0:0000`, so `PLOT` is a store, and the console survives).
+  5. `help/SPRITE.TXT`, `help/TILE.TXT`, `help/PAL.TXT` — the keywords
+     already tokenize and refuse, so these are re-implementations
+     against VERA rather than new syntax.
+  6. `help/AUDIOFM.TXT` then `AUDIOYM`/`AUDIOPCM` — `SOUND` and `PLAY`
+     are what a beginner wants; raw `YMPOKE` is the escape hatch.
+  7. `help/JOYSTICK.TXT`, `help/MOUSE.TXT` — both real hardware, both
+     unbound. Mind the shared VIA port.
+  8. `help/VERAFX.TXT`, `help/ADVANCED.TXT` — the accelerators, then the
+     game-math and image toolkit. Much of ADVANCED is a port of working
+     code in `X816_Library`/`X816_DurexForth` rather than new work.
+- **Phase 6 — the SuperBasic language layer.** §8 tiers: `PROC`/`ENDPROC`
+  /`LOCAL`, multi-line `IF/ELSE/ENDIF`, long variable names, then `RENUM`
+  /`AUTO`/labels and the screen editor. Portable-core work, so it
+  benefits any future target. The string gaps in `help/STRING.TXT`
+  (`INSTR`, `UCASE$`, `TRIM$`, …) belong here too, and `MID$`'s
+  zero-based start needs a decision one way or the other.
 
 ## 10. Phase 0 findings (2026-08-06)
 

@@ -4,19 +4,20 @@ Real FAT32 on a real card. Paths are ASCII with "/" separators, and there
 are no device numbers, no secondary addresses and no CBM DOS command
 channel - none of that survived the move off the C64.
 
-Every one of these is tokenized and every one of them refuses today. The
-kernel side is complete (K_FS_* and K_DIR_*, sixteen calls, KERNEL.md
-section 6); what is missing is the binding, which is phase 3 of the port.
+Reading and writing whole files works. Directories and the rest do not:
+the kernel side is complete either way (K_FS_* and K_DIR_*, sixteen
+calls, KERNEL.md section 6), and what is still missing is the binding.
 
-[ ] LOAD "name" - load a BASIC program, replacing the one in memory.
-[ ] SAVE "name" - save the program. The single most missed thing right
-    now: nothing you type survives leaving the interpreter.
+[x] LOAD "name" - load a BASIC program, replacing the one in memory.
+[x] SAVE "name" - save the program. Creates the file, or TRUNCATES an
+    existing one - there is no confirmation and no backup.
+[x] BLOAD "name",addr - load raw bytes to an address, no header.
+[x] BSAVE "name",start,end - save raw bytes. END IS INCLUSIVE: the last
+    byte written is the one at end, so a single byte is start = end.
 [ ] DIR ["path"] - list a directory.
 [ ] DEL "name" - delete a file.
 [ ] RENAME "old","new" - rename one.
 [ ] COPY "src","dst" - copy one.
-[ ] BLOAD "name",addr - load raw bytes to an address, no header.
-[ ] BSAVE "name",addr,len - save raw bytes.
 [ ] BRUN "name" - load a machine-code file and call it.
 [ ] CD "path" / MKDIR "path" / RMDIR "path" - directory navigation. The
     kernel has all three; BASIC816 has no keywords for them, so these are
@@ -28,7 +29,22 @@ section 6); what is missing is the binding, which is phase 3 of the port.
 A file is opened by path and returns a handle; reads and writes take a
 parameter block. Errors come back with carry set and a KERR code in C,
 which will need mapping onto BASIC error messages - "File not found" is
-a friendlier thing to print than a number.
+a friendlier thing to print than a number. Today every failure is the
+same one word, whatever went wrong.
+
+Two things about how this is wired, for whoever writes the rest.
+
+The seam is narrow. dos.s reaches the card only through the Foenix
+FK_LOAD/FK_SAVE/FK_DIROPEN/FK_DIRNEXT/FK_DELETE/FK_COPY/FK_RUN entry
+points, so binding those in X816/kernel_x816.s lights up the statements
+above without touching portable code. Four are still unbound.
+
+THE CARRY IS INVERTED across that seam. Every call site in dos.s reads
+carry SET as success; the X816 kernel uses carry set for failure. The
+first stub here returned SEC, which told dos.s that every load, save,
+directory listing and delete had SUCCEEDED - so DIR printed whatever
+happened to be in the entry buffer rather than saying it could not read
+the card. The remaining stubs return CLC.
 
 The exec cap is worth remembering when saving programs meant to be run
 from the shell: "run" refuses an image over 65,280 bytes ($FF00). That

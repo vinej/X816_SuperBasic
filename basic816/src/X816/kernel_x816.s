@@ -84,15 +84,167 @@ break_hit       PLP
                 SEC
                 RTL
 
+;;;
+;;; Disk: the Foenix FK_* entry points, over the X816 kernel's K_FS_*.
+;;;
+;;; dos.s reaches the card ONLY through these, so implementing them here
+;;; lights up LOAD/SAVE/BLOAD/BSAVE without touching portable code.
+;;;
+;;; THE CARRY IS INVERTED between the two sides, and this is the thing to
+;;; get right. Every call site in dos.s reads carry SET as SUCCESS
+;;; ("JSL FK_LOAD / BCS start_tokenize"). The X816 kernel uses the
+;;; opposite convention -- carry set is failure, with a KERR in C. So
+;;; each routine below flips it, and each sets the carry AFTER its PLP,
+;;; because PLP would otherwise restore the caller's.
+;;;
+
 ;
-; Stub for Foenix kernel file/dir entry points not yet mapped to
-; KERN_FS_* (phase 3). Refuses with carry set.
+; Load a whole file into memory.
 ;
-FK_STUB         SEC
+; Inputs:
+;   FD_IN.PATH   = 24-bit pointer to a NUL-terminated path
+;   DOS_DST_PTR  = 24-bit destination address
+;
+; Outputs:
+;   C set on success, clear on failure
+;   FD_IN.FILESIZE = the file's size
+;
+; FD_IN is used directly rather than through DOS_FD_PTR: every caller
+; sets that pointer to FD_IN via SETFILEDESC, and FD_IN is not on the
+; direct page here, so an indirect read would have to move D first.
+;
+FK_LOAD         PHP
+                setaxl
+                PHB
+                PHX
+                PHY
+
+                LDA @l FD_IN.PATH+2     ; C:X = path, Y = mode. LDX has no
+                TAX                     ;  long addressing mode, so the bank
+                LDA @l FD_IN.PATH       ;  goes through A
+                LDY #KFS_READ
+                JSL KERN_FS_OPEN
+                BCS load_fail
+                STA @l FS_BLK_H         ; keep the handle
+
+                JSL KERN_FS_SIZE        ; C = size low, X = size high
+                BCS load_shut
+                STA @l FS_BLK_N
+                STA @l FD_IN.FILESIZE   ; what CMD_LOAD reads back
+                TXA
+                STA @l FS_BLK_N+2
+                STA @l FD_IN.FILESIZE+2
+
+                LDA @l DOS_DST_PTR      ; where it goes
+                STA @l FS_BLK_A
+                LDA @l DOS_DST_PTR+2
+                AND #$00FF
+                STA @l FS_BLK_A+2
+
+                LDA #<>FS_BLK
+                LDX #`FS_BLK
+                JSL KERN_FS_READ
+                BCS load_shut
+
+                LDA @l FS_BLK_H         ; success: close and report it
+                JSL KERN_FS_CLOSE
+                PLY
+                PLX
+                PLB
+                PLP
+                SEC
                 RTL
 
-FK_LOAD = FK_STUB
-FK_SAVE = FK_STUB
+load_shut       LDA @l FS_BLK_H         ; failed with the file open
+                JSL KERN_FS_CLOSE
+load_fail       PLY
+                PLX
+                PLB
+                PLP
+                CLC
+                RTL
+
+;
+; Save a range of memory to a file, truncating any existing one.
+;
+; Inputs:
+;   FD_IN.PATH   = 24-bit pointer to a NUL-terminated path
+;   DOS_SRC_PTR  = first byte to write
+;   DOS_END_PTR  = LAST byte to write, inclusive
+;
+; Outputs:
+;   C set on success, clear on failure
+;
+FK_SAVE         PHP
+                setaxl
+                PHB
+                PHX
+                PHY
+
+                LDA @l FD_IN.PATH+2     ; C:X = path, Y = mode. LDX has no
+                TAX                     ;  long addressing mode, so the bank
+                LDA @l FD_IN.PATH       ;  goes through A
+                LDY #KFS_WRITE
+                JSL KERN_FS_OPEN
+                BCS save_fail
+                STA @l FS_BLK_H
+
+                SEC                     ; count = END - SRC + 1
+                LDA @l DOS_END_PTR
+                SBC @l DOS_SRC_PTR
+                STA @l FS_BLK_N
+                LDA @l DOS_END_PTR+2
+                SBC @l DOS_SRC_PTR+2
+                AND #$00FF
+                STA @l FS_BLK_N+2
+
+                LDA @l FS_BLK_N         ; the +1: DOS_END_PTR is inclusive
+                INC A
+                STA @l FS_BLK_N
+                BNE save_addr
+                LDA @l FS_BLK_N+2
+                INC A
+                STA @l FS_BLK_N+2
+
+save_addr       LDA @l DOS_SRC_PTR
+                STA @l FS_BLK_A
+                LDA @l DOS_SRC_PTR+2
+                AND #$00FF
+                STA @l FS_BLK_A+2
+
+                LDA #<>FS_BLK
+                LDX #`FS_BLK
+                JSL KERN_FS_WRITE
+                BCS save_shut
+
+                LDA @l FS_BLK_H
+                JSL KERN_FS_CLOSE
+                PLY
+                PLX
+                PLB
+                PLP
+                SEC
+                RTL
+
+save_shut       LDA @l FS_BLK_H
+                JSL KERN_FS_CLOSE
+save_fail       PLY
+                PLX
+                PLB
+                PLP
+                CLC
+                RTL
+
+;
+; Foenix entry points still unbound. CLC, because these report success
+; with the carry SET: the previous stub returned SEC and so told dos.s
+; that every directory listing, delete and copy had worked -- after
+; which CMD_DIR printed whatever was in the entry buffer. Refusing is
+; the honest answer until each is written.
+;
+FK_STUB         CLC
+                RTL
+
 FK_RUN = FK_STUB
 FK_DELETE = FK_STUB
 FK_COPY = FK_STUB

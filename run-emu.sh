@@ -78,7 +78,7 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 90 \
     "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
     -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
     -sdcard "$WOUT/scratch.img" \
-    -autokeys 'run BASIC.BIN\n                                        PRINT 1\n                                        XYZZY\n                                        PRINT 10/4\n                                        PRINT 2^10\n                                        PRINT 1/0\n                                        10 PRINT 1.5\n                                        RUN\n' \
+    -autokeys 'run BASIC.BIN\n                                        PRINT 1\n                                        XYZZY\n                                        PRINT 10/4\n                                        PRINT 2^10\n                                        PRINT 1/0\n                                        10 PRINT 1.5\n                                        RUN\n                                        10 PRINT 4242\n                                        SAVE "T.BAS"\n                                        NEW\n                                        LOAD "T.BAS"\n                                        RUN\n' \
     -warp -gif "$WOUT/out.gif" >/dev/null 2>&1
 
 python - "$WOUT/out.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
@@ -164,6 +164,13 @@ if not any("Division by zero" in r for r in rows):
     fail("`PRINT 1/0` did not report division by zero")
 if not any("1.50000" in r for r in rows):
     fail("`RUN` of a stored float literal did not answer 1.50000")
+# SAVE / NEW / LOAD / RUN, through the kernel's K_FS_* calls onto a real
+# FAT32 card. The EXACT match matters: the typed line "10 PRINT 4242" is
+# echoed on screen whatever the disk does, so a substring test would pass
+# with SAVE and LOAD both broken. Only RUN's output sits on a row alone.
+if not any(r.strip() == "4242" for r in rows):
+    fail("SAVE, NEW, LOAD, RUN did not answer 4242 -- the program did "
+         "not survive a round trip to the card")
 
 print("PASS: SuperBasic booted from the card, printed 1, did float math")
 print("      in both direct and program mode, and rejected bad input --")
