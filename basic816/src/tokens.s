@@ -412,6 +412,17 @@ found       TRACE_A "found"
 
             CMP #TOK_RPAREN         ; Is the token a right parenthesis?
             BEQ binaryminus         ; Yes: then this should be a binary minus operator
+.if SYSTEM == SYSTEM_X816
+            ; A function normally ends in ")", which is what the test
+            ; above is really asking about. TIMER and FRAMES take no
+            ; argument and so end in themselves, and without this
+            ; "PRINT TIMER-A" tokenizes as TIMER followed by a NEGATED
+            ; A -- two operands, no operator, and the answer is -A.
+            CMP #TOK_TIMER
+            BEQ binaryminus
+            CMP #TOK_FRAMES
+            BEQ binaryminus
+.endif
 
             TRACE "make negative"
             LDA #TOK_NEGATIVE       ; Otherwise: this should be a unary minus (negation)
@@ -1077,6 +1088,16 @@ TOK_RECT = $E7
             DEFTOK "PWD", TOK_TY_STMNT, 0, S_PWD, 0
             DEFTOK "MKDIR", TOK_TY_STMNT, 0, S_MKDIR, 0
             DEFTOK "RMDIR", TOK_TY_STMNT, 0, S_RMDIR, 0
+; Timing. TIMER and FRAMES take no argument at all -- see the note in
+; TKFINDTOKEN about what that costs. Their ids are derived from the
+; table rather than written down: token ids run from $80 in table order,
+; so this stays right no matter what is inserted above.
+TOK_TIMER = $80 + (* - TOKENS) / SIZE(TOKEN)
+            DEFTOK "TIMER", TOK_TY_FUNC, 0, FN_TIMER, 0
+TOK_FRAMES = $80 + (* - TOKENS) / SIZE(TOKEN)
+            DEFTOK "FRAMES", TOK_TY_FUNC, 0, FN_FRAMES, 0
+            DEFTOK "WAIT", TOK_TY_STMNT, 0, S_WAIT, 0
+            DEFTOK "VSYNC", TOK_TY_STMNT, 0, S_VSYNC, 0
 .endif
 
             .word 0, 0, 0, 0

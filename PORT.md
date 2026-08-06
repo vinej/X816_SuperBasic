@@ -374,14 +374,19 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   against the real hardware, not against the C256's. Rough order, chosen
   so that each step makes the next one testable:
 
-  1. `help/SYSTEM.TXT` — the three interrupt hooks (`ONVSYNC`,
-     `ONRASTER`, `ONCOLLISION`) over `K_IRQ_SET`, plus `QUIT`. **These
-     come first**: animation timing, sound envelopes, PCM refill and
-     collision detection are all blocked on "run this every frame", and
-     the kernel side is already done. The open problem is re-entering
-     the interpreter from an interrupt safely.
-  2. `help/TIME.TXT` — `TIMER`, `FRAMES`, `WAIT`, `VSYNC`. Cheap once
-     the hooks exist, and needed by everything animated.
+  1. `help/TIME.TXT` — **DONE 2026-08-06.** `TIMER`, `FRAMES`, `WAIT`
+     and `VSYNC`, which turned out not to need the interrupt hooks at
+     all: the millisecond counter is hardware and the frame count is
+     already maintained by the kernel, so all four are polls. `WAIT`
+     measures 500 ms as 500, `VSYNC` advances exactly one frame.
+     `TIMER` and `FRAMES` take no parentheses, which cost one line in
+     the tokenizer — a minus after a token is a negation unless the
+     token is `)`, so `TIMER-A` was quietly answering `-A`.
+  2. `help/SYSTEM.TXT` — the three interrupt hooks (`ONVSYNC`,
+     `ONRASTER`, `ONCOLLISION`) over `K_IRQ_SET`, plus `QUIT`. Still the
+     keystone for what follows: sound envelopes, PCM refill and
+     collision detection all want "run this every frame". The open
+     problem is re-entering the interpreter from an interrupt safely.
   3. `help/VIDEO.TXT` — `VPOKE`/`VPEEK`, `SCREEN`, `BORDER`, hardware
      `SCROLLX`/`SCROLLY`, and the font words. Redefinable characters are
      the best value-per-byte on any of these pages: no new hardware

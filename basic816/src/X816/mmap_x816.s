@@ -107,6 +107,10 @@ FP_AY     = $004BA4         ; dword - the constant the reduction adds back
 FP_AV     = $004BA8         ; dword - the untouched argument
 FP_ASGN   = $004BAC         ; word  - sign of the argument, $8000 negative
 
+; WAIT and VSYNC.
+WAIT_T    = $004BB0         ; dword - the millisecond count to wait for
+WAIT_N    = $004BB4         ; dword - scratch: the interval, or the frame
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

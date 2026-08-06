@@ -323,3 +323,74 @@ S_RENAME        .proc
 
 rename_failed   THROW ERR_FILENOTFOUND
                 .pend
+
+;
+; WAIT <milliseconds> -- pause.
+;
+; Reads the hardware millisecond counter rather than counting loop
+; iterations, so the delay is the same at 8 MHz and at 14 MHz. Ctrl-C
+; still gets you out: the break check runs every pass, which is what
+; stops WAIT 100000 from wedging the machine for two minutes.
+;
+S_WAIT          .proc
+                PHP
+                TRACE "S_WAIT"
+                setaxl
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_INT
+                setaxl
+                LDA ARGUMENT1
+                STA @l WAIT_N
+                LDA ARGUMENT1+2
+                STA @l WAIT_N+2
+
+                JSL KERN_TIME_GET           ; target = now + interval
+                CLC
+                ADC @l WAIT_N
+                STA @l WAIT_T
+                TXA
+                ADC @l WAIT_N+2
+                STA @l WAIT_T+2
+
+wait_loop       JSL FK_TESTBREAK
+                BCS wait_break
+                JSL KERN_TIME_GET
+                SEC                         ; now - target, 32-bit
+                SBC @l WAIT_T
+                TXA
+                SBC @l WAIT_T+2
+                BCC wait_loop               ; still short of it
+
+                PLP
+                RETURN
+
+wait_break      THROW ERR_BREAK
+                .pend
+
+;
+; VSYNC -- wait for the start of the next frame.
+;
+; What makes flicker-free animation possible from BASIC: draw, VSYNC,
+; draw. The frame counter is kept by the kernel's VSYNC interrupt, so
+; this depends on interrupts being enabled -- see PORT.md section 4.
+;
+S_VSYNC         .proc
+                PHP
+                TRACE "S_VSYNC"
+                setaxl
+
+                JSL KERN_IRQ_FRAMES         ; the frame we are on now
+                STA @l WAIT_N
+
+vsync_loop      JSL FK_TESTBREAK
+                BCS vsync_break
+                JSL KERN_IRQ_FRAMES
+                CMP @l WAIT_N
+                BEQ vsync_loop
+
+                PLP
+                RETURN
+
+vsync_break     THROW ERR_BREAK
+                .pend

@@ -151,3 +151,64 @@ F_GETDATE   .proc
             PLP
             RETURN
             .pend
+
+;
+; TIMER -- milliseconds since the machine booted, as a 32-bit integer.
+;
+; Takes no argument, unlike INKEY and RND, which require a parenthesised
+; one and throw it away because the C256 versions did. That is what
+; FN_START/FN_END are for -- they consume the parentheses -- so a
+; function that wants none simply does not use them. EVAL_FUNC brackets
+; the call with OPENPARAMS/CLOSEPARAMS either way.
+;
+; The counter is hardware (a free-running 1 kHz timer at $9F90, exact at
+; either CPU speed), not a jiffy count derived from the display, so it
+; does not drift with TURBO and does not stop when interrupts are
+; masked. It wraps after about 49 days.
+;
+FN_TIMER    .proc
+            TRACE "FN_TIMER"
+            PHP
+            setaxl
+
+            JSL KERN_TIME_GET           ; C = ms low, X = ms high
+            BCC timer_ok
+            LDA #0
+            TAX
+timer_ok    STA ARGUMENT1
+            TXA
+            STA ARGUMENT1+2
+
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend
+
+;
+; FRAMES -- the VSYNC frame counter, 16-bit and wrapping.
+;
+; The right clock for animation: it advances 60 times a second whatever
+; the CPU is doing. Unlike TIMER it IS maintained by the interrupt
+; handler, so it only moves while interrupts are enabled.
+;
+FN_FRAMES   .proc
+            TRACE "FN_FRAMES"
+            PHP
+            setaxl
+
+            JSL KERN_IRQ_FRAMES
+            BCC frames_ok
+            LDA #0
+frames_ok   STA ARGUMENT1
+            STZ ARGUMENT1+2
+
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend

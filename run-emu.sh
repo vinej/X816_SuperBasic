@@ -102,6 +102,8 @@ KEYS_A=$(keys_of \
     'PRINT ATAN(10)' \
     'PRINT 2^-1' \
     '10 PRINT 1.5' \
+    '20 A=TIMER:WAIT 200:PRINT TIMER-A' \
+    '30 B=FRAMES:VSYNC:PRINT FRAMES-B' \
     'RUN')
 
 KEYS_B=$(keys_of \
@@ -273,6 +275,16 @@ if not any("5.00000E-01" in r for r in rows_a):
          "must route through EXP(y*LN(x))")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
+# WAIT and VSYNC, measured INSIDE a running program: typing a line at the
+# REPL takes emulated seconds, so the same measurement between two typed
+# lines would be dominated by the keystrokes rather than the wait.
+# WAIT 200 is allowed anywhere in 200-299 ms; the point is that it waits
+# about the right time rather than not at all. VSYNC must be exact.
+if not any(r.strip().startswith("2.") and r.strip().endswith("E02")
+           for r in rows_a):
+    fail("`WAIT 200` did not take about 200 ms by the hardware clock")
+if not any(r.strip() == "1.00000" for r in rows_a):
+    fail("`VSYNC` did not advance the frame counter by exactly one")
 
 # ---- session B: the card ------------------------------------------------
 # The exact match matters throughout: every typed line is echoed on

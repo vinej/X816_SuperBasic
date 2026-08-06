@@ -5,22 +5,26 @@ free-running millisecond counter in hardware and a VSYNC frame count in
 the kernel, and between them they cover everything a BASIC program
 actually wants: elapsed time, and a steady tick.
 
-[ ] TIMER - milliseconds since boot, 32-bit. The kernel call is
-    K_TIME_GET and the hardware is a counter at $9F90-$9F93. Nothing
-    binds it yet, so this returns nothing today.
+[x] TIMER - milliseconds since boot, 32-bit. Hardware (a free-running
+    1 kHz counter at $9F90-$9F93), not a jiffy count derived from the
+    display, so it does not drift with TURBO and does not stop when
+    interrupts are masked. Wraps after about 49 days.
 [ ] GETTIME$ / GETDATE$ - wall-clock strings. They parse and return 0:
     there is no RTC to ask. If they ever mean anything it will be
     because the boot firmware passed a time in, not because the machine
     knows one.
 [ ] SETTIME / SETDATE - reserved, refuse. K_TIME_SET can move the
     millisecond origin, which is the only part of this that is real.
-[ ] FRAMES - the VSYNC frame counter (K_IRQ_FRAMES), 16-bit and wrapping.
-    The right clock for animation: it advances 60 times a second whatever
-    the CPU is doing.
-[ ] WAIT ms - sleep. Trivial to write on top of TIMER and the first
-    thing anyone needs for a game loop.
-[ ] VSYNC - block until the next frame. The one statement that makes
-    flicker-free animation possible from BASIC.
+[x] FRAMES - the VSYNC frame counter, 16-bit and wrapping. The right
+    clock for animation: it advances 60 times a second whatever the CPU
+    is doing. Unlike TIMER it IS maintained by the interrupt handler, so
+    it only moves while interrupts are enabled.
+[x] WAIT ms - sleep. Reads the hardware counter rather than counting
+    loop iterations, so the delay is the same at 8 MHz and 14 MHz.
+    Ctrl-C still works: the break check runs every pass, which is what
+    stops WAIT 100000 wedging the machine for two minutes.
+[x] VSYNC - block until the next frame. The one statement that makes
+    flicker-free animation possible from BASIC: draw, VSYNC, draw.
 
 Reading the millisecond counter has a rule, and it is normative: read
 $9F90 FIRST. That read latches bits 31:8, so a byte read of $9F90
@@ -30,4 +34,12 @@ number that was never true.
 
 The kernel's frame count is maintained by the VSYNC interrupt handler,
 so it only advances while interrupts are enabled - the same condition the
-cursor depends on. See PORT.md section 4.
+cursor depends on. See PORT.md section 4. VSYNC would therefore spin for
+ever with interrupts masked; nothing in SuperBasic masks them.
+
+TIMER and FRAMES take NO PARENTHESES, unlike INKEY and RND, which want a
+parenthesised argument they then discard. That costs one line in the
+tokenizer: a minus sign following a token is read as a NEGATION unless
+the token is ")", which is how every other function ends. Without the
+exception, "PRINT TIMER-A" tokenizes as TIMER followed by a negated A --
+two operands and no operator -- and quietly answers -A.
