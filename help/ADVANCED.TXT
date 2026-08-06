@@ -1,0 +1,65 @@
+=== ADVANCED - game math, images, compression ===
+
+The things that turn a BASIC into one you can write a game in. None of it
+exists here; all of it exists as working assembly in X816_Library and as
+working Forth in X816_DurexForth, so this page is mostly a porting list
+rather than a design one.
+
+--- fast math, for games ---
+
+[ ] SIN8(a) / COS8(a) - a 256-entry sine table, angle 0-255, result
+    -127..127. This matters more here than it looks: SIN and COS proper
+    still throw (HELP MATH), and a table lookup is both available NOW and
+    the right answer for anything moving on screen. Floating-point
+    trigonometry per sprite per frame is not affordable at this speed.
+[ ] ATAN2(dx,dy) - direction from one point to another, 0-255, 0 = east.
+    The one function every chase-the-player enemy needs.
+[ ] LERP(a,b,t) - interpolate, t = 0-255. Smooth movement without floats.
+[ ] RNDSEED n - seed the generator so a level can be regenerated. RND
+    works (HELP MATH) but there is no way to control the sequence, which
+    makes a random level impossible to reproduce or to debug.
+[ ] MIN(a,b) / MAX(a,b) / CLAMP(v,lo,hi) - small, missing, used constantly.
+
+--- images ---
+
+[ ] BMXLOAD file$,addr - load a BMX v1 image: palette into the palette,
+    pixels into VRAM. The format the X16 tools emit, so there is a supply
+    of art and converters already.
+[ ] BMXSAVE file$,addr - write one back out.
+
+If BMXSAVE reads the palette from VERA it will write bytes that are not
+colours, because entries nobody ever wrote do not read back (HELP PAL) -
+and loading that file installs them for real and the screen goes to
+pieces. Keep the palette in an array and save that.
+
+--- compression ---
+
+[ ] ZX0 decompression - unpack data compressed by zx0 or salvador. A
+    320x240 screen is 76,800 bytes and a BASIC program that wants three
+    of them cannot afford them raw. Decompression also turns a slow card
+    read into a fast one, which matters more than the space.
+
+--- sound ---
+
+[ ] Envelopes - attack/sustain/release ticked once a frame across the
+    voices, so a note can fade instead of stopping dead. Needs the frame
+    interrupt, HELP SYSTEM.
+[ ] ADPCM decode - about four times smaller than raw PCM. Decode whole
+    buffers up front and play the result; nothing interpreted can feed a
+    DAC live (HELP AUDIOPCM).
+
+--- interrupts, which most of the above depends on ---
+
+[ ] ONVSYNC line-number - run a subroutine every frame.
+[ ] ONRASTER line,line-number - run one at a given scanline, for split
+    screens and colour bars.
+[ ] ONCOLLISION line-number - sprite collision.
+
+These three are the keystone. Animation timing, envelopes, PCM refill,
+smooth scrolling and hit detection are all waiting on the same thing: a
+way for BASIC to say "run this every frame". The kernel already has the
+slots (K_IRQ_SET, eleven of them) and the dispatcher already saves and
+restores VERA's ports around a handler, so the hard part is done. What
+is missing is the BASIC side: re-entering the interpreter from an
+interrupt safely, which is a real design problem and the reason this is
+listed here rather than assumed.

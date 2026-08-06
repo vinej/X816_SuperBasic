@@ -1,0 +1,53 @@
+=== STRING - text handling ===
+
+Strings live on a heap and are garbage-collected, so they can be built
+and thrown away freely. A string variable's name ends in "$".
+
+[x] LEN(s$) - length in characters.
+[x] LEFT$(s$,n) - the first n characters.
+[x] RIGHT$(s$,n) - the last n.
+[x] MID$(s$,start,len) - len characters from start. START COUNTS FROM
+    ZERO on this BASIC, which is not what most of them do. See below.
+[x] CHR$(n) - the character with code n. CP437, so CHR$(65) is "A".
+[x] ASC(s$) - the code of the first character.
+[x] STR$(n) - a number as text. It keeps the classic leading space for a
+    non-negative value, so LEN(STR$(7)) is 2, not 1.
+[x] VAL(s$) - text as a number.
+[x] HEX$(n) - a number as hexadecimal, no "$" prefix. HEX$(255) is "FF".
+[x] DEC(s$) - a hexadecimal string as a number, the inverse of HEX$.
+[x] s$ + t$ - join two strings.
+[x] = <> < > <= >= - compare two strings, in character-code order.
+[x] TAB(n) and SPC(n) - column and spacing control inside PRINT.
+
+MID$ IS ZERO-BASED. MID$("HELLO",0,2) is "HE" and MID$("HELLO",2,3) is
+"LLO", where almost every other BASIC would give "HE" for MID$(s$,1,2)
+and "ELL" for MID$(s$,2,3). It is inherited from BASIC816 and it will
+trip up anyone typing in a listing from a book. Worth deciding
+deliberately: either change it to one-based and say so loudly, or keep it
+and make sure it is the first line of this page - which for now it is.
+
+Nothing below exists. These are the string functions a BASIC is expected
+to have and this one does not, in roughly the order they are missed:
+
+[ ] INSTR(s$,find$[,start]) - position of a substring, 0 if absent. The
+    biggest gap: without it, searching a string means a FOR loop over
+    MID$, which is slow and awkward for the beginner this language is for.
+[ ] UCASE$(s$) / LCASE$(s$) - case conversion. Needed the moment you
+    compare anything a user typed.
+[ ] TRIM$(s$) - strip leading and trailing spaces, with LTRIM$/RTRIM$ if
+    the halves are wanted separately. INPUT hands back exactly what was
+    typed, spaces and all.
+[ ] STRING$(n,c$) - n copies of a character, for rules and bar charts.
+[ ] SPACE$(n) - n spaces; STRING$(n," ") with a friendlier name.
+[ ] REPLACE$(s$,old$,new$) - substitution.
+[ ] SPLIT / JOIN into a string array - parsing a line of input is the
+    single most common thing a beginner's program does with text.
+[ ] BIN$(n) and its inverse - handy next to HEX$ when poking hardware
+    bits, which on this machine is most of what HELP says to do.
+
+A note on memory. Building strings in a loop allocates, and the heap is
+in banks $02-$04 with the program text (HELP MEMORY). Long loops of
+s$ = s$ + x$ will collect garbage; that is normal for a BASIC, but on
+this machine there is a lot of SDRAM sitting unused behind the kernel's
+allocator, and moving the string heap out there is an option worth
+remembering if it ever becomes the limit.

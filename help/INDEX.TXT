@@ -2,12 +2,18 @@
 Pages live in /help. One topic to a file, .TXT, plain text.
 
 These pages cover the MACHINE - screen, keys, sprites, sound, memory,
-the card - and not the BASIC language itself. Statements like FOR, GOSUB
-or DIM are BASIC816's and are documented in basic816/language.md and
-basic816/docs/. What is here is everything that touches X816 hardware,
-which is also where nearly all the unfinished work is.
+the card - which is where nearly all the unfinished work is. Control
+flow is not here: FOR, GOSUB, IF and DIM are BASIC816's and are
+documented in basic816/language.md and basic816/docs/.
+
+MATH and STRING are the two exceptions, and they earn their place. The
+arithmetic was C256 silicon and is now software this port had to write,
+and the string functions are the shortest list of missing things that
+stops a beginner writing an ordinary program. Both say what actually
+works today, which the upstream documentation cannot.
 
  CONSOLE     text screen and colour   PRINT CLS LOCATE TEXTCOLOR
+ VIDEO       VRAM, screen modes, font CHARSET GLYPH SCROLLX VPOKE
  KEYBOARD    keys, and the break key  INKEY GET INPUT
  JOYSTICK    SNES pads on VIA #1      JOY JOYHIT JOYSCAN
  MOUSE       pointer via the SMC      MOUSE MX MY MB MWHEEL
@@ -24,6 +30,8 @@ which is also where nearly all the unfinished work is.
  TIME        clocks and waiting       TIMER FRAMES WAIT VSYNC
  SYSTEM      the machine itself       CALL MONITOR TURBO IRQ QUIT
  MATH        arithmetic, and why it is software
+ STRING      text handling            LEN LEFT$ MID$ INSTR
+ ADVANCED    game math, images, IRQ   SIN8 ATAN2 BMXLOAD ONVSYNC
 ===============================================================
 
 Every entry on these pages carries one of two marks:
