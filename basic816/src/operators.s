@@ -190,6 +190,27 @@ flt_exp     CALL ASS_ARG2_FLOAT
             CALL OP_FP_MUL
             CALL FP_EXP
 done        PLA
+.elsif SYSTEM = SYSTEM_X816
+            setaxl
+            PHA
+            CALL ASS_ARG1_FLOAT
+            LDA ARGTYPE2
+            CMP #TYPE_INTEGER
+            BNE flt_exp                 ; Float exponent: via ln/exp
+            LDA ARGUMENT2+2
+            BNE flt_exp                 ; Negative or huge: via ln/exp
+            PHX
+            LDX ARGUMENT2
+            CALL Q_FP_POW_INT           ; Integer power: repeated multiply
+            PLX
+            BRA done
+flt_exp     CALL ASS_ARG2_FLOAT         ; (FP_LN/FP_EXP throw until the
+            PUSH_D ARGUMENT2            ;  transcendental port lands)
+            CALL FP_LN
+            PULL_D ARGUMENT2
+            CALL OP_FP_MUL
+            CALL FP_EXP
+done        PLA
 .endif
             PLP
             RETURN

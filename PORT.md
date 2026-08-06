@@ -1,9 +1,13 @@
 # PORT.md — BASIC816 → X816 port sketch
 
-Status: **design sketch, 2026-08-06.** No code yet. This expands the feasibility
-study at `X816_core/doc/SUPERBASIC.md` (2026-08-03) into a concrete port plan:
-source layout, memory map, kernel I/O bindings, the math-layer rewrite, and the
-SuperBasic feature layer to add on top.
+Status: **Phases 0-2 done, 2026-08-06.** The platform skeleton boots and the
+software math layer is in (§11); transcendentals and files are still open.
+This started as a plan expanding the feasibility study at
+`X816_core/doc/SUPERBASIC.md` (2026-08-03) — source layout, memory map, kernel
+I/O bindings, the math-layer rewrite, and the SuperBasic feature layer — and
+the per-phase findings sections (§10, §11) record what the work actually
+turned up. Where a §1-§9 expectation was overtaken by events, the findings
+sections win.
 
 Companion reading, in order:
 1. `X816_core/doc/SUPERBASIC.md` — the feasibility study (why BASIC816, obstacles, phases)
@@ -275,8 +279,10 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   `XYZZY` → `Syntax error`. Known phase-1 limits: floats THROW (so `/`
   throws too — it always promotes to FP), `RND`/`^` inert, DOS commands
   refuse, monitor BRK not wired.
-- **Phase 2 — math.** §5. Drive BASIC816's `tests/` corpus with negative
-  controls.
+- **Phase 2 — math. Software engine landed 2026-08-06; see §12.** §5.
+  `floats_x816.s` + `ints_x816.s` carry IEEE-754 single add/sub/mul/div/
+  compare and int32 mul/div; all of BASIC816's float and integer test
+  suites are green. Transcendentals still THROW (§12).
 - **Phase 3 — files + full language pass.** LOAD/SAVE/DIR → `K_FS_*`/`K_DIR_*`;
   sweep the statement sheet; stub C256-only statements.
 - **Phase 4 — hardware.** First as `boot1.rom`, then shell-run `.bin` once
@@ -335,7 +341,94 @@ LOOP [WHILE|UNTIL]`, `BREAK`, and `BEGIN/BEND` blocks (`language.md`). Tier
 A shrinks to named procedures (`PROC`/`ENDPROC`/`LOCAL`), multi-line
 `IF/ELSE/ENDIF`, and long variable names.
 
-## 11. Open decisions (carried from the feasibility study)
+## 11. Phase 2 findings (2026-08-06) — the software math layer
+
+**The one lesson worth carrying forward: the `OP_*` primitives are
+register- and operand-transparent, and the portable core silently
+depends on it.** On the C256 every one of them is a poke at the FP
+coprocessor, so it clobbers no index register and never writes back to
+`ARGUMENT2`. Software replacements need loop counters and scratch, and
+three separate bugs came from not honouring that contract. All three
+produced *wrong answers or crashes far from the arithmetic*, which is
+why they are recorded here rather than in a commit message:
+
+| Violation | How it surfaced |
+|---|---|
+| `OP_FP_SUB` left `ARGUMENT2` negated (sub = add with a flipped sign) | `FP_COMPARE` restores only `ARGUMENT1`, so FTOS's normalise loop compared against a bound whose sign had flipped, exited after one step, and printed `2.5` as `2.5E04` |
+| `FP_POW10` used `ARGUMENT2` as its ×10 scratch | `PACKFLOAT` parks the parsed mantissa there across the call, so `1.25E+3` came out as `1000 × 10 = 10000` |
+| `OP_FP_MUL`/`OP_FP_DIV` clobbered Y (`LDY #32`/`LDY #48`) | `PARSENUM` counts a literal's digits in Y and then advances `BIP` by it. Any float literal **in a stored program line** sent the interpreter into the middle of the program text and reset the machine. Direct mode hid it completely: there the bad pointer lands in `INPUTBUF` and finds a NUL, so `PRINT 1.25` printed `1.25000` and looked healthy. Only `RUN` exposed it. |
+
+`floats_x816.s` now states the contract at the top and every primitive
+keeps to it (`SWAPW` exchanges through memory so `OP_FP_ADD` needs no
+index register at all). **Any future software primitive must preserve X,
+Y and `ARGUMENT2`** — the failures do not point anywhere near the maths.
+
+**A real bug in the portable core, fixed: `FTOI` rounded every negative
+float to zero** (`B%=-20.0` gave `0`, on C256 as well). Two faults
+compounded: `LDA #<>FP_1_0` loads the *address* of the 1.0 constant, not
+its value, so the guard compared against an address-shaped denormal
+behaving as `0.0`; and the test is signed, so `-20.0` genuinely is
+"< 1.0". It now tests the magnitude against real immediates. Note the
+immediates also matter for DBR: `LDA FP_1_0` is absolute, and this port
+runs `DBR=$00` while constants live in bank `$01`.
+
+*Consequence:* the C256 target still assembles and is still 53,918
+bytes, but it is **no longer byte-identical to the vendored prebuilt** —
+the fix adds 28 bytes and shifts everything after it. The Phase 0
+reproduction check has served its purpose and cannot be re-run as-is.
+
+**The test corpus is now the gate.** `floattests.s` was commented out
+upstream; it is enabled, and `run-tests.sh` builds `UNITTEST=1` and
+scrapes the console. Enabling it needed two small platform pieces:
+`CURCOLOR` (a shadow byte — the X816 console owns its own attributes)
+and `FP_TO_FIXINT`, routed to the portable `FTOI` because the C256
+converter it names is documented broken and bypassed in production.
+
+**Harness traps, both of which produce false greens:**
+
+- The console scrolls far past 80×60, so a single final frame hides most
+  of the run. `run-tests.sh` unions the rows of every GIF frame in
+  first-seen order, skipping frames whose raw bytes are unchanged (a
+  warp run is ~35,000 frames but only a few hundred distinct screens).
+- **`UT_FAIL_AD` never prints the word `FAILED`** — it logs the macro's
+  message and the offending value, `Expected $3aa3d70a [3AA3D708]`. A
+  harness grepping for `FAILED` reports green over a corpus full of red.
+  Detection matches the bracketed value. This is exactly the vacuous
+  green §7 warns about, and it was caught by running the negative
+  control, not by reading the code.
+
+**Known gaps, in priority order:**
+
+1. `TST_IMMFOR` and the FOR/NEXT suites after it assert the loop
+   variable is `TYPE_INTEGER`, but BASIC816 declares bare names as
+   floats (`I=1 : PRINT I` → `1.00000`), so `VAR_REF` throws "Variable
+   not found", and the uncaught error drops the run into an input wait.
+   `UT_VAR_EQ_W` is integer-only anyway (it hardcodes
+   `ARGTYPE1,TYPE_INTEGER` regardless of the type argument passed).
+   Upstream test debt, not port damage — but it blocks every suite
+   after it, so the corpus stops at 38 green suites.
+2. `TST_EVAL_NEG2` evaluates `-1 <> 1` and expects `0`. The evaluator
+   answers `$FFFF`, which is what `(-1) <> 1` should be — unary minus
+   binds tighter than `<>`. Either the expectation is stale or BASIC816
+   means `-(1 <> 1)`; **left failing on purpose** rather than rewritten
+   to match our output, which would be the vacuous green §7 warns about.
+   Settle it against a real C256 before touching either side.
+3. `1.25E-3` parses to `$3AA3D708`, 2 ULP under the correctly-rounded
+   `$3AA3D70A`. The engine truncates, and `PACKFLOAT` applies a negative
+   exponent as a multiply by an accumulated `10^-n`, so three
+   truncations compound. Fixing it properly means dividing the mantissa
+   by an exact `10^n` — an X816 `PACKFLOAT` override, the same shape as
+   the `FP_POW10` override.
+4. Transcendentals (`SIN`/`COS`/`TAN`/`LN`/`EXP`/`SQR`/…) still THROW.
+   `transcendentals_x816.s` stubs them honestly rather than letting the
+   C256's 90 inline `FP_MATH_*` pokes read plain SDRAM and return
+   garbage. `Q_FP_POW_INT` (used by `^`) is real software.
+5. `TST_POKE`/`POKEW`/`POKEL` targeted `$02:0000`, which is `BASIC_BOT`
+   here — they overwrote the running program. Moved to `$05:0000`
+   (SDRAM) under `SYSTEM_X816`. Worth remembering for any other test or
+   example that hardcodes a scratch address.
+
+## 12. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public
    (https://github.com/vinej/X816_SuperBasic) and GPLv3 as a whole; new

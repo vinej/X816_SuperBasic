@@ -52,7 +52,11 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "variables.s"
 .include "integers.s"
 .include "floats.s"
+.if SYSTEM == SYSTEM_X816
+.include "X816/transcendentals_x816.s"
+.else
 .include "transcendentals.s"
+.endif
 .include "arrays.s"
 .include "dos.s"
 

@@ -12,13 +12,8 @@
 
 .include "X816/x816_kernel.inc"
 
-; TODO(phase 2): the C256 FP coprocessor register definitions are pulled
-; in ONLY so the not-yet-rewritten float internals in floats.s and
-; transcendentals.s still assemble. On the X816 those registers are
-; plain SDRAM: float internals that poke them produce garbage. All
-; OP_FP_* entry points THROW until the software float pass replaces
-; them, so these paths are unreachable from BASIC code.
-.include "C256/fp_math_defs.s"
+; (Phase 2: all FP coprocessor paths are guarded out on X816 — the
+;  software float engine lives in X816/floats_x816.s.)
 
 ; The program image: 8-byte header, then code/data, all in banks $01-$04
 ; (single-cycle BRAM). CALL/RETURN are JSR/RTS, so all code must stay in
@@ -48,6 +43,19 @@
 BASIC_BANK = $00            ; Default data bank (kernel convention: DBR=0)
 
 ; Bank 0 memory spaces (application window is $3000-$9DFF)
+
+; Console text color, C256 layout (high nibble fg, low nibble bg).
+; On the C256 screen.s writes this into the color matrix beside every
+; glyph; the X816 console owns its own attributes, so this is only a
+; shadow -- SCREEN_PUTC does not consult it. Real color changes go out
+; through TEXTCOLOR -> KERN_CON_COLOR (statements_x816.s). It exists
+; because the unit-test framework (tests/unittests.s) stores into it
+; directly to color PASSED/FAILED lines.
+;
+; Sits above the software math scratch, which owns $4B00-$4B19:
+; MATHR $4B00-$4B07 (ints_x816.s), FP_S1..FP_M2 $4B08-$4B17 and
+; FP_T $4B18-$4B19 (floats_x816.s).
+CURCOLOR = $004B1A          ; 1 byte
 
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references

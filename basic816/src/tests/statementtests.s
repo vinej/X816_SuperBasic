@@ -230,7 +230,23 @@ TST_POKE        .proc
 
                 CALL INITBASIC
 
-continue        TSTLINE "10 POKE &h020000,&h55"
+continue
+.if SYSTEM == SYSTEM_X816
+                ; $02:0000 is BASIC_BOT on the X816 -- the program being
+                ; RUN lives there, so poking it overwrites the very lines
+                ; the interpreter is executing and the machine wanders
+                ; off. $05:0000 up is SDRAM user RAM, clear of the code
+                ; bank ($01) and of program+heap ($02-$04).
+                TSTLINE "10 POKE &h050000,&h55"
+                TSTLINE "20 A%=PEEK(&h050000)"
+                TSTLINE "30 POKE &h060000,&hAA"
+                TSTLINE "40 B%=PEEK(&h060000)"
+
+                CALL CMD_RUN
+
+                UT_M_EQ_LIT_B $050000,$55, "EXPECTED $55"
+.else
+                TSTLINE "10 POKE &h020000,&h55"
                 TSTLINE "20 A%=PEEK(&h020000)"
                 TSTLINE "30 POKE &h030000,&hAA"
                 TSTLINE "40 B%=PEEK(&h030000)"
@@ -238,6 +254,7 @@ continue        TSTLINE "10 POKE &h020000,&h55"
                 CALL CMD_RUN
 
                 UT_M_EQ_LIT_B $020000,$55, "EXPECTED $55"
+.endif
 
                 ; Validate that A%=$55
                 UT_VAR_EQ_W "A%",TYPE_INTEGER,$55
@@ -260,12 +277,21 @@ TST_POKEW       .proc
 
                 CALL INITBASIC
 
+.if SYSTEM == SYSTEM_X816
+                TSTLINE '10 POKEW &h050000,&h1234'    ; see TST_POKE: $02:0000
+                TSTLINE '20 A%=PEEKW(&h050000)'       ;  is BASIC_BOT here
+
+                CALL CMD_RUN
+
+                UT_M_EQ_LIT_W $050000,$1234, "EXPECTED $1234"
+.else
                 TSTLINE '10 POKEW &h020000,&h1234'
                 TSTLINE '20 A%=PEEKW(&h020000)'
 
                 CALL CMD_RUN
 
                 UT_M_EQ_LIT_W $020000,$1234, "EXPECTED $1234"
+.endif
 
                 ; Validate that A%=$55
                 setal
@@ -298,12 +324,21 @@ TST_POKEL       .proc
 
                 CALL INITBASIC
 
+.if SYSTEM == SYSTEM_X816
+                TSTLINE '10 POKEL &h050000,&h123456'  ; see TST_POKE: $02:0000
+                TSTLINE '20 A%=PEEKL(&h050000)'       ;  is BASIC_BOT here
+
+                CALL CMD_RUN
+
+                UT_M_EQ_LIT_L $050000,$123456, "EXPECTED $123456"
+.else
                 TSTLINE '10 POKEL &h020000,&h123456'
                 TSTLINE '20 A%=PEEKL(&h020000)'
 
                 CALL CMD_RUN
 
                 UT_M_EQ_LIT_L $020000,$123456, "EXPECTED $123456"
+.endif
 
                 ; Validate that A%=$55
                 setal

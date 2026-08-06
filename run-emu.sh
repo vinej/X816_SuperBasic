@@ -11,6 +11,16 @@
 #   3. `PRINT 1` answers `1`         - tokenizer, interpreter, ITOS and
 #                                      the software divide (DIVINT10)
 #   4. `XYZZY` answers `Syntax error`- the error path
+#   5. float math in direct mode     - the software FP engine
+#   6. `10 PRINT 1.5` + `RUN`        - a float literal parsed out of
+#                                      STORED program text. Worth its own
+#                                      check: PARSENUM counts digits in Y
+#                                      and then advances BIP by it, so a
+#                                      math routine that clobbers Y sends
+#                                      the interpreter into the middle of
+#                                      the program. Direct mode hides that
+#                                      (the bad pointer lands in INPUTBUF
+#                                      and finds a NUL); only RUN shows it.
 #
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
@@ -64,7 +74,7 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 90 \
     "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
     -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
     -sdcard "$WOUT/scratch.img" \
-    -autokeys 'run BASIC.BIN\n                                        PRINT 1\n                                        XYZZY\n' \
+    -autokeys 'run BASIC.BIN\n                                        PRINT 1\n                                        XYZZY\n                                        PRINT 10/4\n                                        PRINT 2^10\n                                        PRINT 1/0\n                                        10 PRINT 1.5\n                                        RUN\n' \
     -warp -gif "$WOUT/out.gif" >/dev/null 2>&1
 
 python - "$WOUT/out.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
@@ -137,9 +147,23 @@ if not any(r.strip() == "1" for r in rows):
     fail("`PRINT 1` did not answer 1")
 if not any("Syntax error" in r for r in rows):
     fail("`XYZZY` did not report a syntax error")
+# FTOS always emits BASIC816's 6-significant-digit form, with an
+# exponent suffix whenever the decimal exponent is not zero -- so 2.5
+# prints as "2.50000" and 1024 as "1.02400E03". That is upstream
+# formatting, identical on the C256; assert what the interpreter really
+# says rather than the shape a calculator would use.
+if not any("2.50000" in r for r in rows):
+    fail("`PRINT 10/4` did not answer 2.50000 (software float divide)")
+if not any("1.02400E03" in r for r in rows):
+    fail("`PRINT 2^10` did not answer 1.02400E03 (integer power)")
+if not any("Division by zero" in r for r in rows):
+    fail("`PRINT 1/0` did not report division by zero")
+if not any("1.50000" in r for r in rows):
+    fail("`RUN` of a stored float literal did not answer 1.50000")
 
-print("PASS: SuperBasic booted from the card, printed 1, and rejected")
-print("      an unknown statement -- all through the kernel console")
+print("PASS: SuperBasic booted from the card, printed 1, did float math")
+print("      in both direct and program mode, and rejected bad input --")
+print("      all through the kernel console")
 for r in rows:
     if r:
         print("   ", r)

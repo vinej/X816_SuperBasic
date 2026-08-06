@@ -165,6 +165,9 @@ done            PLP
 ; Outputs:
 ;   ARGUMENT1 = 10.0 ^ MARG4
 ;
+.if SYSTEM != SYSTEM_X816
+; (X816: a software FP_POW10 lives in X816/floats_x816.s — this one
+;  drives the C256 FP coprocessor)
 FP_POW10        .proc
                 PHP
 
@@ -251,6 +254,7 @@ ret_result      setal
 done            PLP
                 RETURN
                 .pend
+.endif ; SYSTEM != SYSTEM_X816
 
 ;
 ; Take the mantissa and exponent, and pack it into a float
@@ -702,23 +706,49 @@ l_exponent      .byte ?
 l_mantissa      .dword ?
                 .endv
     
-                ; Check to see if ARGUMENT1 < 1.0
+                ; Check to see if |ARGUMENT1| < 1.0, i.e. whether the
+                ; integer part is zero.
+                ;
+                ; This guard had two faults, and together they rounded
+                ; EVERY negative float to zero (B%=-20.0 gave 0):
+                ;   - "#<>FP_1_0" loads the ADDRESS of the 1.0 constant,
+                ;     not its value, so the comparand was an address-
+                ;     shaped denormal that behaves as 0.0. Use immediates
+                ;     ($3F800000 = 1.0) -- also DBR-immune, which matters
+                ;     on targets that run with DBR != the code bank.
+                ;   - the test is signed, so -20.0 really is "< 1.0".
+                ;     The magnitude is what decides, so a value below 1.0
+                ;     must also be checked against -1.0.
                 setal
-                LDA #<>FP_1_0
+                LDA #$0000              ; ARGUMENT2 <-- 1.0
                 STA ARGUMENT2
-                LDA #(FP_1_0 >> 16)
+                LDA #$3F80
                 STA ARGUMENT2+2
                 setas
                 LDA #TYPE_FLOAT
                 STA ARGTYPE2
                 setal
-                
+
                 CALL FP_COMPARE         ; Is ARGUMENT1 < 1.0?
                 CMP #$FFFF
                 BNE alloc_locals        ; No: get ready to do the full conversion
 
+                setal
+                LDA #$0000              ; ARGUMENT2 <-- -1.0
+                STA ARGUMENT2
+                LDA #$BF80
+                STA ARGUMENT2+2
+                setas
+                LDA #TYPE_FLOAT
+                STA ARGTYPE2
+                setal
+
+                CALL FP_COMPARE         ; Is ARGUMENT1 > -1.0?
+                CMP #1
+                BNE alloc_locals        ; No: convert it after all
+
                 LDA #0
-                STA @w ARGUMENT1        ; Yes: Return 0
+                STA @w ARGUMENT1        ; -1.0 < ARGUMENT1 < 1.0: return 0
                 STA @w ARGUMENT1+2
                 BRL done
 

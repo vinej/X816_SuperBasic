@@ -12,9 +12,10 @@
 ;;; stack-relative addressing modes.
 ;;;
 
-.section globals
-MATHR       .fill 8     ; 64-bit accumulator: product high / remainder
-.send
+; Math scratch lives in free bank-0 application space rather than the
+; (full) direct page: ASL/ROL/ROR support absolute addressing, and with
+; DBR = $00 plain absolute reaches bank 0 from anywhere.
+MATHR = $004B00         ; 8 bytes: 64-bit accumulator / remainder+quotient
 
 ;
 ; Multiply two 32-bit integers (software shift-add, 32x32 -> 64)
@@ -30,6 +31,8 @@ MATHR       .fill 8     ; 64-bit accumulator: product high / remainder
 OP_INT_MUL  .proc
             PHP
             TRACE "OP_INT_MUL"
+            setaxl                  ; Fix the index width before pushing Y,
+            PHY                     ;  so the pull at the end matches it
 
 locals      .virtual 1,S
 L_SIGN      .word ?
@@ -128,6 +131,7 @@ ret_result  LDA MATHR               ; Return the product
             STA ARGUMENT1+2
 
             SFREE SIZE(locals)
+            PLY
             PLP
             RETURN
             .pend
@@ -146,6 +150,7 @@ ret_result  LDA MATHR               ; Return the product
 UDIV32      .proc
             PHP
             setaxl
+            PHY                     ; Y is the bit counter; callers keep theirs
 
             LDA #0                  ; Clear the remainder
             STA MATHR
@@ -186,6 +191,7 @@ div_next    DEY
             LDA MATHR+2
             STA ARGUMENT2+2
 
+            PLY
             PLP
             RETURN
             .pend

@@ -7,7 +7,7 @@
 .include "evaltests.s"
 ; .include "heaptests.s"
 ; .include "stringtests.s"
-; .include "floattests.s"
+.include "floattests.s"
 .include "tokentests.s"
 ; .include "interptests.s"
 ;.include "cmdtests.s"
@@ -32,7 +32,7 @@ TST_BASIC       .proc
                 ; CALL TST_HEAP
                 CALL TST_EVAL
                 ; CALL TST_STRINGS
-                ; CALL TST_FLOATS
+                CALL TST_FLOATS
                 ; CALL TST_VARIABLES
                 CALL TST_TOKENS
                 ; CALL TST_INTERP
