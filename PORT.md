@@ -1,7 +1,10 @@
 # PORT.md — BASIC816 → X816 port sketch
 
-Status: **Phases 0-2 done, 2026-08-06.** The platform skeleton boots and the
-software math layer is in (§11); transcendentals and files are still open.
+Status: **Phases 0-3 done, 2026-08-06.** The platform skeleton boots, the
+software math layer is in (§11), and programs load and save to the SD card.
+Transcendentals still throw, and everything else that touches hardware —
+graphics, sprites, sound, joystick, mouse, timers — is unbound; the `help/`
+pages are the checklist and §9 phase 5 the order.
 This started as a plan expanding the feasibility study at
 `X816_core/doc/SUPERBASIC.md` (2026-08-03) — source layout, memory map, kernel
 I/O bindings, the math-layer rewrite, and the SuperBasic feature layer — and
