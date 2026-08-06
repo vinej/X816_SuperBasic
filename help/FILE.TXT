@@ -18,7 +18,9 @@ calls, KERNEL.md section 6), and what is still missing is the binding.
     Names are shown in 8.3 columns with a size, and "D" marks a
     directory; long names are not shown as such.
 [x] DEL "name" - delete a file.
-[ ] RENAME "old","new" - rename one.
+[x] RENAME "old","new" - rename one. The new name is a BARE NAME, not a
+    path: renaming across directories would mean writing the entry
+    somewhere else, which the kernel treats as a different operation.
 [ ] COPY "src","dst" - copy one.
 [ ] BRUN "name" - load a machine-code file and call it.
 [x] CD "path" - change the working directory.
@@ -42,6 +44,13 @@ FK_LOAD/FK_SAVE/FK_DIROPEN/FK_DIRNEXT/FK_DELETE/FK_COPY/FK_RUN entry
 points, so binding those in X816/kernel_x816.s lights up the statements
 above without touching portable code. FK_COPY and FK_RUN are still
 stubs.
+
+RENAME is not a binding at all -- the portable S_RENAME is guarded out
+here and replaced. It renames by raw directory surgery: read the on-disk
+entry, edit the 8.3 name in place, write the sector back. The X816 kernel
+owns the FAT and hands out no sectors, so that cannot be made to work --
+but unlike the C256's it has a rename call, so the statement is simpler
+here than upstream, not harder.
 
 DIR is the one that is not a straight binding. CMD_DIR walks RAW FAT32
 records - it reads a 32-byte on-disk directory entry and picks the 8.3

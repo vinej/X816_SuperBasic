@@ -1085,6 +1085,11 @@ invalid_chars   .text "*+,/:;<=>?\[]|",CHAR_DQUOTE
 ; RENAME <path>, <filename>
 ; Renames a file
 ;
+.if SYSTEM != SYSTEM_X816
+; The X816 replaces this wholesale (X816/statements_x816.s). It renames by
+; RAW DIRECTORY SURGERY -- FK_DIRREAD the entry, edit the 8.3 name in place,
+; FK_DIRWRITE it back -- and the X816 kernel owns the FAT and exposes no way
+; to hand out a directory sector. It has a rename call instead.
 S_RENAME        .proc
                 PHP
                 TRACE "S_RENAME"
@@ -1182,6 +1187,7 @@ done            CALL SET_DOSSTAT            ; Set DOSSTAT and BIOSSTAT variables
                 PLP
                 RETURN
                 .pend
+.endif ; SYSTEM != SYSTEM_X816
 
 ;
 ; COPY <source path>, <destination path>

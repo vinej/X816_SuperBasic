@@ -100,7 +100,11 @@ for k in \
     'PWD' \
     'CD "/"' \
     'RMDIR "ND"' \
-    'PWD'
+    'PWD' \
+    'SAVE "A.BAS"' \
+    'RENAME "A.BAS","B.BAS"' \
+    'DIR' \
+    'DEL "B.BAS"'
 do
     KEYS="$KEYS$PAD$k\n"
 done
@@ -224,6 +228,15 @@ if not any(r.strip() == "/ND" for r in rows):
     fail("MKDIR then CD then PWD did not report /ND")
 if not any(r.strip() == "/" for r in rows):
     fail("PWD never reported the root directory")
+
+# RENAME. Two-sided on purpose: the new name must appear exactly once and
+# the old one must be gone entirely, so a rename that silently did
+# nothing fails on the second check rather than passing the first.
+if len([r for r in rows if r.startswith("B        BAS")]) != 1:
+    fail("RENAME did not produce exactly one B.BAS listing")
+if any(r.startswith("A        BAS") for r in rows):
+    fail("RENAME left A.BAS behind -- it did not rename, it copied or "
+         "did nothing")
 
 print("PASS: SuperBasic booted from the card, printed 1, did float math")
 print("      in both direct and program mode, and rejected bad input --")

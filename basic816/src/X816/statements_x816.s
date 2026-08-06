@@ -268,3 +268,58 @@ S_PWD           .proc
 
 pwd_failed      THROW ERR_DIRECTORY
                 .pend
+
+;
+; RENAME <old>, <new> -- rename a file
+;
+; The portable S_RENAME is guarded out for this platform (dos.s). It works
+; by raw directory surgery: read the on-disk entry, edit the 8.3 name in
+; place, write the sector back. The X816 kernel owns the FAT and hands
+; out no sectors, so that approach cannot be made to work here -- but it
+; has a rename call, which the C256 kernel did not.
+;
+; K_FS_RENAME takes a parameter block: a 24-bit pointer to the existing
+; path, then a 24-bit pointer to the NEW BARE NAME. The second is not a
+; path: renaming across directories means writing the entry somewhere
+; else, which is a different operation.
+;
+S_RENAME        .proc
+                PHP
+                TRACE "S_RENAME"
+                setaxl
+
+                CALL SKIPWS
+                CALL EVALEXPR               ; The existing name
+                CALL ASS_ARG1_STR
+                setal
+                LDA ARGUMENT1
+                STA @l FS_BLK
+                LDA ARGUMENT1+2
+                AND #$00FF
+                STA @l FS_BLK+2
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+
+                CALL EVALEXPR               ; The new name
+                CALL ASS_ARG1_STR
+                setal
+                LDA ARGUMENT1
+                STA @l FS_BLK+4
+                LDA ARGUMENT1+2
+                AND #$00FF
+                STA @l FS_BLK+6
+
+                LDA #`FS_BLK
+                TAX
+                LDA #<>FS_BLK
+                JSL KERN_FS_RENAME
+                BCS rename_failed
+
+                PLP
+                RETURN
+
+rename_failed   THROW ERR_FILENOTFOUND
+                .pend
