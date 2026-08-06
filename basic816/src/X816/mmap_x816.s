@@ -71,6 +71,15 @@ FS_BLK_H  = FS_BLK + 0      ; word  - file handle
 FS_BLK_A  = FS_BLK + 2      ; dword - address to read into / write from
 FS_BLK_N  = FS_BLK + 6      ; dword - byte count
 
+; Directory listing. The kernel hands back a COOKED entry and dos.s wants
+; a RAW on-disk FAT32 one, so FK_DIRNEXT translates between the two.
+KDIR_H    = $004B2C         ; word - open directory handle, 0 = none
+KDIR_ENT  = $004B30         ; 18 bytes - what K_DIR_NEXT fills in:
+KDIR_NAME = KDIR_ENT + 0    ;   13 bytes - NUL-terminated name, "FOO.BAS"
+KDIR_ISDIR = KDIR_ENT + 13  ;   byte     - 1 if a directory
+KDIR_SIZE = KDIR_ENT + 14   ;   dword    - size in bytes
+FDIRENT   = $004B50         ; 32 bytes - a DIRENTRY built from the above
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

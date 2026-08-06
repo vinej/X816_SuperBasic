@@ -246,9 +246,221 @@ FK_STUB         CLC
                 RTL
 
 FK_RUN = FK_STUB
-FK_DELETE = FK_STUB
 FK_COPY = FK_STUB
-FK_DIROPEN = FK_STUB
-FK_DIRNEXT = FK_STUB
 FK_DIRREAD = FK_STUB
 FK_DIRWRITE = FK_STUB
+
+;
+; Delete a file.
+;
+; Inputs:
+;   DOS_PATH_BUFF holds the name -- NOT FD_IN.PATH. S_DEL calls
+;   COPY2PATHBUF rather than SETFILEDESC, so the two disk statements set
+;   their path up in different places; reading the descriptor here gave
+;   a stale pointer and "Unable to delete file" on a file that existed.
+;
+FK_DELETE       PHP
+                setaxl
+                PHB
+                PHX
+                PHY
+
+                LDA #`DOS_PATH_BUFF
+                TAX
+                LDA #<>DOS_PATH_BUFF
+                JSL KERN_FS_DELETE
+                BCS del_fail
+
+                PLY
+                PLX
+                PLB
+                PLP
+                SEC
+                RTL
+del_fail        PLY
+                PLX
+                PLB
+                PLP
+                CLC
+                RTL
+
+;
+; Open a directory and produce its first entry.
+;
+; CMD_DIR walks RAW FAT32 directory records: it reads DOS_DIR_PTR as a
+; pointer to a 32-byte on-disk DIRENTRY and picks out the 8.3 name, the
+; attribute byte and the size. The kernel does not deal in those -- it
+; returns a cooked record, a NUL-terminated "FOO.BAS" with a directory
+; flag and a size. So one is built from the other in DIRREAD1 below.
+;
+; CMD_DIR also never closes the directory, and the kernel's handle pool
+; is small, so the handle is closed here at the end of a listing and any
+; leftover one is closed before opening the next.
+;
+; Inputs:
+;   FD_IN.PATH = path, or 0 for "the current directory"
+;
+; Outputs:
+;   C set and DOS_DIR_PTR pointing at the first entry, or C clear
+;
+FK_DIROPEN      PHP
+                setaxl
+                PHB
+                PHX
+                PHY
+
+                LDA @l KDIR_H           ; Close a listing left half-read
+                BEQ dopen_ptr
+                JSL KERN_DIR_CLOSE
+                LDA #0
+                STA @l KDIR_H
+
+dopen_ptr       LDA #<>FDIRENT          ; Point dos.s at the entry we build
+                STA @l DOS_DIR_PTR
+                LDA #`FDIRENT
+                STA @l DOS_DIR_PTR+2
+
+                LDA @l FD_IN.PATH       ; A null path means the default
+                ORA @l FD_IN.PATH+2     ;  directory. An EMPTY STRING is how
+                BNE dopen_arg           ;  the kernel spells that: abspath
+                LDA #`dir_here          ;  copies the working directory when
+                TAX                     ;  the argument does not start "/".
+                LDA #<>dir_here
+                BRA dopen_go
+dopen_arg       LDA @l FD_IN.PATH+2
+                TAX
+                LDA @l FD_IN.PATH
+dopen_go        JSL KERN_DIR_OPEN
+                BCS dopen_fail
+                STA @l KDIR_H
+
+                JSR DIRREAD1            ; First entry, if there is one
+                BCC dopen_fail
+                PLY
+                PLX
+                PLB
+                PLP
+                SEC
+                RTL
+
+dopen_fail      PLY
+                PLX
+                PLB
+                PLP
+                CLC
+                RTL
+
+dir_here        .byte 0                 ; the empty path; never executed
+
+;
+; Step to the next directory entry.
+;
+; Outputs:
+;   C set if an entry was produced, clear at the end of the listing
+;
+FK_DIRNEXT      PHP
+                setaxl
+                PHB
+                PHX
+                PHY
+
+                JSR DIRREAD1
+                BCC dnext_end
+                PLY
+                PLX
+                PLB
+                PLP
+                SEC
+                RTL
+dnext_end       PLY
+                PLX
+                PLB
+                PLP
+                CLC
+                RTL
+
+;
+; Read one entry and translate it into FDIRENT.
+; Assumes 16-bit A/X/Y. C set if an entry was produced.
+;
+DIRREAD1        LDA @l KDIR_H
+                BNE dr_have             ; No listing open: nothing to read
+                CLC
+                RTS
+
+dr_have         LDX #<>KDIR_ENT         ; C = handle, X:Y = entry buffer
+                LDY #`KDIR_ENT
+                JSL KERN_DIR_NEXT
+                BCC dr_got              ; Carry set = no more entries; the
+                BRL dr_close            ;  translation below is too long to
+                                        ;  branch across
+dr_got          PHB                     ; The copies below use plain indexed
+                setas                   ;  addressing, which goes through DBR
+                LDA #0
+                PHA
+                PLB
+
+                LDX #0                  ; Blank the whole 8.3 field: a short
+                LDA #' '                ;  name is space-padded, not
+dr_blank        STA FDIRENT,X           ;  NUL-padded
+                INX
+                CPX #11
+                BNE dr_blank
+
+                LDX #0                  ; Name, up to the dot, into bytes 0-7
+                LDY #0
+dr_name         LDA KDIR_NAME,X
+                BEQ dr_attr
+                CMP #'.'
+                BEQ dr_dot
+                CPY #8
+                BEQ dr_skip             ; Longer than 8: drop the excess
+                STA FDIRENT,Y
+                INY
+dr_skip         INX
+                CPX #13
+                BNE dr_name
+                BRA dr_attr
+
+dr_dot          INX                     ; Extension into bytes 8-10
+                LDY #8
+dr_ext          LDA KDIR_NAME,X
+                BEQ dr_attr
+                CPY #11
+                BEQ dr_attr
+                STA FDIRENT,Y
+                INY
+                INX
+                CPX #13
+                BNE dr_ext
+
+dr_attr         LDA KDIR_ISDIR
+                BEQ dr_file
+                LDA #DOS_ATTR_DIR
+                BRA dr_setattr
+dr_file         LDA #DOS_ATTR_ARCH
+dr_setattr      STA FDIRENT+DIRENTRY.ATTRIBUTE
+
+                LDA #0                  ; Times, dates and clusters: CMD_DIR
+                LDX #DIRENTRY.IGNORED1  ;  reads none of them (its date and
+dr_zero         STA FDIRENT,X           ;  time prints are commented out)
+                INX
+                CPX #DIRENTRY.SIZE
+                BNE dr_zero
+
+                setal
+                LDA KDIR_SIZE
+                STA FDIRENT+DIRENTRY.SIZE
+                LDA KDIR_SIZE+2
+                STA FDIRENT+DIRENTRY.SIZE+2
+
+                PLB
+                SEC
+                RTS
+
+dr_close        LDA @l KDIR_H           ; End of listing: give the handle back
+                JSL KERN_DIR_CLOSE
+                LDA #0
+                STA @l KDIR_H
+dr_end          CLC
+                RTS

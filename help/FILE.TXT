@@ -14,8 +14,10 @@ calls, KERNEL.md section 6), and what is still missing is the binding.
 [x] BLOAD "name",addr - load raw bytes to an address, no header.
 [x] BSAVE "name",start,end - save raw bytes. END IS INCLUSIVE: the last
     byte written is the one at end, so a single byte is start = end.
-[ ] DIR ["path"] - list a directory.
-[ ] DEL "name" - delete a file.
+[x] DIR ["path"] - list a directory. With no argument, the current one.
+    Names are shown in 8.3 columns with a size, and "D" marks a
+    directory; long names are not shown as such.
+[x] DEL "name" - delete a file.
 [ ] RENAME "old","new" - rename one.
 [ ] COPY "src","dst" - copy one.
 [ ] BRUN "name" - load a machine-code file and call it.
@@ -37,7 +39,22 @@ Two things about how this is wired, for whoever writes the rest.
 The seam is narrow. dos.s reaches the card only through the Foenix
 FK_LOAD/FK_SAVE/FK_DIROPEN/FK_DIRNEXT/FK_DELETE/FK_COPY/FK_RUN entry
 points, so binding those in X816/kernel_x816.s lights up the statements
-above without touching portable code. Four are still unbound.
+above without touching portable code. FK_COPY and FK_RUN are still
+stubs.
+
+DIR is the one that is not a straight binding. CMD_DIR walks RAW FAT32
+records - it reads a 32-byte on-disk directory entry and picks the 8.3
+name, the attribute byte and the size out of it - while the kernel hands
+back a cooked one: a NUL-terminated "FOO.BAS", a directory flag and a
+size. FK_DIRNEXT builds the former from the latter, which is why the
+listing shows short names only. It also closes the directory handle at
+the end of a listing and before starting a new one, because CMD_DIR
+never closes anything and the kernel's handle pool is small.
+
+The path does not always arrive in the same place, either. LOAD, SAVE
+and DIR call SETFILEDESC and leave it in FD_IN.PATH; DEL calls
+COPY2PATHBUF and leaves it in DOS_PATH_BUFF. Reading the wrong one gives
+"Unable to delete file" for a file that is plainly there.
 
 THE CARRY IS INVERTED across that seam. Every call site in dos.s reads
 carry SET as success; the X816 kernel uses carry set for failure. The

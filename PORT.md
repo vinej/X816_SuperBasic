@@ -305,7 +305,7 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   (`SIN`/`COS`/`TAN`/`ASIN`/`ACOS`/`ATAN`/`LN`/`EXP`/`SQR`) still THROW;
   `help/MATH.TXT` is the checklist. `SQR` is the one users hit first.
   Also here: the two open corpus failures and the 2-ULP literal (§11).
-- **Phase 3 — files. LOAD/SAVE/BLOAD/BSAVE landed 2026-08-06.**
+- **Phase 3 — files. LOAD/SAVE/BLOAD/BSAVE/DIR/DEL landed 2026-08-06.**
   `help/FILE.TXT` is the feature list and the running score. The seam is
   narrow: `dos.s` reaches the disk only through the Foenix `FK_*` entry
   points, so `FK_LOAD` and `FK_SAVE` over `K_FS_*` in
@@ -320,11 +320,22 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   which told `dos.s` that every disk operation had *succeeded*. `DIR`
   was not refusing; it was printing an uninitialised entry buffer. The
   remaining stubs now return `CLC`.
-  Still to do: `FK_DIROPEN`/`FK_DIRNEXT` (for `DIR`), `FK_DELETE`,
-  `FK_COPY`, `FK_RUN`. `DIR` needs a look at whether `dos.s`'s expected
-  directory-entry layout matches the kernel's entry buffer. New keywords
-  (`CD`, `MKDIR`, `RMDIR`, `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`) are a
-  separate step — the kernel already has the calls.
+  `DIR` was **not** a straight binding, and the guess in the previous
+  revision of this line was right: `CMD_DIR` walks raw on-disk FAT32
+  records, while the kernel returns a cooked entry (NUL-terminated
+  `"FOO.BAS"`, directory flag, size). `FK_DIRNEXT` synthesises the
+  former from the latter, so listings show short names only. It also
+  owns the directory handle — `CMD_DIR` never closes one and the
+  kernel's pool is small, so the handle is released at end-of-listing
+  and any stale one is closed before the next.
+  A third trap: **the path does not always arrive in the same place.**
+  `LOAD`/`SAVE`/`DIR` go through `SETFILEDESC` and leave it in
+  `FD_IN.PATH`; `DEL` goes through `COPY2PATHBUF` and leaves it in
+  `DOS_PATH_BUFF`. Reading the wrong one gives "Unable to delete file"
+  for a file that is plainly listed.
+  Still to do: `FK_COPY`, `FK_RUN`, and `RENAME`. New keywords (`CD`,
+  `MKDIR`, `RMDIR`, `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`) are a separate
+  step — the kernel already has the calls.
 - **Phase 4 — hardware.** First as `boot1.rom`, then shell-run `.bin` once
   the size cap question is settled. One change per round trip.
 - **Phase 5 — the machine.** The `help/` pages are the specification for

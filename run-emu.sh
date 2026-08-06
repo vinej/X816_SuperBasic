@@ -78,7 +78,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 90 \
     "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
     -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
     -sdcard "$WOUT/scratch.img" \
-    -autokeys 'run BASIC.BIN\n                                        PRINT 1\n                                        XYZZY\n                                        PRINT 10/4\n                                        PRINT 2^10\n                                        PRINT 1/0\n                                        10 PRINT 1.5\n                                        RUN\n                                        10 PRINT 4242\n                                        SAVE "T.BAS"\n                                        NEW\n                                        LOAD "T.BAS"\n                                        RUN\n' \
+    -autokeys 'run BASIC.BIN\n                                        PRINT 1\n                                        XYZZY\n                                        PRINT 10/4\n                                        PRINT 2^10\n                                        PRINT 1/0\n                                        10 PRINT 1.5\n                                        RUN\n                                        10 PRINT 4242\n                                        SAVE "T.BAS"\n                                        NEW\n                                        LOAD "T.BAS"\n                                        RUN\n                                        DIR
+                                        DEL "T.BAS"
+                                        DIR
+' \
     -warp -gif "$WOUT/out.gif" >/dev/null 2>&1
 
 python - "$WOUT/out.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
@@ -171,6 +174,14 @@ if not any("1.50000" in r for r in rows):
 if not any(r.strip() == "4242" for r in rows):
     fail("SAVE, NEW, LOAD, RUN did not answer 4242 -- the program did "
          "not survive a round trip to the card")
+# DIR, then DEL, then DIR again. Counting the listings is what makes this
+# one assertion cover three statements: T.BAS must appear in the first
+# listing and be gone from the second, so 0 means SAVE or DIR failed and
+# 2 means DEL did.
+listed = [r for r in rows if r.startswith("T        BAS")]
+if len(listed) != 1:
+    fail("expected T.BAS in the first DIR and gone from the second after "
+         "DEL, but it was listed %d time(s)" % len(listed))
 
 print("PASS: SuperBasic booted from the card, printed 1, did float math")
 print("      in both direct and program mode, and rejected bad input --")
