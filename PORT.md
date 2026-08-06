@@ -267,8 +267,14 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
 ## 9. Phases (aligned with the feasibility study §5)
 
 - **Phase 0 — probe. DONE 2026-08-06** — see "Phase 0 findings" below.
-- **Phase 1 — platform skeleton.** `SYSTEM_X816` + `src/X816/` per §2-§4.
-  Milestone: `READY` prompt and `PRINT 1` in the emulator, integer-only.
+- **Phase 1 — platform skeleton. DONE 2026-08-06.** `SYSTEM_X816` +
+  `src/X816/` (8 files); software int mul/div came forward from Phase 2
+  (the C256 math registers are the X816's CPU stack, and DIVINT10 drives
+  decimal printing). Binary: 31,334 bytes. Milestone met in the emulator
+  (`run-emu.sh`, with negative control): banner, `READY`, `PRINT 1` → `1`,
+  `XYZZY` → `Syntax error`. Known phase-1 limits: floats THROW (so `/`
+  throws too — it always promotes to FP), `RND`/`^` inert, DOS commands
+  refuse, monitor BRK not wired.
 - **Phase 2 — math.** §5. Drive BASIC816's `tests/` corpus with negative
   controls.
 - **Phase 3 — files + full language pass.** LOAD/SAVE/DIR → `K_FS_*`/`K_DIR_*`;

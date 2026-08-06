@@ -8,6 +8,8 @@
 .include "CBM/io_cbm.s"
 .elsif SYSTEM == SYSTEM_C256
 .include "C256/io_c256.s"
+.elsif SYSTEM == SYSTEM_X816
+.include "X816/io_x816.s"
 .endif
 
 LINES_PER_PAGE = 10     ; The number of lines to print on a page before pausing

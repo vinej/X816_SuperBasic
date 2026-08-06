@@ -66,6 +66,11 @@ OP_INT_SUB  .proc
 ; Outputs:
 ;   ARGUMENT1 := ARGUMENT1 * ARGUMENT2
 ;
+.if SYSTEM == SYSTEM_X816
+; The GABE multiplier registers the version below pokes are the CPU
+; stack on the X816 — use the software math module instead.
+.include "X816/ints_x816.s"
+.else
 OP_INT_MUL  .proc
             PHP
 
@@ -234,6 +239,7 @@ ret_result  ; Return the integer in L_RESULT
             PLP
             RETURN
             .pend
+.endif ; SYSTEM == SYSTEM_X816
 
 ;
 ; Divide two 32-bit integers

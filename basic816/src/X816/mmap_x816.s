@@ -1,0 +1,108 @@
+;;;
+;;; Block assignment for the X816
+;;;
+;;; Copyright (C) 2026 Jean-Yves Vinet
+;;; Dual-licensed: GPLv3 (as part of SuperBasic) and MIT.
+;;;
+;;; The X816 is a flat 16 MB machine: no banking hardware. The kernel
+;;; owns $00:2000-$2FFF, the I/O page is $00:9F00, the jump table is at
+;;; $00:FE00. Programs load at $01:0000 with the 8-byte "X816" header.
+;;; See X816_core/doc/MEMORY_MAP.md for the normative map.
+;;;
+
+.include "X816/x816_kernel.inc"
+
+; TODO(phase 2): the C256 FP coprocessor register definitions are pulled
+; in ONLY so the not-yet-rewritten float internals in floats.s and
+; transcendentals.s still assemble. On the X816 those registers are
+; plain SDRAM: float internals that poke them produce garbage. All
+; OP_FP_* entry points THROW until the software float pass replaces
+; them, so these paths are unreachable from BASIC code.
+.include "C256/fp_math_defs.s"
+
+; The program image: 8-byte header, then code/data, all in banks $01-$04
+; (single-cycle BRAM). CALL/RETURN are JSR/RTS, so all code must stay in
+; one bank: everything below must fit in bank $01.
+* = $010000
+.dsection x816hdr
+
+* = $010008
+.dsection code
+.dsection data
+.dsection variables
+.cerror * > $01FFFF, "Interpreter does not fit in bank $01"
+
+; The X816 program header: magic + entry jump, exactly 8 bytes
+.section x816hdr
+            .text "X816"            ; magic checked by the loader
+            JML START               ; entry point (called at $01:0004)
+.send
+
+; Direct-page globals: $00:3000 (page-aligned per MEMORY_MAP.md D rule).
+; Must contain only uninitialized (?) entries so no binary output is
+; emitted below $01:0000 (the header must stay at file offset 0).
+* = $003000
+.dsection globals
+.cerror * > $30FF, "Too many direct page variables"
+
+BASIC_BANK = $00            ; Default data bank (kernel convention: DBR=0)
+
+; Bank 0 memory spaces (application window is $3000-$9DFF)
+
+IOBUF = $004C00             ; A buffer for I/O operations
+ARRIDXBUF = $004D00         ; The array index buffer used for array references
+TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.
+INPUTBUF = $004F00          ; Starting address of the line input buffer (one page)
+RETURN_BOT = $005000        ; Starting address of the return stack
+RETURN_TOP = $005FFF        ; Ending address of the return stack
+ARGUMENT_BOT = $006000      ; Starting address of the argument stack
+ARGUMENT_TOP = $006FFF      ; Ending address of the argument stack
+OPERATOR_BOT = $007000      ; Starting address of the operator stack
+OPERATOR_TOP = $007FFF      ; Ending address of the operator stack
+
+STACK_END = $001FFF         ; Top of the CPU stack (kernel gives $0100-$1FFF)
+
+; DOS working storage for dos.s. The C256 kernel put this block at
+; $00:0320 (inside the X816's CPU stack), so it is relocated to free
+; application space, keeping the C256 layout relative to the base.
+; The DOS commands themselves refuse until phase 3 binds K_FS_*.
+SDOS_VARIABLES = $004800
+BIOS_STATUS      = SDOS_VARIABLES + $00     ; 1 byte  - BIOS op status
+DOS_STATUS       = SDOS_VARIABLES + $0E     ; 1 byte  - file access error code
+DOS_CLUS_ID      = SDOS_VARIABLES + $10     ; 4 bytes - cluster for a DOS op
+DOS_DIR_PTR      = SDOS_VARIABLES + $18     ; 4 bytes - directory entry pointer
+DOS_BUFF_PTR     = SDOS_VARIABLES + $1C     ; 4 bytes - cluster read/write pointer
+DOS_FD_PTR       = SDOS_VARIABLES + $20     ; 4 bytes - file descriptor pointer
+DOS_FAT_LBA      = SDOS_VARIABLES + $24     ; 4 bytes - FAT sector LBA
+DOS_TEMP         = SDOS_VARIABLES + $28     ; 4 bytes - temporary storage
+DOS_FILE_SIZE    = SDOS_VARIABLES + $2C     ; 4 bytes - file size
+DOS_SRC_PTR      = SDOS_VARIABLES + $30     ; 4 bytes - transfer source
+DOS_DST_PTR      = SDOS_VARIABLES + $34     ; 4 bytes - transfer destination
+DOS_END_PTR      = SDOS_VARIABLES + $38     ; 4 bytes - last byte to save
+DOS_RUN_PTR      = SDOS_VARIABLES + $3C     ; 4 bytes - loaded program start
+DOS_RUN_PARAM    = SDOS_VARIABLES + $40     ; 4 bytes - program argument string
+DOS_STR1_PTR     = SDOS_VARIABLES + $44     ; 4 bytes - string pointer
+DOS_STR2_PTR     = SDOS_VARIABLES + $48     ; 4 bytes - string pointer
+DOS_SCRATCH      = SDOS_VARIABLES + $4B     ; 4 bytes - short term storage
+DOS_PATH_BUFF    = $004900                  ; 256 bytes - path name buffer
+
+; CPU register save area for the monitor (C256 had it at $00:0240,
+; inside the X816's CPU stack — relocated with the same layout).
+; Nothing populates it yet: the BRK handler needs KERN_IRQ_SET wiring
+; (phase 3+) before the monitor's register display means anything.
+CPU_REGISTERS    = $004A00
+CPUPC            = CPU_REGISTERS + $0       ;2 Bytes Program Counter (PC)
+CPUPBR           = CPU_REGISTERS + $2       ;2 Bytes Program Bank Register (K)
+CPUA             = CPU_REGISTERS + $4       ;2 Bytes Accumulator (A)
+CPUX             = CPU_REGISTERS + $6       ;2 Bytes X Register (X)
+CPUY             = CPU_REGISTERS + $8       ;2 Bytes Y Register (Y)
+CPUSTACK         = CPU_REGISTERS + $A       ;2 Bytes Stack Pointer (S)
+CPUDP            = CPU_REGISTERS + $C       ;2 Bytes Direct Page Register (D)
+CPUDBR           = CPU_REGISTERS + $E       ;1 Byte  Data Bank Register (B)
+CPUFLAGS         = CPU_REGISTERS + $F       ;1 Byte  Flags (P)
+
+; Non bank 0 memory spaces
+
+LOADBLOCK = $050000         ; File loading will start here (SDRAM; phase 3)
+BASIC_BOT := $020000        ; Starting point for BASIC programs (BRAM)
+HEAP_TOP := $04FFFF         ; Top of the heap (end of BRAM)

@@ -144,10 +144,23 @@ OP_MOD      .proc
             STA @lD1_OPERAND_B
 
             LDA ARGUMENT2
-            STA @lD1_OPERAND_A 
+            STA @lD1_OPERAND_A
 
             LDA @lD1_REMAINDER
             STA ARGUMENT1
+.elsif SYSTEM = SYSTEM_X816
+            PHP
+            setaxl
+            LDA ARGUMENT2           ; MOD by zero is an error
+            ORA ARGUMENT2+2
+            BNE mod_ok
+            THROW ERR_ARGUMENT
+mod_ok      CALL UDIV32             ; Software divide (X816/ints_x816.s)
+            LDA ARGUMENT2           ; The remainder is the result
+            STA ARGUMENT1
+            LDA ARGUMENT2+2
+            STA ARGUMENT1+2
+            PLP
 .endif
             RTS
             .pend

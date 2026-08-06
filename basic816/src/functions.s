@@ -36,6 +36,8 @@ FN_END          .macro
 
 .if SYSTEM == SYSTEM_C256
 .include "C256/functions_c256.s"
+.elsif SYSTEM == SYSTEM_X816
+.include "X816/functions_x816.s"
 .endif
 
 ;

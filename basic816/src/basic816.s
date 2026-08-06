@@ -108,7 +108,11 @@ INITBASIC   .proc
 .send
 
 .section data
+.if SYSTEM == SYSTEM_X816
+GREET       .text "X816 SuperBasic (BASIC816) "
+.else
 GREET       .text "C256 Foenix BASIC816 "
+.endif
             .include "version.s"
             .byte 13,0
 .send

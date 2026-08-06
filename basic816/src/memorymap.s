@@ -10,6 +10,8 @@
 .include "CBM/mmap_cbm.s"
 .elsif SYSTEM == SYSTEM_C256
 .include "C256/mmap_c256.s"
+.elsif SYSTEM == SYSTEM_X816
+.include "X816/mmap_x816.s"
 .endif
 
 VBRK = $00FFE6          ; Vector for the native-mode BRK vector 

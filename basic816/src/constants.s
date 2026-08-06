@@ -8,6 +8,7 @@
 
 SYSTEM_C256 = 2         ; C256 Foenix
 SYSTEM_C64 = 1          ; Commodore 64 with SuperCPU
+SYSTEM_X816 = 3         ; X816 FPGA computer (MiSTer)
 
 ;
 ; Characters

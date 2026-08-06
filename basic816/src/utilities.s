@@ -324,6 +324,17 @@ DIVINT10        .proc
                 LDA #TYPE_INTEGER
                 STA ARGTYPE1
                 STA ARGTYPE2
+.elsif SYSTEM = SYSTEM_X816
+                setal
+                LDA #10                 ; Software divide: ARGUMENT1 / 10
+                STA ARGUMENT2
+                STZ ARGUMENT2+2
+                CALL UDIV32             ; Quotient -> ARG1, remainder -> ARG2
+
+                setas
+                LDA #TYPE_INTEGER
+                STA ARGTYPE1
+                STA ARGTYPE2
 .endif
 
                 PLD
@@ -363,6 +374,17 @@ DIVINT100       .proc
                 LDA @lD1_REMAINDER
                 STA ARGUMENT2
                 STZ ARGUMENT2+2
+
+                setas
+                LDA #TYPE_INTEGER
+                STA ARGTYPE1
+                STA ARGTYPE2
+.elsif SYSTEM = SYSTEM_X816
+                setal
+                LDA #100                ; Software divide: ARGUMENT1 / 100
+                STA ARGUMENT2
+                STZ ARGUMENT2+2
+                CALL UDIV32             ; Quotient -> ARG1, remainder -> ARG2
 
                 setas
                 LDA #TYPE_INTEGER

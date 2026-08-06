@@ -4,6 +4,8 @@
 
 .if SYSTEM == SYSTEM_C256
 .include "C256/statements_c256.s"
+.elsif SYSTEM == SYSTEM_X816
+.include "X816/statements_x816.s"
 .endif
 
 ;

@@ -19,7 +19,11 @@
 ;;;     11111111 x1111111 11111111 11111111 = Not-a-Number (NaN)
 ;;;
 
+.if SYSTEM == SYSTEM_C256
 .include "C256/floats.s"
+.elsif SYSTEM == SYSTEM_X816
+.include "X816/floats_x816.s"
+.endif
 
 ;
 ; Check to see if the float in ARGUMENT1 is zero
@@ -455,6 +459,35 @@ s8_shift        TRACE "s8_shift"
                 CALL SHIFTDEC           ; Shift the decimal digit onto ARGUMENT1
 
 ; multiply MARG3 (the divisor of the fractional part)... by 10
+.if SYSTEM == SYSTEM_X816
+                ; Software x10: MARG3 = MARG3*8 + MARG3*2 (shift-add)
+                setal
+                LDA MARG3               ; MATHR = MARG3 * 2
+                ASL A
+                STA MATHR
+                LDA MARG3+2
+                ROL A
+                STA MATHR+2
+
+                LDA MATHR               ; Save the x2 term
+                STA MATHR+4
+                LDA MATHR+2
+                STA MATHR+6
+
+                ASL MATHR               ; MATHR = MARG3 * 8
+                ROL MATHR+2
+                ASL MATHR
+                ROL MATHR+2
+
+                CLC                     ; MARG3 = x8 + x2
+                LDA MATHR
+                ADC MATHR+4
+                STA MARG3
+                LDA MATHR+2
+                ADC MATHR+6
+                STA MARG3+2
+                setas
+.else
                 setal
                 LDA MARG3+2             ; high 16 bits
                 STA @l M0_OPERAND_A
@@ -468,7 +501,7 @@ s8_shift        TRACE "s8_shift"
 
                 LDA #10                 ; Multiply it by 10
                 STA @l M0_OPERAND_B
-                
+
                 LDA @l M0_RESULT        ; And save it back to MARG3
                 STA MARG3
                 LDA @l M0_RESULT+2
@@ -476,6 +509,7 @@ s8_shift        TRACE "s8_shift"
                 ADC MARG3+2
                 STA MARG3+2
                 setas
+.endif
 
 s8_drop         TRACE "s8_drop"
                 INY
