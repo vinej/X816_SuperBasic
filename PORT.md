@@ -178,8 +178,13 @@ there before assuming anything (repo `status.md` is stale).
 Plan: `floats_x816.s` + `ints_x816.s` implementing the same `OP_*` interface
 in software. BASIC816's float format is IEEE-754-single-shaped (1 sign, 8
 exponent, 23 mantissa) — classic, well-trodden 65816 territory, and 16-bit
-accumulator mode makes the mantissa loops respectable. `transcendentals.s`
-is Horner polynomials over these primitives and should survive unmodified.
+accumulator mode makes the mantissa loops respectable.
+
+**Phase 0 correction:** `transcendentals.s` does *not* survive unmodified —
+it contains 90 direct `FP_MATH_*` register accesses (the feasibility study
+assumed it sat on the `OP_*` primitives). The rework is mechanical — replace
+inline coprocessor sequences with `CALL OP_FP_*` — but it is real Phase 2
+scope, not free.
 
 Prior art in-tree: `X816_Library/src_acme/util/float` is a real software
 float package (5-byte MFLPT format — different layout, but the
@@ -261,11 +266,7 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
 
 ## 9. Phases (aligned with the feasibility study §5)
 
-- **Phase 0 — probe (half a day, decides everything).** Install 64tass; build
-  stock C256 target unmodified; measure binary size vs 65,280; count Foenix
-  kernel call sites and VICKY/GABE/coprocessor register touches; audit
-  `OP_INT_DIV`; audit absolute-indexed table reads for the DBR question;
-  check what loop/procedure constructs BASIC816 already has.
+- **Phase 0 — probe. DONE 2026-08-06** — see "Phase 0 findings" below.
 - **Phase 1 — platform skeleton.** `SYSTEM_X816` + `src/X816/` per §2-§4.
   Milestone: `READY` prompt and `PRINT 1` in the emulator, integer-only.
 - **Phase 2 — math.** §5. Drive BASIC816's `tests/` corpus with negative
@@ -276,11 +277,64 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   the size cap question is settled. One change per round trip.
 - **Phase 5 — SuperBasic layer + platform showcase.** §8 tiers, in order.
 
-## 10. Open decisions (carried from the feasibility study)
+## 10. Phase 0 findings (2026-08-06)
 
-1. **GPLv3.** As a standalone SD-card program (not linked into the kernel)
-   obligations are modest — publish modified source. But the project chose
-   durexForth partly for MIT; decide explicitly before Phase 1.
+Setup: 64tass **1.60.3243** installed at `64tass/` (gitignored); BASIC816
+vendored as a git subtree at `basic816/` from upstream commit `bea8847`.
+
+**Build reproduces exactly.** The stock C256 FMX target
+(`SYSTEM=2 C256_SKU=1`) assembles under 64tass 1.60 with 308 deprecation
+warnings (cosmetic `@l` spacing), 6 passes, and produces a binary
+**byte-identical to the upstream prebuilt**.
+
+**Size: 53,918 bytes vs the 65,280-byte exec cap — 11,362 bytes headroom.**
+Shell-run `BASIC.BIN` is viable from day one; the `boot1.rom` fallback is not
+needed unless the port grows past the cap (X816 platform code replaces C256
+code, so net growth should be small until the SuperBasic feature layer).
+
+**The seam is even cleaner than hoped.** Hardware references in the portable
+core: 115 total, **all of them math** —
+`integers.s` 6 (GABE `M0_OPERAND` multiply), `floats.s` 19 (inline
+`FP_MATH_*` pokes), `transcendentals.s` 90 (inline `FP_MATH_*` pokes).
+Zero VICKY/keyboard/other-hardware references outside `src/C256/`. Only 11
+`.if SYSTEM = SYSTEM_C256` conditionals across 5 core files.
+
+**The console surface is 5 routines** (verified by grep over core call
+sites): `SCREEN_PUTC`, `GETKEY`, `GETKEYE`, `CLSCREEN`, `INITIO`, plus
+`UART_PUTC` behind the `BCONSOLE` device mask (`bios.s` `DEV_UART` — bind it
+to `K_CON_PUTC` too, or strip the device bit) and the `LINES_VISIBLE` global
+for pagination. All console output funnels through `bios.s` `IPRINTC`.
+
+**`OP_INT_DIV` mystery solved: it's dead code.** `OP_DIVIDE`
+(`operators.s:127`) unconditionally promotes to `OP_FP_DIV` — division is
+always floating-point, the empty stub is never called. *But* integer divide
+hardware IS used elsewhere: `DIVINT10`/`DIVINT100` (`utilities.s:300,344`)
+poke the C256 `D1_OPERAND` divider inside `.if SYSTEM = SYSTEM_C256` guards
+(with a literal `TODO: flesh out non-C256 division`). These drive decimal
+number printing — so software integer divide is needed for the *first*
+`PRINT 1`, i.e. it belongs to **Phase 1, not Phase 2**. Audit `MOD` when
+implementing.
+
+**Free code found:** a complete software 32-bit shift-add multiply already
+exists at `integers.s:201-230`, commented out ("we don't have a hardware
+multiplier, so do the multiplication the hard way") — resurrect it for X816.
+
+**DBR outlook is good.** The house style accesses data tables with `@l`
+long addressing (e.g. `HEXDIGITS` in `bios.s`), which is DBR-immune. The
+full audit of indexed table reads still happens in Phase 1, but the style
+suggests few or no landmines.
+
+**SuperBasic layer, revised:** upstream already has `DO [WHILE|UNTIL] …
+LOOP [WHILE|UNTIL]`, `BREAK`, and `BEGIN/BEND` blocks (`language.md`). Tier
+A shrinks to named procedures (`PROC`/`ENDPROC`/`LOCAL`), multi-line
+`IF/ELSE/ENDIF`, and long variable names.
+
+## 11. Open decisions (carried from the feasibility study)
+
+1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public
+   (https://github.com/vinej/X816_SuperBasic) and GPLv3 as a whole; new
+   own-copyright modules are dual-licensed GPLv3/MIT per README so they can
+   flow back to the MIT X816 projects.
 2. **Boot story.** Recommendation stands: shell remains the boot program,
    BASIC launches from it (`run BASIC.BIN`) — keeps BASIC an ordinary,
    replaceable program and leaves the Forth plan undisturbed.
