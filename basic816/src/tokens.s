@@ -1066,5 +1066,17 @@ TOK_RECT = $E7
             DEFTOK "SQR", TOK_TY_FUNC, 0, FN_SQR, 0
 ; $F6
             DEFTOK "INKEY", TOK_TY_FUNC, 0, FN_INKEY, 0
-            
+
+.if SYSTEM == SYSTEM_X816
+; Directory navigation. New keywords rather than ports: the C256 kernel
+; had no working directory, so BASIC816 never had tokens for these. They
+; go at the END of the table on purpose -- token IDs are assigned by
+; position from $80 up, so appending leaves every existing one where it
+; was and only this platform sees the additions.
+            DEFTOK "CD", TOK_TY_STMNT, 0, S_CD, 0
+            DEFTOK "PWD", TOK_TY_STMNT, 0, S_PWD, 0
+            DEFTOK "MKDIR", TOK_TY_STMNT, 0, S_MKDIR, 0
+            DEFTOK "RMDIR", TOK_TY_STMNT, 0, S_RMDIR, 0
+.endif
+
             .word 0, 0, 0, 0

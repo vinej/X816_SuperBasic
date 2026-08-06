@@ -152,3 +152,119 @@ S_TILEAT        .proc
 S_MEMCOPY       .proc
                 THROW ERR_ARGUMENT
                 .pend
+
+;;;
+;;; Directory navigation -- CD, PWD, MKDIR, RMDIR.
+;;;
+;;; New keywords, not ports: BASIC816 has no tokens for these because the
+;;; C256 kernel it targeted had no working directory. The X816 kernel has
+;;; carried all four calls from the start, so each of these is a handful
+;;; of instructions over K_FS_CHDIR / GETCWD / MKDIR / RMDIR. Their
+;;; tokens are added at the END of the table in tokens.s, guarded to this
+;;; platform, so no existing token ID moves.
+;;;
+;;; The working directory belongs to the kernel, not to BASIC, so it is
+;;; shared with the shell and it persists across a QUIT. Every relative
+;;; path -- LOAD, SAVE, DIR, DEL -- resolves against it.
+;;;
+
+;
+; Evaluate a path argument and leave it in C:X for a kernel call.
+; BASIC816 strings are already NUL-terminated in memory, so the string
+; pointer is handed over as-is rather than copied to a buffer.
+;
+PATHARG         .proc
+                CALL SKIPWS
+                CALL EVALEXPR
+                CALL ASS_ARG1_STR
+                setaxl
+                LDA ARGUMENT1+2         ; LDX has no long addressing mode,
+                TAX                     ;  so the bank goes through A
+                LDA ARGUMENT1
+                RETURN
+                .pend
+
+;
+; CD <path> -- change the working directory
+;
+S_CD            .proc
+                PHP
+                TRACE "S_CD"
+                setaxl
+
+                CALL PATHARG
+                JSL KERN_FS_CHDIR
+                BCS cd_failed
+
+                PLP
+                RETURN
+
+cd_failed       THROW ERR_DIRECTORY
+                .pend
+
+;
+; MKDIR <path> -- create a directory
+;
+S_MKDIR         .proc
+                PHP
+                TRACE "S_MKDIR"
+                setaxl
+
+                CALL PATHARG
+                JSL KERN_FS_MKDIR
+                BCS mkdir_failed
+
+                PLP
+                RETURN
+
+mkdir_failed    THROW ERR_DIRECTORY
+                .pend
+
+;
+; RMDIR <path> -- remove an empty directory
+;
+S_RMDIR         .proc
+                PHP
+                TRACE "S_RMDIR"
+                setaxl
+
+                CALL PATHARG
+                JSL KERN_FS_RMDIR
+                BCS rmdir_failed
+
+                PLP
+                RETURN
+
+rmdir_failed    THROW ERR_DIRECTORY
+                .pend
+
+;
+; PWD -- print the working directory
+;
+; Takes no argument. DOS_PATH_BUFF is the scratch: it is 256 bytes and
+; the kernel's paths cap at 80, and nothing else is using it between
+; statements.
+;
+S_PWD           .proc
+                PHP
+                PHB
+                TRACE "S_PWD"
+                setaxl
+
+                LDA #`DOS_PATH_BUFF     ; C:X = the buffer to fill
+                TAX
+                LDA #<>DOS_PATH_BUFF
+                JSL KERN_FS_GETCWD
+                BCS pwd_failed
+
+                setdbr `DOS_PATH_BUFF   ; PRINTS takes the bank in B
+                LDX #<>DOS_PATH_BUFF
+                CALL PRINTS
+                CALL PRINTCR
+
+                PLB
+                PLP
+                RETURN
+
+pwd_failed      THROW ERR_DIRECTORY
+                .pend

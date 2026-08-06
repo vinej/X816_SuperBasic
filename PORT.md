@@ -336,9 +336,16 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   `FD_IN.PATH`; `DEL` goes through `COPY2PATHBUF` and leaves it in
   `DOS_PATH_BUFF`. Reading the wrong one gives "Unable to delete file"
   for a file that is plainly listed.
-  Still to do: `FK_COPY`, `FK_RUN`, and `RENAME`. New keywords (`CD`,
-  `MKDIR`, `RMDIR`, `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`) are a separate
-  step — the kernel already has the calls.
+  `CD`, `PWD`, `MKDIR` and `RMDIR` followed as **new keywords** — the
+  first tokens this port has added. BASIC816 has none, because the C256
+  kernel had no working directory. They are appended at the end of the
+  token table under `.if SYSTEM == SYSTEM_X816`: IDs are assigned by
+  position from `$80`, so appending moves nothing (117 were in use,
+  through `$F4`). One wrinkle worth keeping: `.` and `..` are real
+  entries in every subdirectory, and the 8.3 splitter has to treat their
+  dots as the NAME — otherwise `..` lists as `.` and `.` as nothing.
+  Still to do: `FK_COPY`, `FK_RUN`, `RENAME`, and
+  `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`.
 - **Phase 4 — hardware.** First as `boot1.rom`, then shell-run `.bin` once
   the size cap question is settled. One change per round trip.
 - **Phase 5 — the machine.** The `help/` pages are the specification for

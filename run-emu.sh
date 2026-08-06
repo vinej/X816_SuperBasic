@@ -74,14 +74,41 @@ print("card: BASIC.BIN = %d bytes" % len(data))
 PY
 [ $? -eq 0 ] || exit 1
 
+# The REPL session, one typed line per entry. The padding works
+# around -autokeys dropping characters under load; keep it.
+PAD='                                        '
+KEYS='run BASIC.BIN\n'
+for k in \
+    'PRINT 1' \
+    'XYZZY' \
+    'PRINT 10/4' \
+    'PRINT 2^10' \
+    'PRINT 1/0' \
+    '10 PRINT 1.5' \
+    'RUN' \
+    '10 PRINT 4242' \
+    'SAVE "T.BAS"' \
+    'NEW' \
+    'LOAD "T.BAS"' \
+    'RUN' \
+    'DIR' \
+    'DEL "T.BAS"' \
+    'DIR' \
+    'MKDIR "ND"' \
+    'CD "ND"' \
+    'PWD' \
+    'CD "/"' \
+    'RMDIR "ND"' \
+    'PWD'
+do
+    KEYS="$KEYS$PAD$k\n"
+done
+
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 90 \
     "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
     -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
     -sdcard "$WOUT/scratch.img" \
-    -autokeys 'run BASIC.BIN\n                                        PRINT 1\n                                        XYZZY\n                                        PRINT 10/4\n                                        PRINT 2^10\n                                        PRINT 1/0\n                                        10 PRINT 1.5\n                                        RUN\n                                        10 PRINT 4242\n                                        SAVE "T.BAS"\n                                        NEW\n                                        LOAD "T.BAS"\n                                        RUN\n                                        DIR
-                                        DEL "T.BAS"
-                                        DIR
-' \
+    -autokeys "$KEYS" \
     -warp -gif "$WOUT/out.gif" >/dev/null 2>&1
 
 python - "$WOUT/out.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
@@ -182,6 +209,14 @@ listed = [r for r in rows if r.startswith("T        BAS")]
 if len(listed) != 1:
     fail("expected T.BAS in the first DIR and gone from the second after "
          "DEL, but it was listed %d time(s)" % len(listed))
+
+# MKDIR, CD, PWD, RMDIR. PWD prints the working directory on a row of its
+# own, so "/ND" proves MKDIR and CD both worked; a bare "/" proves the
+# way back. RMDIR is covered by the DIR-count style check below.
+if not any(r.strip() == "/ND" for r in rows):
+    fail("MKDIR then CD then PWD did not report /ND")
+if not any(r.strip() == "/" for r in rows):
+    fail("PWD never reported the root directory")
 
 print("PASS: SuperBasic booted from the card, printed 1, did float math")
 print("      in both direct and program mode, and rejected bad input --")

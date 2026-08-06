@@ -409,6 +409,20 @@ dr_blank        STA FDIRENT,X           ;  NUL-padded
 
                 LDX #0                  ; Name, up to the dot, into bytes 0-7
                 LDY #0
+                LDA KDIR_NAME           ; "." and ".." are entries in every
+                CMP #'.'                ;  subdirectory, and their dots are
+                BNE dr_name             ;  the NAME, not a separator -- split
+dr_dots         LDA KDIR_NAME,X         ;  them and ".." lists as "." and "."
+                BEQ dr_attr             ;  as nothing at all
+                CPY #8
+                BEQ dr_attr
+                STA FDIRENT,Y
+                INY
+                INX
+                CPX #13
+                BNE dr_dots
+                BRA dr_attr
+
 dr_name         LDA KDIR_NAME,X
                 BEQ dr_attr
                 CMP #'.'

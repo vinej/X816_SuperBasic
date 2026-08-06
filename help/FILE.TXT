@@ -21,9 +21,10 @@ calls, KERNEL.md section 6), and what is still missing is the binding.
 [ ] RENAME "old","new" - rename one.
 [ ] COPY "src","dst" - copy one.
 [ ] BRUN "name" - load a machine-code file and call it.
-[ ] CD "path" / MKDIR "path" / RMDIR "path" - directory navigation. The
-    kernel has all three; BASIC816 has no keywords for them, so these are
-    new rather than ported.
+[x] CD "path" - change the working directory.
+[x] PWD - print it.
+[x] MKDIR "path" - create a directory.
+[x] RMDIR "path" - remove an empty one.
 [ ] OPEN / CLOSE / INPUT# / PRINT# - record and text I/O on an open
     handle. The kernel is handle-based and seekable, so this is a better
     fit here than the C64's channel model ever was.
@@ -62,6 +63,17 @@ first stub here returned SEC, which told dos.s that every load, save,
 directory listing and delete had SUCCEEDED - so DIR printed whatever
 happened to be in the entry buffer rather than saying it could not read
 the card. The remaining stubs return CLC.
+
+CD, PWD, MKDIR and RMDIR are NEW KEYWORDS, not ports. BASIC816 has no
+tokens for them because the C256 kernel had no working directory at all.
+Their tokens are appended at the END of the table in tokens.s, guarded to
+this platform: token IDs are assigned by position from $80 up, so adding
+at the end leaves every existing one where it was.
+
+The working directory belongs to the KERNEL, not to BASIC. It is shared
+with the shell, it survives leaving the interpreter, and every relative
+path -- LOAD, SAVE, DIR, DEL -- resolves against it. A bare DIR passes an
+empty path, which is how the kernel spells "here".
 
 The exec cap is worth remembering when saving programs meant to be run
 from the shell: "run" refuses an image over 65,280 bytes ($FF00). That
