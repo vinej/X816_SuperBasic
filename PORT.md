@@ -304,9 +304,11 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   `floats_x816.s` + `ints_x816.s` carry IEEE-754 single add/sub/mul/div/
   compare and int32 mul/div; all of BASIC816's float and integer test
   suites are green. Transcendentals still THROW (§12).
-- **Phase 2b — finish the maths.** Transcendentals
-  (`SIN`/`COS`/`TAN`/`ASIN`/`ACOS`/`ATAN`/`LN`/`EXP`/`SQR`) still THROW;
-  `help/MATH.TXT` is the checklist. `SQR` is the one users hit first.
+- **Phase 2b — finish the maths. `SQR` landed 2026-08-06.** It needed no
+  polynomial evaluator — Newton-Raphson over the four primitives, seeded
+  by halving the exponent field — which is why it went first. The rest
+  (`SIN`/`COS`/`TAN`/`ASIN`/`ACOS`/`ATAN`/`LN`/`EXP`) still THROW and do
+  need one; `help/MATH.TXT` is the checklist.
   Also here: the two open corpus failures and the 2-ULP literal (§11).
 - **Phase 3 — files. LOAD/SAVE/BLOAD/BSAVE/DIR/DEL landed 2026-08-06.**
   `help/FILE.TXT` is the feature list and the running score. The seam is

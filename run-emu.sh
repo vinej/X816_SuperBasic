@@ -84,6 +84,7 @@ for k in \
     'PRINT 10/4' \
     'PRINT 2^10' \
     'PRINT 1/0' \
+    'PRINT SQR(2)' \
     '10 PRINT 1.5' \
     'RUN' \
     '10 PRINT 4242' \
@@ -192,6 +193,12 @@ if not any("1.02400E03" in r for r in rows):
     fail("`PRINT 2^10` did not answer 1.02400E03 (integer power)")
 if not any("Division by zero" in r for r in rows):
     fail("`PRINT 1/0` did not report division by zero")
+# SQR is Newton-Raphson over the software float ops, seeded from the
+# exponent field. 1.41421 is the whole of what six significant digits
+# can say about root two, so this catches a seed or iteration-count
+# regression as well as an outright break.
+if not any("1.41421" in r for r in rows):
+    fail("`PRINT SQR(2)` did not answer 1.41421")
 if not any("1.50000" in r for r in rows):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 # SAVE / NEW / LOAD / RUN, through the kernel's K_FS_* calls onto a real

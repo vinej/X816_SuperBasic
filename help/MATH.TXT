@@ -21,9 +21,15 @@ the largest single piece of the port.
 [ ] SIN COS TAN - throw. Reserved and stubbed.
 [ ] ASIN ACOS ATAN - throw.
 [ ] LN EXP - throw. "^" with a float exponent depends on these.
-[ ] SQR - throws. Probably the most missed of the set.
+[x] SQR - square root. Newton-Raphson over the software float ops,
+    seeded by halving the exponent field, four iterations. A negative
+    operand is a domain error rather than a NaN.
 
-The transcendentals are stubbed rather than ported on purpose. The C256
+SQR is the exception among the transcendentals, and it is real: it
+needs no polynomial evaluator, only the four arithmetic primitives that
+were already tested.
+
+The rest are stubbed rather than ported on purpose. The C256
 versions are not built on the arithmetic primitives - they contain about
 ninety direct accesses to the FP coprocessor's registers. On this machine
 those addresses are plain SDRAM, so running that code would read whatever

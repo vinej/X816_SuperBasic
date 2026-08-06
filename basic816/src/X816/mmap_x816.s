@@ -80,6 +80,10 @@ KDIR_ISDIR = KDIR_ENT + 13  ;   byte     - 1 if a directory
 KDIR_SIZE = KDIR_ENT + 14   ;   dword    - size in bytes
 FDIRENT   = $004B50         ; 32 bytes - a DIRENTRY built from the above
 
+; Working values for FP_SQR's Newton iteration.
+FP_SX     = $004B70         ; dword - the operand
+FP_SY     = $004B74         ; dword - the running estimate
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.
