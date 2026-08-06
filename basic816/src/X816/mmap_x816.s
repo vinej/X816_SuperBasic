@@ -84,6 +84,11 @@ FDIRENT   = $004B50         ; 32 bytes - a DIRENTRY built from the above
 FP_SX     = $004B70         ; dword - the operand
 FP_SY     = $004B74         ; dword - the running estimate
 
+; FK_COPY holds two files open at once and streams between them.
+COPY_HS   = $004B78         ; word - source handle, 0 = closed
+COPY_HD   = $004B7A         ; word - destination handle, 0 = closed
+COPY_N    = $004B7C         ; word - bytes in the chunk being moved
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

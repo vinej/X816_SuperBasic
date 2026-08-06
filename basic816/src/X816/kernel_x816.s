@@ -246,9 +246,111 @@ FK_STUB         CLC
                 RTL
 
 FK_RUN = FK_STUB
-FK_COPY = FK_STUB
 FK_DIRREAD = FK_STUB
 FK_DIRWRITE = FK_STUB
+
+COPY_CHUNK = 512                ; CLUSTER_BUFF is exactly this big
+
+;
+; Copy a file.
+;
+; Inputs:
+;   DOS_STR1_PTR = source path, DOS_STR2_PTR = destination path
+;
+; The C256 kernel had a copy call; this one does not, and rightly -- a
+; copy is a read loop and a write loop with a buffer, and the kernel has
+; no idea which buffer a program can spare. CLUSTER_BUFF is the obvious
+; one here: dos.s allocates 512 bytes of it for the C256 kernel's
+; cluster I/O, and nothing on this platform uses it for that.
+;
+; Two files are open at once, which the kernel's handle pool allows.
+;
+FK_COPY         PHP
+                setaxl
+                PHB
+                PHX
+                PHY
+
+                LDA #0
+                STA @l COPY_HS
+                STA @l COPY_HD
+
+                LDA @l DOS_STR1_PTR+2   ; Open the source for reading
+                TAX
+                LDA @l DOS_STR1_PTR
+                LDY #KFS_READ
+                JSL KERN_FS_OPEN
+                BCC copy_src_ok
+                BRL copy_fail
+copy_src_ok     STA @l COPY_HS
+
+                LDA @l DOS_STR2_PTR+2   ; Create (or truncate) the destination
+                TAX
+                LDA @l DOS_STR2_PTR
+                LDY #KFS_WRITE
+                JSL KERN_FS_OPEN
+                BCC copy_dst_ok
+                BRL copy_shut
+copy_dst_ok     STA @l COPY_HD
+
+copy_loop       LDA @l COPY_HS          ; Fill the buffer
+                STA @l FS_BLK_H
+                LDA #<>CLUSTER_BUFF
+                STA @l FS_BLK_A
+                LDA #`CLUSTER_BUFF
+                AND #$00FF
+                STA @l FS_BLK_A+2
+                LDA #COPY_CHUNK
+                STA @l FS_BLK_N
+                LDA #0
+                STA @l FS_BLK_N+2
+                LDA #<>FS_BLK
+                LDX #`FS_BLK
+                JSL KERN_FS_READ
+                BCC copy_read_ok
+                BRL copy_shut
+copy_read_ok    CMP #0
+                BEQ copy_done           ; A short read of nothing is the end
+                STA @l COPY_N
+
+                LDA @l COPY_HD          ; Write exactly what came back
+                STA @l FS_BLK_H
+                LDA @l COPY_N
+                STA @l FS_BLK_N
+                LDA #0
+                STA @l FS_BLK_N+2
+                LDA #<>FS_BLK
+                LDX #`FS_BLK
+                JSL KERN_FS_WRITE
+                BCC copy_wrote
+                BRL copy_shut
+copy_wrote      CMP @l COPY_N           ; A short write means the card is full
+                BEQ copy_loop
+                BRL copy_shut
+
+copy_done       LDA @l COPY_HD
+                JSL KERN_FS_CLOSE
+                LDA @l COPY_HS
+                JSL KERN_FS_CLOSE
+                PLY
+                PLX
+                PLB
+                PLP
+                SEC
+                RTL
+
+copy_shut       LDA @l COPY_HD          ; Close whichever ones got opened
+                BEQ copy_shut_src
+                JSL KERN_FS_CLOSE
+copy_shut_src   LDA @l COPY_HS
+                BEQ copy_fail
+                JSL KERN_FS_CLOSE
+copy_fail       PLY
+                PLX
+                PLB
+                PLP
+                CLC
+                RTL
 
 ;
 ; Delete a file.

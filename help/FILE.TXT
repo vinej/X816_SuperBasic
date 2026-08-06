@@ -21,7 +21,8 @@ calls, KERNEL.md section 6), and what is still missing is the binding.
 [x] RENAME "old","new" - rename one. The new name is a BARE NAME, not a
     path: renaming across directories would mean writing the entry
     somewhere else, which the kernel treats as a different operation.
-[ ] COPY "src","dst" - copy one.
+[x] COPY "src","dst" - copy one. Streams through a 512-byte buffer; the
+    destination is created, or truncated if it already exists.
 [ ] BRUN "name" - load a machine-code file and call it.
 [x] CD "path" - change the working directory.
 [x] PWD - print it.
@@ -42,8 +43,14 @@ Two things about how this is wired, for whoever writes the rest.
 The seam is narrow. dos.s reaches the card only through the Foenix
 FK_LOAD/FK_SAVE/FK_DIROPEN/FK_DIRNEXT/FK_DELETE/FK_COPY/FK_RUN entry
 points, so binding those in X816/kernel_x816.s lights up the statements
-above without touching portable code. FK_COPY and FK_RUN are still
-stubs.
+above without touching portable code. FK_RUN is the last stub.
+
+COPY has no kernel call behind it and rightly so -- a copy is a read
+loop and a write loop with a buffer, and the kernel cannot know which
+buffer a program can spare. It is implemented here, holding both files
+open at once and streaming through CLUSTER_BUFF, the 512 bytes dos.s set
+aside for the C256 kernel's cluster I/O and which nothing uses on this
+platform. A short write is treated as a full card rather than ignored.
 
 RENAME is not a binding at all -- the portable S_RENAME is guarded out
 here and replaced. It renames by raw directory surgery: read the on-disk

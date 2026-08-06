@@ -350,8 +350,11 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   renames by raw directory surgery (`FK_DIRREAD`, edit the 8.3 name,
   `FK_DIRWRITE`) and this kernel owns the FAT. It has a rename call
   instead, so the X816 version is shorter than the one it replaces.
-  Still to do: `COPY` (no kernel call — an open/read/write loop),
-  `BRUN`, and `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`.
+  `COPY` has no kernel call behind it — correctly, since a copy is a
+  read loop, a write loop and a buffer the kernel cannot choose. It is
+  implemented in `kernel_x816.s`, two handles open at once, streaming
+  through `CLUSTER_BUFF`.
+  Still to do: `BRUN`, and `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`.
 - **Phase 4 — hardware.** First as `boot1.rom`, then shell-run `.bin` once
   the size cap question is settled. One change per round trip.
 - **Phase 5 — the machine.** The `help/` pages are the specification for
