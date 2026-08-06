@@ -1,0 +1,36 @@
+=== FILE - the SD card ===
+
+Real FAT32 on a real card. Paths are ASCII with "/" separators, and there
+are no device numbers, no secondary addresses and no CBM DOS command
+channel - none of that survived the move off the C64.
+
+Every one of these is tokenized and every one of them refuses today. The
+kernel side is complete (K_FS_* and K_DIR_*, sixteen calls, KERNEL.md
+section 6); what is missing is the binding, which is phase 3 of the port.
+
+[ ] LOAD "name" - load a BASIC program, replacing the one in memory.
+[ ] SAVE "name" - save the program. The single most missed thing right
+    now: nothing you type survives leaving the interpreter.
+[ ] DIR ["path"] - list a directory.
+[ ] DEL "name" - delete a file.
+[ ] RENAME "old","new" - rename one.
+[ ] COPY "src","dst" - copy one.
+[ ] BLOAD "name",addr - load raw bytes to an address, no header.
+[ ] BSAVE "name",addr,len - save raw bytes.
+[ ] BRUN "name" - load a machine-code file and call it.
+[ ] CD "path" / MKDIR "path" / RMDIR "path" - directory navigation. The
+    kernel has all three; BASIC816 has no keywords for them, so these are
+    new rather than ported.
+[ ] OPEN / CLOSE / INPUT# / PRINT# - record and text I/O on an open
+    handle. The kernel is handle-based and seekable, so this is a better
+    fit here than the C64's channel model ever was.
+
+A file is opened by path and returns a handle; reads and writes take a
+parameter block. Errors come back with carry set and a KERR code in C,
+which will need mapping onto BASIC error messages - "File not found" is
+a friendlier thing to print than a number.
+
+The exec cap is worth remembering when saving programs meant to be run
+from the shell: "run" refuses an image over 65,280 bytes ($FF00). That
+limit is on the interpreter image, not on your BASIC program, but a
+turnkey build that bundles both hits it.

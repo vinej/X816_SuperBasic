@@ -1,0 +1,27 @@
+=== JOYSTICK - game controllers ===
+
+SNES pads, wired to VIA #1 at $9F00-$9F0F. The same VIA carries the I2C
+link to the SMC, so the keyboard and the pads share a chip - reading one
+must not disturb the other.
+
+There is nothing here yet: no keyword, no kernel call, no code.
+
+[ ] JOY(n) - read pad n as a direction and a button mask, the classic
+    single-number form a beginner can use in one IF.
+[ ] JOYB(n) - the full button bitmap: B, Y, Select, Start, up, down,
+    left, right, A, X, L, R for a SNES pad.
+[ ] JOYCOUNT - how many pads are plugged in.
+
+Two notes for whoever writes it. There is no kernel call for the pads,
+so this is direct VIA work and the shift-register protocol has to be
+right - see the core's RTL and X816_core/doc/HARDWARE.md rather than an
+X16 source, because the wiring is this machine's.
+
+And NUMLOCK on the keyboard switches keyboard/joystick mapping while
+SCRLK switches which joystick - both handled below SuperBasic. A pad read
+that disagrees with what the keys are doing is probably that, not a bug
+in the read.
+
+Mouse: the SMC can carry one, but nothing in the kernel exposes it and
+there is no plan on this page yet. If it arrives it belongs here, as
+MOUSE / MX / MY / MB.

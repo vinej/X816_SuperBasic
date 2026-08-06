@@ -1,0 +1,38 @@
+=== SYSTEM - the machine itself ===
+
+[x] Ctrl-C - stop a running program. Checked between statements, which
+    means a single statement that takes a long time cannot be broken
+    into, and the check consumes the keystroke it reads.
+[x] STOP / END - halt a program from inside it.
+[x] CALL addr - call machine code. It runs in native mode; leave with RTL
+    and preserve nothing but D and DBR if you also call the kernel.
+[x] CLR - clear variables.
+[x] NEW - erase the program.
+[ ] MONITOR - the built-in machine-language monitor. It assembles into
+    the build and its commands work, but the BRK entry is not wired to
+    an interrupt handler, so a BRK in your own code does not land in it.
+    KIRQ_BRK (slot 9) is the hook that would fix that.
+[ ] QUIT / SYSTEM - exit to the shell (K_EXIT). Today the only way out
+    is to reset the machine.
+[ ] TURBO on|off - SYSCTL at $9F80 bit 2 switches 8 MHz / 14 MHz. One
+    POKE, and worth a keyword because it is the cheapest speed-up
+    available to a BASIC program.
+[ ] VER - the kernel version (K_SYS_VERSION), major and minor.
+[ ] FRE - free memory. HELP MEMORY.
+[ ] REBOOT - restart the machine.
+[ ] IRQ slot,addr - install an interrupt handler (K_IRQ_SET). Eleven
+    slots: VSYNC, raster line, sprite collision, audio FIFO low, the two
+    VIAs, the YM, spurious, NMI, BRK and COP. This one statement is what
+    several other pages are waiting on - animation timing, sprite
+    collision, PCM refill and a working monitor all want a handler.
+
+The machine boots to a shell; SuperBasic is an ordinary program the shell
+runs, not the ROM. That is deliberate - it keeps BASIC replaceable and
+leaves the machine useful for other languages. "run BASIC.BIN" at the
+shell prompt is the whole of the boot story, and ESC after a program
+exits reloads the shell.
+
+Interrupts arrive MASKED from the shell and nothing else turns them on;
+SuperBasic clears the flag in its entry sequence. A program that masks
+them again loses the cursor, the frame counter and the audio refill all
+at once.

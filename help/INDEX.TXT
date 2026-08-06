@@ -1,0 +1,55 @@
+======================  SuperBasic HELP  ======================
+Pages live in /help. One topic to a file, .TXT, plain text.
+
+These pages cover the MACHINE - screen, keys, sprites, sound, memory,
+the card - and not the BASIC language itself. Statements like FOR, GOSUB
+or DIM are BASIC816's and are documented in basic816/language.md and
+basic816/docs/. What is here is everything that touches X816 hardware,
+which is also where nearly all the unfinished work is.
+
+ CONSOLE     text screen and colour   PRINT CLS LOCATE TEXTCOLOR
+ KEYBOARD    keys, and the break key  INKEY GET INPUT
+ JOYSTICK    SNES pads on VIA #1      JOY JOYB
+ GRAPHIC     bitmap drawing           GRAPHICS PLOT LINE RECT FILL
+ SPRITE      VERA sprites             SPRITE SPRITEAT SPRITESHOW
+ TILE        tilemaps and layers      TILESET TILEMAP TILEAT
+ PAL         palettes                 PAL SETCOLOR
+ AUDIOFM     FM notes and instruments SOUND FMNOTE PLAY
+ AUDIOYM     raw YM2151 registers     YMPOKE YMPEEK
+ AUDIOPCM    sampled sound, VERA FIFO PCMRATE PCMPUT PCMPLAY
+ VERAFX      accelerators             FXMULT FXFILL BLIT
+ MEMORY      peek, poke, where things live
+ FILE        the SD card              LOAD SAVE DIR BLOAD BSAVE
+ TIME        clocks and waiting       TIMER FRAMES WAIT VSYNC
+ SYSTEM      the machine itself       CALL MONITOR TURBO IRQ QUIT
+ MATH        arithmetic, and why it is software
+===============================================================
+
+Every entry on these pages carries one of two marks:
+
+  x   it works today. The port has it, and you can type it now.
+  (blank)   not yet. Real work, still to do.
+
+The marks are hand-kept and reflect the port as of 2026-08-06, at the end
+of phase 2. Unlike durexForth's help pages - which these are modelled on,
+and which are probed word by word against the live dictionary - nothing
+here is machine-checked yet. Treat a tick as a claim that was true when
+written, and PORT.md as the authority on what phase the port is in.
+
+Where the port stands, in one paragraph. The interpreter runs, the
+console works, and arithmetic is real software floating point. Almost
+nothing else that touches hardware is bound: there is no file access, no
+graphics, no sprites, no tiles, no sound, no palette, no joystick and no
+clock. That is not a list of bugs - it is phases 3 to 5 of PORT.md, and
+these pages are the shape of them.
+
+A note on the unticked entries. Many of the graphics, sprite and tile
+keywords are already tokenized: BASIC816 knows the words because the C256
+had that hardware. They parse and then refuse with an argument error,
+which is deliberate - the C256 code drove VICKY registers that on this
+machine are ordinary memory, so running it would poke RAM and pretend to
+have drawn something. Refusing is the honest failure.
+
+Do not start a prose line in these files with a bracket pair. A wrapped
+sentence beginning "[x] here" reads as an entry to anything that counts
+the marks, and claims a feature that does not exist.

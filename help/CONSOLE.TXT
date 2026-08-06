@@ -1,0 +1,35 @@
+=== CONSOLE - text screen and colour ===
+
+The console is 80x60, CP437/ASCII (no PETSCII), and belongs to the
+kernel: SuperBasic reaches it through the jump table at $00:FE00 rather
+than by poking VERA. See X816_core/doc/KERNEL.md section 4.
+
+[x] PRINT expr[,expr][;] - print. A trailing ";" suppresses the newline,
+    "," tabs to the next field.
+[x] CLS - clear the screen and home the cursor (K_CON_CLS).
+[x] LOCATE col,row - move the cursor. Columns 0-79, rows 0-59.
+[x] TEXTCOLOR fg,bg - set the colour of everything printed from now on.
+    Both 0-15. Text already on screen keeps the colour it was drawn with.
+[x] TAB(n) / SPC(n) - column and spacing control inside PRINT.
+[ ] SETCOLOR index,rgb - reprogram one of the 16 text colours. Needs the
+    palette, HELP PAL. The statement exists and refuses.
+[ ] SETBGCOLOR c - set the background colour. Refuses today; TEXTCOLOR's
+    bg argument is the way to do it.
+[ ] SETBORDER c - set the border colour. Refuses today.
+[ ] SCREEN mode - pick a text or bitmap mode. HELP GRAPHIC.
+[ ] CHARSET addr - point the console at a different font in VRAM. There
+    is no character ROM here, so this takes an address, not a ROM number.
+
+Two console behaviours are worth knowing because they are not the C64's:
+
+The cursor is a VSYNC interrupt handler in the kernel, armed only around
+a key wait. It is why interrupts must be enabled - see PORT.md section 4.
+
+$0D is carriage-return ONLY on this console: column 0 of the SAME row.
+$0A is what advances a line. SuperBasic's putc translates CR to LF so
+PRINT behaves; a program poking the console directly must do the same.
+
+Reading the screen back: there is no kernel call for "character at x,y",
+so the REPL reads the VERA text matrix directly (screen_x816.s,
+SCRCOPYLINE). Glyphs are CP437, one byte, so the byte read IS the
+character; attributes are interleaved and skipped.

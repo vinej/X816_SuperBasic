@@ -1,0 +1,34 @@
+=== VERAFX - the accelerators ===
+
+Two separate pieces of hardware sit under this page, and neither is
+reachable from SuperBasic yet.
+
+VERA FX adds a 16x16 multiplier, a 32-bit write cache for fast VRAM
+fills, transparent writes, and address helpers for lines, polygons and
+affine sampling. Its registers are at $9F29-$9F2C, banked behind DCSEL.
+
+[ ] DCSEL n - select the register bank 0-63 so the FX registers can be
+    reached at all.
+[ ] FXMULT(a,b) - signed 16x16 to 32-bit multiply, in hardware. Worth a
+    keyword of its own: SuperBasic's integer multiply is a software
+    shift-add loop (X816/ints_x816.s) and this is far faster.
+[ ] FXFILL byte,bank,addr,count - fill VRAM through the write cache,
+    roughly four times a plain loop. A count that is not a multiple of
+    four is fine; the leftover bytes go out plain.
+[ ] FXCLEAR bank,addr,count - zero a region.
+[ ] FXOFF - put the helpers back so ordinary VRAM writes work. Forgetting
+    this is the classic way to corrupt the next thing you draw.
+
+BLIT816 is the core's own blitter - see X816_core/doc/BLIT816.md. It is
+not VERA FX and it is not on the X16; it moves rectangles around SDRAM,
+which is where the VERA2 framebuffer lives (HELP GRAPHIC).
+
+[ ] BLIT sx,sy,dx,dy,w,h - copy a rectangle.
+[ ] BLITMASK - the same with a transparent colour, which is what makes
+    it useful for drawing characters over a background.
+
+For a BASIC these two matter more than they would for assembly. An
+interpreted per-pixel loop is hopeless for anything full-screen, so any
+statement that fills, scrolls or draws a shape should end up calling one
+of these rather than looping - the difference is the whole gap between a
+usable graphics BASIC and a slideshow.

@@ -1,0 +1,39 @@
+=== GRAPHIC - bitmap drawing ===
+
+Nothing here works yet. Every statement below is tokenized and every one
+of them refuses with an argument error (X816/statements_x816.s), because
+the C256 versions drove VICKY registers that do not exist on this
+machine. They are listed because the keywords are already reserved.
+
+[ ] GRAPHICS mode - enter a bitmap mode, 0 to go back to text.
+[ ] BITMAP n,addr - point a bitmap layer at its pixel data.
+[ ] CLRBITMAP - clear the bitmap.
+[ ] PLOT x,y,c - set one pixel.
+[ ] LINE x1,y1,x2,y2,c - draw a line.
+[ ] RECT x1,y1,x2,y2,c - rectangle. Filled or outline is an argument
+    still to be decided.
+[ ] FILL x,y,c - flood fill.
+[ ] CIRCLE x,y,r,c - circle outline.
+[ ] FCIRCLE x,y,r,c - filled circle.
+[ ] OVAL x1,y1,x2,y2,c - ellipse in a bounding box.
+[ ] GTEXT x,y,c,s$ - draw a string into the bitmap.
+[ ] GCOLOR c - set a pen colour so the drawing statements can omit it.
+
+Two different bitmap engines are available, and picking between them is
+the first real decision here:
+
+VERA, layer 0, 320x240 at 8bpp. Pixels live in VERA's own 128 KB of
+VRAM, reached a byte at a time through the data port at $9F23. It is the
+mode DurexForth's GRAPHIC module uses. The catch on this machine is that
+76,800 bytes from VRAM $00000 covers the console's character map and its
+font, so the text screen is destroyed while you draw.
+
+VERA2, 640x480 at 8bpp or 4bpp, register block $9F60-$9F6F. Its
+framebuffer is NOT in VRAM - it is plain SDRAM at $E0:0000, which the
+layer scans out directly. That makes PLOT a store to a computed address
+with no port sequencing at all, and it leaves the console alone. There
+is room for two buffers, so double-buffering is possible. See
+X816_core/doc/VERA2.md. For a beginner's BASIC this is the easier and
+faster target, and it is the recommended one.
+
+Filling and blitting are not loops you have to write: HELP VERAFX.

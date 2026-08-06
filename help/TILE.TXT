@@ -1,0 +1,31 @@
+=== TILE - tilemaps and display layers ===
+
+A tilemap cell is two bytes: a tile code and a colour attribute
+(foreground in the low nibble, background in the high one). The console
+is itself a tilemap - layer 0, VRAM $00000, 128 cells to a row - so
+writing cells is also how you paint the text screen without PRINT.
+
+All four keywords refuse today; they addressed VICKY's tile engine.
+
+[ ] TILESET n,addr - point a layer at its tile graphics in VRAM.
+[ ] TILEMAP n,addr - point it at its map.
+[ ] TILESHOW n,on - enable or disable the layer.
+[ ] TILEAT n,x,y,code - write one cell.
+[ ] TILEGET n,x,y - read a cell's tile code back.
+[ ] TILEATTR n,x,y,attr - write a cell's colour attribute.
+[ ] LAYERMODE n,cfg - the layer config byte: map size, 256-colour text,
+    bitmap mode, colour depth.
+[ ] TMAPLOAD n,file$ / TMAPSAVE n,file$ - a whole map to and from a file.
+    Self-sizing on save: the config byte carries the map's width and
+    height codes and a cell is two bytes.
+[ ] TILELOAD n,file$ / TILESAVE n,file$,len - the tile graphics. Tile
+    data has no inherent length, so saving asks for one.
+
+VERA has two layers, 0 and 1, and both can be tilemaps. The X16 put its
+text screen on layer 1; this machine uses layer 0, so code ported from
+X16 sources will be pointing at the wrong one.
+
+Careful with layer 0 while the console is live: the map at $00000 and
+the font at $04000 are the text screen. Repointing MAPBASE at your own
+map is the polite way to have both - the console keeps working, it is
+just not being displayed.

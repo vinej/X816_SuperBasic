@@ -1,0 +1,28 @@
+=== PAL - palettes ===
+
+Nothing here exists yet - there is no palette keyword in BASIC816 at all,
+so this page is entirely a plan. SETCOLOR is the one statement that
+would sit on top of it; it is reserved and refuses.
+
+[ ] PAL index,rgb - set palette entry 0-255 to a 12-bit $RGB colour.
+    PAL 1,$0F00 makes colour 1 pure red.
+[ ] PALGET index - read an entry back. See the warning below.
+[ ] PALLOAD file$,start - load entries from a file, starting at an index.
+[ ] PALSAVE file$,start,count - save a RANGE, not all 256. See below.
+[ ] SETCOLOR index,rgb - the BASIC816 spelling, for the 16 text colours.
+
+VERA has 256 entries, each 12-bit ($0RGB: four bits per channel). Entry 0
+is the background/transparent colour, and entries 0-15 default to the
+C64/X16 sixteen.
+
+VERA2 has a palette of its own, written through a different path: an
+index register at $9F66 that auto-increments, then low and high halves at
+$9F67/$9F68 where writing the high half commits the entry. Two palettes,
+two mechanisms - a PAL statement will have to say which layer it means.
+
+Do not trust a palette readback. Entries your program wrote come back
+exactly; entries nobody ever wrote come back as something that is not the
+palette in use. That is why a save takes a range rather than assuming
+256 - save the entries you set. Better still, keep the palette in an
+array in your program and save THAT, and nothing depends on a readback
+at all.

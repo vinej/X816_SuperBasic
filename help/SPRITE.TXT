@@ -1,0 +1,28 @@
+=== SPRITE - VERA sprites ===
+
+VERA has 128 sprites. Their attributes live in VRAM at $1FC00, eight
+bytes each: image address, X, Y, collision/z-depth/flip, and two size
+codes. Sprite pixels are 4bpp or 8bpp elsewhere in VRAM.
+
+BASIC816 has three sprite keywords and all three refuse here - they were
+written for the C256's VICKY sprite registers, which this machine does
+not have. The names are reserved; the implementations are not written.
+
+[ ] SPRITE n,zdepth - set a sprite's depth and switch the layer on.
+    z 0=off, 1=behind the layers, 2=between them, 3=in front.
+[ ] SPRITEAT n,x,y - move a sprite. Positions are 12-bit and signed
+    enough to walk off every edge.
+[ ] SPRITESHOW n,on - show or hide one sprite without losing its setup.
+[ ] SPRITEIMAGE n,addr - point a sprite at its pixels in VRAM. 4bpp data
+    must be 32-byte aligned.
+[ ] SPRITESIZE n,w,h - size codes 0-3 = 8, 16, 32, 64 pixels.
+[ ] SPRITEGET n,x,y - read a position back.
+[ ] SPRITELOAD n,file$ - load pixels straight into a sprite's image area.
+[ ] SPRITESAVE n,file$ - and back out again. Self-sizing: the two size
+    codes give the pixel count and the colour-depth bit halves it, so it
+    writes exactly the image and no more.
+
+Sprite collisions raise an interrupt, KIRQ_SPRCOL (slot 2 in the kernel's
+IRQ table). Nothing in SuperBasic can install a handler yet; when it can,
+that is the cheap way to do hit detection instead of comparing
+rectangles in BASIC.

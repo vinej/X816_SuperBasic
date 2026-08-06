@@ -1,0 +1,29 @@
+=== AUDIOYM - raw YM2151 registers ===
+
+The YM2151 (IKAOPM in the core) sits at $9F40 address / $9F41 data, in
+the I/O page at $00:9F00. Its 256 registers are the ones in the YM2151
+datasheet: $08 KEYON, $20+ per channel, $60+ total level, and so on.
+
+SuperBasic has no audio keywords at all today. Everything here is a plan.
+
+[ ] YMPOKE reg,value - write a YM2151 register.
+[ ] YMPEEK(reg) - what was last written there. A shadow, not a probe:
+    the chip answers writes only, there is no register readback in the
+    hardware, so a program that wants to know must remember.
+
+Until a statement exists you can drive the chip with POKE, and this is a
+perfectly reasonable thing to do from BASIC:
+
+    POKE $9F40,8    : REM address register = $08 (KEYON)
+    POKE $9F41,$78  : REM data
+
+The one rule that matters: the chip has a BUSY flag and you must wait for
+it to clear before writing the address and again before the data. A
+write that goes out early is silently wrong. Any wait must be BOUNDED -
+a chip that never cleared busy would otherwise hang the machine, and an
+early write is the better failure.
+
+The YM can also raise an interrupt, KIRQ_YM (slot 6 in the kernel's IRQ
+table), for its timers.
+
+For notes, envelopes and instruments rather than registers, HELP AUDIOFM.

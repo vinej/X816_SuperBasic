@@ -1,0 +1,34 @@
+=== KEYBOARD - keys and the break key ===
+
+Keys come from the SMC over I2C, polled - not interrupt-fed. That is why
+typing works even with interrupts masked, and why the cursor does not.
+
+[x] INKEY - poll for a key without blocking. Returns 0 when nothing is
+    waiting, so it never stalls a loop.
+[x] GET var - wait for one keypress and store it.
+[x] INPUT ["prompt";] var[,var] - read and parse a line, with the
+    single-line editor (backspace erases on screen).
+[x] Ctrl-C - stop a running program. HELP SYSTEM for what it costs.
+[ ] KEYMAP name$ - choose a keyboard layout. The SMC sends IBM key
+    POSITION numbers and the kernel maps them; a layout switch belongs
+    in the kernel, not here.
+[ ] Arrow keys and function keys in the line editor. The events already
+    arrive - see below - but the editor ignores them.
+
+A key event is SIXTEEN bits and the top byte is what makes it readable:
+
+    $0000        nothing waiting (INKEY only)
+    $0001-$00FF  a character, CP437
+    $0100 | n    a key with NO character; n = its IBM position number
+
+F1 and the CP437 glyph at $70 cannot be told apart in eight bits, so the
+kernel reports the key number instead of inventing control codes. INKEY
+currently masks the specials away and returns characters only.
+
+Shift is folded into the character by the kernel. Ctrl, Alt, the GUI keys
+and Caps Lock are NOT: they arrive as key events of their own, because
+"making Ctrl-C a character is a design step, not a mapping one"
+(X816_Calypsi runtime/console.h). Ctrl-C therefore reaches a program as
+two events - $013A then 'c' - and the break check pairs them up. Only
+Shift's key-up is reported; every other release is discarded, so nothing
+can tell you Ctrl was let go.

@@ -1,0 +1,33 @@
+=== TIME - clocks and waiting ===
+
+There is no battery-backed clock on this machine. There IS a
+free-running millisecond counter in hardware and a VSYNC frame count in
+the kernel, and between them they cover everything a BASIC program
+actually wants: elapsed time, and a steady tick.
+
+[ ] TIMER - milliseconds since boot, 32-bit. The kernel call is
+    K_TIME_GET and the hardware is a counter at $9F90-$9F93. Nothing
+    binds it yet, so this returns nothing today.
+[ ] GETTIME$ / GETDATE$ - wall-clock strings. They parse and return 0:
+    there is no RTC to ask. If they ever mean anything it will be
+    because the boot firmware passed a time in, not because the machine
+    knows one.
+[ ] SETTIME / SETDATE - reserved, refuse. K_TIME_SET can move the
+    millisecond origin, which is the only part of this that is real.
+[ ] FRAMES - the VSYNC frame counter (K_IRQ_FRAMES), 16-bit and wrapping.
+    The right clock for animation: it advances 60 times a second whatever
+    the CPU is doing.
+[ ] WAIT ms - sleep. Trivial to write on top of TIMER and the first
+    thing anyone needs for a game loop.
+[ ] VSYNC - block until the next frame. The one statement that makes
+    flicker-free animation possible from BASIC.
+
+Reading the millisecond counter has a rule, and it is normative: read
+$9F90 FIRST. That read latches bits 31:8, so a byte read of $9F90
+followed by a 16-bit read of $9F92 gives one coherent 32-bit value.
+Reading the high bytes first can catch the counter mid-carry and give a
+number that was never true.
+
+The kernel's frame count is maintained by the VSYNC interrupt handler,
+so it only advances while interrupts are enabled - the same condition the
+cursor depends on. See PORT.md section 4.

@@ -1,0 +1,42 @@
+=== MATH - arithmetic, and why it is software ===
+
+On the C256 that BASIC816 came from, this page was hardware: floats went
+through a memory-mapped FP coprocessor and integer multiply drove a
+multiplier in the GABE chip. Neither exists on the X816, so all of it is
+software here - X816/floats_x816.s and X816/ints_x816.s. That rewrite is
+the largest single piece of the port.
+
+[x] + - * / and unary minus, on 32-bit integers and floats.
+[x] ^ - raise to a power. Integer exponents are repeated multiplication;
+    a fractional exponent needs LN and EXP and so throws.
+[x] MOD - remainder, from the software divide. Unsigned: it takes the
+    magnitudes, so a negative operand does not give the answer you want.
+[x] = <> < > <= >= - comparison, integer, float and string.
+[x] AND OR NOT - bitwise and logical.
+[x] ABS SGN INT - sign and truncation.
+[x] RND(x) - a random float in [0,1). No RNG hardware, so this is a
+    16-bit xorshift seeded at startup. The argument is evaluated and
+    ignored, as it was on the C256.
+[x] VAL STR$ HEX$ DEC PARSEINT - conversion between text and number.
+[ ] SIN COS TAN - throw. Reserved and stubbed.
+[ ] ASIN ACOS ATAN - throw.
+[ ] LN EXP - throw. "^" with a float exponent depends on these.
+[ ] SQR - throws. Probably the most missed of the set.
+
+The transcendentals are stubbed rather than ported on purpose. The C256
+versions are not built on the arithmetic primitives - they contain about
+ninety direct accesses to the FP coprocessor's registers. On this machine
+those addresses are plain SDRAM, so running that code would read whatever
+happened to be there and return a confident wrong answer. A throw is the
+honest failure until the polynomial evaluators are rewritten.
+
+Floats are IEEE-754 single precision: sign, eight exponent bits, 23
+mantissa bits. The engine truncates rather than rounds, and denormals
+flush to zero, so results can sit an ulp or two below a correctly
+rounded answer - PORT.md section 11 records one measured case.
+
+Printing does not match the format most people expect. PRINT gives six
+significant digits and adds an exponent whenever the decimal exponent is
+not zero, so 1024 prints as 1.02400E03. That is upstream BASIC816
+behaviour, identical on the C256, and not a fault in the port - but it
+is the sort of thing SuperBasic should probably change.

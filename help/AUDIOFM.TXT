@@ -1,0 +1,34 @@
+=== AUDIOFM - FM notes and instruments ===
+
+The playable layer over the YM2151: eight FM channels, addressed by note
+and instrument rather than by register. None of it is written.
+
+This is the page that matters most for a beginner's BASIC. A child should
+be able to make a noise in one line, and none of the register poking in
+HELP AUDIOYM is that line.
+
+[ ] SOUND ch,note,len - play a note on a channel and move on.
+[ ] FMINIT - reset the chip and load a default instrument on every voice,
+    so that SOUND works before anything is configured.
+[ ] FMNOTE ch,note - key a note on. Notes as semitone numbers, with
+    middle C somewhere sensible and named-note strings a later nicety.
+[ ] FMOFF ch - key it off. A note held is a note that keeps playing.
+[ ] FMVOL ch,vol - channel volume 0-127, applied as attenuation to the
+    total-level registers.
+[ ] FMINST ch,n - select one of a built-in instrument set.
+[ ] FMLOAD file$ - load an instrument bank from the card.
+[ ] FMPAN ch,lr - left, right or both.
+[ ] PLAY s$ - a music string, the classic BASIC way: notes, octaves,
+    lengths and rests in one argument.
+
+Two things to settle before writing any of it:
+
+Timing. SOUND with a length has to end the note, and BASIC has no clock
+of its own here. Either it blocks for the duration - simple, and wrong
+for a game - or a VSYNC handler ages the voices. The kernel's KIRQ_VSYNC
+slot is the hook, but nothing in SuperBasic installs handlers yet.
+
+Volume shadowing. FMVOL's attenuation is applied when it is set, so a
+later raw YMPOKE straight at a total-level register ($60-$7F) overrides
+it until the next FMVOL or FMINST. Mixing the two layers needs that
+documented, or it reads as a bug.

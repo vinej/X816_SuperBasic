@@ -1,0 +1,29 @@
+=== AUDIOPCM - sampled sound through VERA's FIFO ===
+
+VERA has a 4 KB audio FIFO taking signed 8- or 16-bit PCM, at three
+registers inside its block at $9F20-$9F3F. Nothing in SuperBasic drives
+it yet.
+
+[ ] PCMCTRL n - $9F3B. Volume 0-15, bit 4 stereo, bit 5 16-bit, bit 7
+    resets the FIFO. Reading it back gives two bits the write side has no
+    use for: bit 7 full, bit 6 empty.
+[ ] PCMRATE n - $9F3C. 0 stops, 128 is about 48 kHz.
+[ ] PCMPUT b - $9F3D. Push one sample byte; dropped if the FIFO is full.
+[ ] PCMFULL - true when it cannot take more.
+[ ] PCMEMPTY - true when it has run dry, which is the one a feeder
+    actually wants: by then the sound has already stopped.
+[ ] PCMPLAY file$ - the statement most people want. Stream a sample off
+    the card without the program having to feed it.
+
+A paced feeder in BASIC, once the statements exist, is the loop you would
+expect - push while not full, top up when not empty. Doing that from
+interpreted BASIC will not keep up at 48 kHz for long, which is the
+honest reason PCMPLAY belongs on the list: the refill wants to be an
+AFLOW interrupt handler in assembly, and the kernel already reserves the
+slot for it (KIRQ_AFLOW, slot 3).
+
+Where the samples come from matters more here than anywhere else on
+these pages. A second of 8-bit mono at 22 kHz is 22 KB - larger than the
+whole BASIC program space is likely to be, and far too large to sit in a
+DATA statement. Samples belong on the card and want streaming, so this
+page depends on HELP FILE landing first.
