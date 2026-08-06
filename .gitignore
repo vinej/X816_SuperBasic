@@ -1,0 +1,7 @@
+build/
+*.bin
+*.hex
+*.lst
+*.lbl
+*.img
+*.gif
