@@ -97,6 +97,10 @@ KEYS_A=$(keys_of \
     'PRINT SQR(2)' \
     'PRINT SIN(1)' \
     'PRINT COS(10)' \
+    'PRINT LN(10)' \
+    'PRINT EXP(1)' \
+    'PRINT ATAN(10)' \
+    'PRINT 2^-1' \
     '10 PRINT 1.5' \
     'RUN')
 
@@ -252,6 +256,21 @@ if not any("8.41470E-01" in r for r in rows_a):
 if not any("-8.39071E-01" in r for r in rows_a):
     fail("`PRINT COS(10)` did not answer -8.39071E-01 -- the range "
          "reduction or the quadrant sign is wrong")
+# LN and EXP take the power of two out of, and back into, the exponent
+# field. ATAN(10) is past both of the tangent folds, so like COS(10) it
+# tests the reduction rather than the polynomial. 2^-1 has to go through
+# EXP(y*LN(x)) -- repeated multiplication cannot do a negative exponent
+# -- so it is the check that the two new functions are actually wired
+# into the operator.
+if not any("2.30258" in r for r in rows_a):
+    fail("`PRINT LN(10)` did not answer 2.30258")
+if not any("2.71828" in r for r in rows_a):
+    fail("`PRINT EXP(1)` did not answer 2.71828")
+if not any("1.47112" in r for r in rows_a):
+    fail("`PRINT ATAN(10)` did not answer 1.47112 -- the fold is wrong")
+if not any("5.00000E-01" in r for r in rows_a):
+    fail("`PRINT 2^-1` did not answer 5.00000E-01 -- a negative exponent "
+         "must route through EXP(y*LN(x))")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 

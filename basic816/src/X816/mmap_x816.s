@@ -97,6 +97,16 @@ FP_TS     = $004B8C         ; dword - TAN's numerator
 FP_TC     = $004B90         ; dword - TAN's denominator
 FP_TQ     = $004B94         ; word  - quadrant, 0-3
 
+; Working values for LN and EXP.
+FP_EX     = $004B98         ; dword - the argument, then the reduced value
+FP_EU     = $004B9C         ; dword - what the polynomial is evaluated in
+FP_EN     = $004BA0         ; word  - the power of two taken out, signed
+
+; Working values for the inverse trigonometry.
+FP_AY     = $004BA4         ; dword - the constant the reduction adds back
+FP_AV     = $004BA8         ; dword - the untouched argument
+FP_ASGN   = $004BAC         ; word  - sign of the argument, $8000 negative
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

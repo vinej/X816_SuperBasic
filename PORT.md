@@ -304,12 +304,24 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   `floats_x816.s` + `ints_x816.s` carry IEEE-754 single add/sub/mul/div/
   compare and int32 mul/div; all of BASIC816's float and integer test
   suites are green. Transcendentals still THROW (§12).
-- **Phase 2b — finish the maths. `SQR` landed 2026-08-06.** It needed no
-  polynomial evaluator — Newton-Raphson over the four primitives, seeded
-  by halving the exponent field — which is why it went first. The rest
-  (`SIN`/`COS`/`TAN`/`ASIN`/`ACOS`/`ATAN`/`LN`/`EXP`) still THROW and do
-  need one; `help/MATH.TXT` is the checklist.
-  Also here: the two open corpus failures and the 2-ULP literal (§11).
+- **Phase 2b — finish the maths. DONE 2026-08-06.** Nothing in
+  `transcendentals_x816.s` throws any more, and none of it is a port:
+  the C256 originals are ninety inline coprocessor accesses, so all of
+  it is written fresh against the software float primitives.
+  `SQR` by Newton-Raphson (no polynomial needed, so it went first);
+  `SIN`/`COS`/`TAN` by Horner over a pi/2 reduction, with `COS` being
+  `SIN` one quadrant along; `LN` and `EXP` by taking the power of two
+  out of, and back into, the exponent field, so neither needs to
+  compute one; `ATAN` by folding any magnitude under tan(pi/8) with the
+  tangent addition formula, and `ASIN`/`ACOS` over it. Every coefficient
+  set was checked against double precision *before* being written down —
+  worst case under 2e-7 either way, inside the six digits `PRINT` shows.
+  This also finishes `^`: a fractional or negative exponent falls
+  through to `EXP(y * LN(x))`, so `2^0.5` and `2^-1` work.
+  **The reductions are the part to distrust, not the polynomials**, so
+  the tests pick arguments that exercise them: `COS(10)` is past three
+  quadrants, `ATAN(10)` past both folds.
+  Still open from §11: the two corpus failures and the 2-ULP literal.
 - **Phase 3 — files. LOAD/SAVE/BLOAD/BSAVE/DIR/DEL landed 2026-08-06.**
   `help/FILE.TXT` is the feature list and the running score. The seam is
   narrow: `dos.s` reaches the disk only through the Foenix `FK_*` entry

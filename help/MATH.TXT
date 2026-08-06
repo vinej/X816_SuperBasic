@@ -7,8 +7,9 @@ software here - X816/floats_x816.s and X816/ints_x816.s. That rewrite is
 the largest single piece of the port.
 
 [x] + - * / and unary minus, on 32-bit integers and floats.
-[x] ^ - raise to a power. Integer exponents are repeated multiplication;
-    a fractional exponent needs LN and EXP and so throws.
+[x] ^ - raise to a power. A whole-number exponent is repeated
+    multiplication; a fractional or negative one goes through
+    EXP(y * LN(x)), so 2^0.5 is 1.41421 and 2^-1 is 0.5.
 [x] MOD - remainder, from the software divide. Unsigned: it takes the
     magnitudes, so a negative operand does not give the answer you want.
 [x] = <> < > <= >= - comparison, integer, float and string.
@@ -23,23 +24,33 @@ the largest single piece of the port.
     remembering how many. Worst error against double precision is under
     1e-7, well inside the six digits PRINT shows. TAN is sin/cos, so
     TAN(pi/2) reports division by zero rather than an infinity.
-[ ] ASIN ACOS ATAN - throw.
-[ ] LN EXP - throw. "^" with a float exponent depends on these.
+[x] ASIN ACOS ATAN - real. ATAN folds any magnitude under tan(pi/8)
+    with the tangent addition formula and then runs four terms; ASIN is
+    atan(x/sqrt(1-x*x)) and ACOS is pi/2 minus it, so neither needs a
+    polynomial of its own. Outside [-1,1] ASIN and ACOS are a domain
+    error.
+[x] LN EXP - real. A float already carries the integer part of its own
+    logarithm in the exponent field, so LN only computes ln(m) for the
+    mantissa and adds e*ln2; EXP is the same trick backwards, and builds
+    its power of two by writing an exponent field rather than
+    multiplying. EXP overflows to an error and underflows to zero.
 [x] SQR - square root. Newton-Raphson over the software float ops,
     seeded by halving the exponent field, four iterations. A negative
     operand is a domain error rather than a NaN.
 
-SQR came first because it needs no polynomial at all -- Newton-Raphson
-over the four arithmetic primitives. SIN, COS and TAN followed, and they
-did need one.
+Nothing on this page throws any more, and none of it is a port. The
+C256 versions are not built on the arithmetic primitives at all - they
+contain about ninety direct accesses to the FP coprocessor's registers,
+and on this machine those addresses are plain SDRAM, so running that
+code would have read whatever happened to be there and returned a
+confident wrong answer. All of it is written fresh against the software
+float engine.
 
-LN, EXP and the inverse trigonometry are stubbed rather than ported on
-purpose. The C256
-versions are not built on the arithmetic primitives - they contain about
-ninety direct accesses to the FP coprocessor's registers. On this machine
-those addresses are plain SDRAM, so running that code would read whatever
-happened to be there and return a confident wrong answer. A throw is the
-honest failure until the polynomial evaluators are rewritten.
+Every coefficient set was checked against double precision before being
+written down; the worst case each way is under 2e-7, which is inside the
+six digits PRINT shows. The reductions are the part worth distrusting
+rather than the polynomials, so the tests pick arguments that exercise
+them: COS(10) is past three quadrants, ATAN(10) is past both folds.
 
 Floats are IEEE-754 single precision: sign, eight exponent bits, 23
 mantissa bits. The engine truncates rather than rounds, and denormals

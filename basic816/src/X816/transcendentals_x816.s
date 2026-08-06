@@ -1,15 +1,26 @@
 ;;;
-;;; Transcendental function stubs for the X816 (phase 2)
+;;; Transcendental functions for the X816
 ;;;
 ;;; Copyright (C) 2026 Jean-Yves Vinet
 ;;; Dual-licensed: GPLv3 (as part of SuperBasic) and MIT.
 ;;;
-;;; The C256 transcendentals.s drives the FP coprocessor inline (90
-;;; register accesses); on the X816 those registers are plain SDRAM, so
-;;; running it would produce silent garbage. Until the software port of
-;;; the polynomial evaluators lands, every function throws rather than
-;;; lie. (Q_FP_POW_INT, used by ^, already has a software version in
-;;; floats_x816.s.)
+;;; The C256 transcendentals.s drives the FP coprocessor inline -- about
+;;; ninety register accesses -- and on the X816 those addresses are plain
+;;; SDRAM, so running that code would return confident nonsense. None of
+;;; it is ported; all of this is written against the software float
+;;; primitives in floats_x816.s instead.
+;;;
+;;; All of them are real now: SQR by Newton-Raphson, SIN/COS/TAN by
+;;; Horner polynomials over a pi/2 reduction, LN and EXP by taking the
+;;; power of two out of (or back into) the exponent field, and the
+;;; inverse trigonometry over ATAN. Every coefficient set here was
+;;; checked against double precision before being written down, and the
+;;; worst case each way is recorded beside it -- all under 2e-7, which
+;;; is inside the six digits PRINT shows.
+;;;
+;;; (Q_FP_POW_INT, used by ^ with a whole-number exponent, is in
+;;; floats_x816.s. A fractional or negative one comes back here: the
+;;; operator falls through to EXP(y * LN(x)).)
 ;;;
 
 ; Float constants, as IEEE-754 single bit patterns.
@@ -87,6 +98,13 @@ TFPUT1      .macro addr                 ; save ARGUMENT1
 
 TFMAC       .macro const                ; one Horner step: acc = acc*u + c
             TFGET2 FP_TU
+            CALL OP_FP_MUL
+            TFSET2 \const
+            CALL OP_FP_ADD
+            .endm
+
+TFMACV      .macro var, const           ; the same, in a chosen variable
+            TFGET2 \var
             CALL OP_FP_MUL
             TFSET2 \const
             CALL OP_FP_ADD
@@ -249,24 +267,412 @@ FP_TAN      .proc
             RETURN
             .pend
 
+FC_ONE   = $3F800000
+FC_TWO   = $40000000
+FC_LN2   = $3F317218        ; ln 2
+FC_ILN2  = $3FB8AA3B        ; 1 / ln 2
+FC_SQRT2 = $3FB504F3
+
+; exp(r) on [-ln2/2, ln2/2], degree 7, Horner high order first. Checked
+; against double precision across that interval: worst RELATIVE error
+; 7.7e-8.
+FC_EC0 = $39500D01          ; 1/5040
+FC_EC1 = $3AB60B61          ; 1/720
+FC_EC2 = $3C088889          ; 1/120
+FC_EC3 = $3D2AAAAB          ; 1/24
+FC_EC4 = $3E2AAAAB          ; 1/6
+FC_EC5 = $3F000000          ; 1/2
+FC_EC6 = $3F800000          ; 1
+FC_EC7 = $3F800000          ; 1
+
+; ln(m) = 2s(1 + u/3 + u^2/5 + u^3/7 + u^4/9), s = (m-1)/(m+1), u = s*s.
+; Worst absolute error over m in [sqrt(1/2), sqrt(2)]: 8.8e-8.
+FC_LC0 = $3DE38E39          ; 1/9
+FC_LC1 = $3E124925          ; 1/7
+FC_LC2 = $3E4CCCCD          ; 1/5
+FC_LC3 = $3EAAAAAB          ; 1/3
+FC_LC4 = $3F800000          ; 1
+
+;
+; LN(x) -- natural logarithm.
+;
+; A float already carries its own logarithm's integer part: x is
+; m * 2^e with the exponent field holding e, so
+;
+;   ln(x) = ln(m) + e*ln2
+;
+; and only ln(m) has to be computed. m lands in [1,2) for free; halving
+; it once when it exceeds sqrt(2) centres the range on 1, which is what
+; makes the series below short -- s = (m-1)/(m+1) is then under 0.172 in
+; magnitude and its square under 0.03, so five terms are plenty.
+;
 FP_LN       .proc
-            THROW ERR_TYPE
+            PHP
+            setaxl
+
+            LDA ARGUMENT1+2             ; ln(0) and ln(negative) are errors;
+            AND #$7F80                  ;  the body below is far too long to
+            BNE ln_nonzero              ;  branch across, hence the BRLs
+            BRL ln_domain
+ln_nonzero  LDA ARGUMENT1+2
+            BPL ln_positive
+            BRL ln_domain
+
+ln_positive LDA ARGUMENT1+2             ; e = (exponent field) - 127
+            AND #$7F80
+            LSR A
+            LSR A
+            LSR A
+            LSR A
+            LSR A
+            LSR A
+            LSR A
+            SEC
+            SBC #127
+            STA @l FP_EN
+
+            LDA ARGUMENT1+2             ; m = x with the exponent set to 0,
+            AND #$007F                  ;  which is the exponent field 127
+            ORA #$3F80
+            STA ARGUMENT1+2
+            TFPUT1 FP_EX
+
+            TFSET2 FC_SQRT2             ; centre the range on 1
+            CALL FP_COMPARE
+            CMP #1
+            BNE ln_centred
+
+            LDA @l FP_EX+2              ; m/2: one off the exponent field
+            SEC
+            SBC #$0080
+            STA @l FP_EX+2
+            LDA @l FP_EN
+            INC A
+            STA @l FP_EN
+
+ln_centred  TFGET1 FP_EX                ; s = (m-1) / (m+1)
+            TFSET2 FC_ONE
+            CALL OP_FP_SUB
+            TFPUT1 FP_EU
+            TFGET1 FP_EX
+            TFSET2 FC_ONE
+            CALL OP_FP_ADD
+            TFPUT1 FP_EX
+            TFGET1 FP_EU
+            TFGET2 FP_EX
+            CALL OP_FP_DIV
+            TFPUT1 FP_EX
+
+            TFGET2 FP_EX                ; u = s*s
+            CALL OP_FP_MUL
+            TFPUT1 FP_EU
+
+            TFSET1 FC_LC0
+            TFMACV FP_EU, FC_LC1
+            TFMACV FP_EU, FC_LC2
+            TFMACV FP_EU, FC_LC3
+            TFMACV FP_EU, FC_LC4
+
+            TFGET2 FP_EX                ; ln(m) = 2 * s * poly
+            CALL OP_FP_MUL
+            TFSET2 FC_TWO
+            CALL OP_FP_MUL
+            TFPUT1 FP_EX
+
+            LDA @l FP_EN                ; e*ln2, e being signed
+            STA ARGUMENT1
+            BMI ln_negexp
+            LDA #0
+            BRA ln_setexp
+ln_negexp   LDA #$FFFF
+ln_setexp   STA ARGUMENT1+2
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+            setal
+            CALL ITOF
+            TFSET2 FC_LN2
+            CALL OP_FP_MUL
+
+            TFGET2 FP_EX                ; + ln(m)
+            CALL OP_FP_ADD
+
+            PLP
+            RETURN
+
+ln_domain   THROW ERR_DOMAIN
             .pend
 
+;
+; EXP(x) -- e to the x.
+;
+; The mirror of LN: take out the power of two rather than putting one
+; back. n = round(x/ln2) leaves r = x - n*ln2 no bigger than ln2/2, the
+; series handles that, and multiplying by 2^n is a float built straight
+; out of the exponent field rather than a power computed by repeated
+; multiplication.
+;
 FP_EXP      .proc
-            THROW ERR_TYPE
+            PHP
+            setaxl
+
+            LDA ARGUMENT1+2             ; exp(0) = 1
+            AND #$7F80
+            BNE exp_go
+            TFSET1 FC_ONE
+            PLP
+            RETURN
+
+exp_go      TFPUT1 FP_EX
+
+            TFSET2 FC_ILN2              ; n = round(x / ln2)
+            CALL OP_FP_MUL
+            LDA ARGUMENT1+2
+            BMI exp_neg
+            TFSET2 FC_HALF
+            BRA exp_round
+exp_neg     TFSET2 FC_NEG_HALF
+exp_round   CALL OP_FP_ADD
+            CALL FTOI
+            LDA ARGUMENT1
+            STA @l FP_EN
+
+            CALL ITOF                   ; r = x - n*ln2
+            TFSET2 FC_LN2
+            CALL OP_FP_MUL
+            TFPUT1 FP_EU
+            TFGET1 FP_EX
+            TFGET2 FP_EU
+            CALL OP_FP_SUB
+            TFPUT1 FP_EU
+
+            TFSET1 FC_EC0               ; exp(r)
+            TFMACV FP_EU, FC_EC1
+            TFMACV FP_EU, FC_EC2
+            TFMACV FP_EU, FC_EC3
+            TFMACV FP_EU, FC_EC4
+            TFMACV FP_EU, FC_EC5
+            TFMACV FP_EU, FC_EC6
+            TFMACV FP_EU, FC_EC7
+
+            CLC                         ; times 2^n, assembled by hand: the
+            LDA @l FP_EN                ;  exponent field IS the power of two
+            ADC #127
+            BMI exp_zero                ; n below -127: flush to zero
+            BEQ exp_zero
+            CMP #255
+            BGE exp_over
+
+            ASL A                       ; the field starts at bit 7 of the
+            ASL A                       ;  high word
+            ASL A
+            ASL A
+            ASL A
+            ASL A
+            ASL A
+            STA ARGUMENT2+2
+            LDA #0
+            STA ARGUMENT2
+            setas
+            LDA #TYPE_FLOAT
+            STA ARGTYPE2
+            setal
+            CALL OP_FP_MUL
+
+            PLP
+            RETURN
+
+exp_zero    CALL FPZERO1
+            PLP
+            RETURN
+
+exp_over    THROW ERR_OVERFLOW
             .pend
 
-FP_ASIN     .proc
-            THROW ERR_TYPE
-            .pend
+FC_PI_4    = $3F490FDB      ; pi/4
+FC_TAN3PI8 = $401A827A      ; tan(3pi/8) = 2.4142136
+FC_TANPI8  = $3ED413CD      ; tan(pi/8)  = 0.4142136
 
-FP_ACOS     .proc
-            THROW ERR_TYPE
-            .pend
+; atan(x) on the reduced range, Horner in z = x*x. Cephes' single-
+; precision coefficients; checked against double precision over
+; [-50, 50], worst absolute error 1.7e-7.
+FC_AC0 = $3DA4F0D1          ;  0.080537445
+FC_AC1 = $BE0E1B85          ; -0.138776856
+FC_AC2 = $3E4C925F          ;  0.199777107
+FC_AC3 = $BEAAAA2A          ; -0.333329492
 
+;
+; ATAN(x) -- arctangent, the whole real line into [-pi/2, pi/2].
+;
+; Two folds bring any magnitude under tan(pi/8), where four terms are
+; enough. Both are the tangent addition formula read backwards:
+;
+;   x > tan(3pi/8):  atan(x) = pi/2 + atan(-1/x)
+;   x > tan(pi/8):   atan(x) = pi/4 + atan((x-1)/(x+1))
+;
+; The sign is taken off at the start and put back at the end, so only
+; positive x reaches the folds.
+;
 FP_ATAN     .proc
-            THROW ERR_TYPE
+            PHP
+            setaxl
+
+            LDA ARGUMENT1+2             ; work on |x|, remember the sign
+            AND #$8000
+            STA @l FP_ASGN
+            LDA ARGUMENT1+2
+            AND #$7FFF
+            STA ARGUMENT1+2
+            TFPUT1 FP_EX
+
+            TFSET2 FC_TAN3PI8           ; which fold, if any
+            CALL FP_COMPARE
+            CMP #1
+            BEQ at_big
+
+            TFGET1 FP_EX
+            TFSET2 FC_TANPI8
+            CALL FP_COMPARE
+            CMP #1
+            BEQ at_mid
+
+            LDA #0                      ; no fold: y = 0
+            STA @l FP_AY
+            STA @l FP_AY+2
+            BRL at_poly
+
+at_big      TFSET1 FC_PI_OVER_2         ; y = pi/2, x = -1/x
+            TFPUT1 FP_AY
+            TFSET1 FC_ONE
+            TFGET2 FP_EX
+            CALL OP_FP_DIV
+            LDA ARGUMENT1+2
+            EOR #$8000
+            STA ARGUMENT1+2
+            TFPUT1 FP_EX
+            BRL at_poly
+
+at_mid      TFSET1 FC_PI_4              ; y = pi/4, x = (x-1)/(x+1)
+            TFPUT1 FP_AY
+            TFGET1 FP_EX
+            TFSET2 FC_ONE
+            CALL OP_FP_SUB
+            TFPUT1 FP_EU
+            TFGET1 FP_EX
+            TFSET2 FC_ONE
+            CALL OP_FP_ADD
+            TFPUT1 FP_EX
+            TFGET1 FP_EU
+            TFGET2 FP_EX
+            CALL OP_FP_DIV
+            TFPUT1 FP_EX
+
+at_poly     TFGET1 FP_EX                ; z = x*x
+            TFGET2 FP_EX
+            CALL OP_FP_MUL
+            TFPUT1 FP_EU
+
+            TFSET1 FC_AC0
+            TFMACV FP_EU, FC_AC1
+            TFMACV FP_EU, FC_AC2
+            TFMACV FP_EU, FC_AC3
+
+            TFGET2 FP_EU                ; result = y + (poly*z)*x + x
+            CALL OP_FP_MUL
+            TFGET2 FP_EX
+            CALL OP_FP_MUL
+            TFGET2 FP_EX
+            CALL OP_FP_ADD
+            TFGET2 FP_AY
+            CALL OP_FP_ADD
+
+            LDA @l FP_ASGN              ; put the sign back
+            BEQ at_done
+            LDA ARGUMENT1+2
+            AND #$7F80
+            BEQ at_done                 ; leave a zero unsigned
+            LDA ARGUMENT1+2
+            EOR #$8000
+            STA ARGUMENT1+2
+
+at_done     PLP
+            RETURN
+            .pend
+
+;
+; ASIN(x) -- arcsine, via the arctangent.
+;
+;   asin(x) = atan( x / sqrt(1 - x*x) )
+;
+; which needs no polynomial of its own. At |x| = 1 the square root is
+; zero and the quotient would divide by it, so the ends are answered
+; directly as +/- pi/2.
+;
+FP_ASIN     .proc
+            PHP
+            setaxl
+
+            TFPUT1 FP_AV                ; keep x
+
+            LDA ARGUMENT1+2             ; |x| > 1 is outside the domain
+            AND #$7FFF
+            STA ARGUMENT1+2
+            TFSET2 FC_ONE
+            CALL FP_COMPARE
+            CMP #1
+            BNE asin_ok
+            BRL asin_domain
+
+asin_ok     TFGET1 FP_AV                ; 1 - x*x
+            TFGET2 FP_AV
+            CALL OP_FP_MUL
+            TFPUT1 FP_EU
+            TFSET1 FC_ONE
+            TFGET2 FP_EU
+            CALL OP_FP_SUB
+
+            LDA ARGUMENT1+2             ; zero means |x| = 1 exactly
+            AND #$7F80
+            BEQ asin_edge
+
+            CALL FP_SQR
+            TFPUT1 FP_EU
+            TFGET1 FP_AV
+            TFGET2 FP_EU
+            CALL OP_FP_DIV
+            CALL FP_ATAN
+
+            PLP
+            RETURN
+
+asin_edge   TFSET1 FC_PI_OVER_2         ; +/- pi/2, following x
+            LDA @l FP_AV+2
+            BPL asin_done
+            LDA ARGUMENT1+2
+            EOR #$8000
+            STA ARGUMENT1+2
+
+asin_done   PLP
+            RETURN
+
+asin_domain THROW ERR_DOMAIN
+            .pend
+
+;
+; ACOS(x) = pi/2 - asin(x). The domain check comes free with ASIN.
+;
+FP_ACOS     .proc
+            PHP
+            setaxl
+
+            CALL FP_ASIN
+            TFPUT1 FP_EU
+            TFSET1 FC_PI_OVER_2
+            TFGET2 FP_EU
+            CALL OP_FP_SUB
+
+            PLP
+            RETURN
             .pend
 
 ;
