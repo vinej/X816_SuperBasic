@@ -1,0 +1,231 @@
+;;;
+;;; I/O Routines specific to the C256 Foenix
+;;;
+;;; Where possible, BASIC816 will use I/O routines corresponding to the 
+;;; C256 Foenix Kernel. Glue routines that are needed to work on the
+;;; C256 will go here. Otherwise, we just need the kernel jump table.
+;;;
+
+.include "kernel_c256.s"
+.include "RTC_inc.s"
+.include "keyboard.s"
+.include "screen.s"
+.include "gabe_defs.s"
+
+BORDER_WIDTH = 32               ; The width of the border (when it is on)
+TEXT_COLS_WB = 72               ; Number of columns of text with the border enabled
+TEXT_ROWS_WB = 52               ; Number of rows of text with the border enabled
+TEXT_COLS_WOB = 80              ; Number of columns of text with no border enabled
+TEXT_ROWS_WOB = 60              ; Number of rows of text with no border enabled
+
+INITIO      .proc
+            setas
+
+            CALL INITRNG        ; Initialize the random number generator
+
+            LDX #0              ; Clear all the sprite control shadow registers
+            LDA #0
+sp_loop     STA GS_SP_CONTROL,X
+            INX
+            CPX #SP_MAX
+            BNE sp_loop
+
+            ; DEV_SCREEN | DEV_UART
+.if UNITTEST = 1
+            LDA #DEV_SCREEN
+.else
+            LDA #DEV_SCREEN
+.endif
+            STA @lBCONSOLE
+
+            setas
+            LDA #0                  ; Clear the lock key flags
+            STA @lKEYBOARD_LOCKS
+
+            LDA #0
+            STA @l TL0_CONTROL_REG
+            STA @l TL1_CONTROL_REG
+            STA @l TL2_CONTROL_REG
+            STA @l TL3_CONTROL_REG
+
+done        RETURN
+            .pend
+
+;
+; Initialize the random number generator
+; Set the seed from the RTC
+;
+INITRNG     .proc
+            PHP
+
+            setas
+            LDA @l RTC_CTRL         ; Pause updates to the clock registers
+            ORA #%00001000
+            STA @l RTC_CTRL
+
+            LDA @l RTC_SEC          ; Set the random number generator seed
+            STA @l GABE_RNG_SEED_LO
+            LDA @l RTC_MIN
+            STA @l GABE_RNG_SEED_HI
+
+            LDA #GABE_RNG_CTRL_DV | GABE_RNG_CTRL_EN
+            STA @l GABE_RNG_CTRL    ; Load the seed into the RNG
+
+            LDA @l RTC_CTRL         ; Re-enable updates to the clock registers
+            AND #%11110111
+            STA @l RTC_CTRL
+
+            NOP                     ; Give the RNG some time... not sure if needed, really
+            NOP
+            NOP
+
+            LDA #GABE_RNG_CTRL_EN   ; Turn on the random number genertator
+            STA @l GABE_RNG_CTRL
+
+            PLP
+            RETURN
+            .pend
+
+;
+; Sets ARGUMENT1 to the current time in BCD in the format 00HHMMSS
+;
+GETTIME     .proc
+            PHP
+
+            setas
+            LDA @lRTC_CTRL          ; Pause updates to the clock registers
+            ORA #%00001000
+            STA @lRTC_CTRL
+
+            LDA @lRTC_SEC           ; Copy the seconds in BCD
+            STA ARGUMENT1
+
+            LDA @lRTC_MIN           ; Copy the minutes in BCD
+            STA ARGUMENT1+1
+
+            LDA @lRTC_HRS           ; Copy the hour in BCD
+            STA ARGUMENT1+2
+
+            STZ ARGUMENT1+3
+
+            LDA @lRTC_CTRL          ; Re-enable updates to the clock registers
+            AND #%11110111
+            STA @lRTC_CTRL
+
+            LDA #TYPE_INTEGER       ; Set the return type to integer because why not?
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend
+
+;
+; Sets ARGUMENT1 to the current date in BCD in the format 00DDMMYY
+;
+GETDATE     .proc
+            PHP
+
+            setas
+            LDA @lRTC_CTRL          ; Pause updates to the clock registers
+            ORA #%00001000
+            STA @lRTC_CTRL
+
+            LDA @lRTC_YEAR          ; Copy the seconds in BCD
+            STA ARGUMENT1
+
+            LDA @lRTC_MONTH         ; Copy the minutes in BCD
+            STA ARGUMENT1+1
+
+            LDA @lRTC_DAY           ; Copy the hour in BCD
+            STA ARGUMENT1+2
+
+            STZ ARGUMENT1+3
+
+            LDA @lRTC_CTRL          ; Re-enable updates to the clock registers
+            AND #%11110111
+            STA @lRTC_CTRL
+
+            LDA #TYPE_INTEGER       ; Set the return type to integer because why not?
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend
+
+;
+; Send the character in A to the screen
+;
+; Inputs:
+;   A = the character to print
+;
+SCREEN_PUTC .proc
+            PHP
+            setas
+            PHA
+
+            PHA
+            LDA #CHAN_CONSOLE       ; Switch to the console device
+            JSL FK_SETOUT
+            PLA
+
+            JSL FK_PUTC
+            
+loop        LDA @lKEYBOARD_LOCKS    ; Check the status of the lock keys
+            AND #KB_SCROLL_LOCK     ; Is Scroll Lock pressed?
+            BNE loop                ; Yes: wait until it's released
+
+            PLA
+            PLP
+            RETURN
+            .pend
+
+;
+; Send the character in A to COM1
+;
+; Inputs:
+;   A = the character to print
+;
+UART_PUTC   .proc
+            PHP
+            setas
+            PHA
+
+            PHA
+            LDA #CHAN_COM1          ; Switch to COM1
+            JSL FK_SETOUT
+            PLA
+
+            JSL FK_PUTC
+            
+loop        LDA @lKEYBOARD_LOCKS    ; Check the status of the lock keys
+            AND #KB_SCROLL_LOCK     ; Is Scroll Lock pressed?
+            BNE loop                ; Yes: wait until it's released
+
+            PLA
+            PLP
+            RETURN
+            .pend
+
+; Print a new line
+PRINTCR     .proc
+            PHP
+            setal
+            PHA
+
+            setas
+            LDA #CHAR_CR
+            CALL PRINTC
+
+            setal
+            PLA
+            PLP
+            RETURN
+            .pend
+
+; Stub to print a hex number... this is a long jump because I'm lazy
+PRINTH      .proc
+            PHP
+            JSL FK_IPRINTH
+            PLP
+            RETURN
+            .pend
