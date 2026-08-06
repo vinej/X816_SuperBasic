@@ -80,7 +80,7 @@ if not exist "%CARD%" (
     echo [2/3] reusing existing card build\card.img
 )
 
-python "%PROJ%\tools\putfile.py" "%CARD%" "%BIN%" "/BASIC.BIN"
+python "%PROJ%\tools\putfile.py" "%CARD%" "%BIN%" "BASIC.BIN"
 if errorlevel 1 (
     echo [X] could not write BASIC.BIN onto the card
     echo     If the card is corrupt, delete build\card.img and run again

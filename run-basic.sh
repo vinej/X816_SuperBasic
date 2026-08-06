@@ -35,7 +35,7 @@ CARD="build/card.img"
 
 if ! python tools/putfile.py \
         "$(cygpath -m "$(pwd)/$CARD")" \
-        "$(cygpath -m "$(pwd)/build/basic.bin")" /BASIC.BIN; then
+        "$(cygpath -m "$(pwd)/build/basic.bin")" BASIC.BIN; then
     echo "could not write the card -- if it is corrupt, delete $CARD"
     echo "and run again to rebuild it from fat32.img"
     exit 1

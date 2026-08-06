@@ -85,6 +85,15 @@ KIRQ_COP        = 10
 ;   $0100 | n      a key with no character; n = IBM key position number
 KEY_SPECIAL     = $0100
 
+; Ctrl is reported as a key of its own and never folds into a character:
+; the kernel tracks Shift on both edges inside con_getkey, but leaves
+; Ctrl/Alt/GUI/CapsLock to the caller ("making Ctrl-C a character is a
+; design step, not a mapping one" — X816_Calypsi runtime/console.h). So
+; there is no $03 to poll for; FK_TESTBREAK pairs these with the 'C'
+; that follows. IBM key positions, per KERNEL.md.
+KEY_LCTRL       = KEY_SPECIAL | 58
+KEY_RCTRL       = KEY_SPECIAL | 64
+
 ; VERA registers (bank 0 I/O page), for direct text-matrix reads
 VERA_ADDR_L     = $009F20
 VERA_ADDR_M     = $009F21

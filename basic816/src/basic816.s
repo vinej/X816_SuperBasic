@@ -75,6 +75,16 @@ START       CLC                 ; Go to native mode
             setaxl
             CALL INITBASIC
 
+.if SYSTEM == SYSTEM_X816
+            ; K_EXEC hands over with interrupts masked and the shell never
+            ; re-enables them. This has to sit outside every PHP/PLP pair
+            ; -- INITIO and INITBASIC both bracket themselves, so a CLI
+            ; inside either is restored away before it takes effect. With
+            ; IRQs masked the kernel's VSYNC handler never runs and the
+            ; console has no cursor at all.
+            CLI
+.endif
+
             LDA #STACK_END      ; Set the system stack
             TCS
 

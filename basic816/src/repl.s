@@ -147,7 +147,14 @@ brun_text       .null "BRUN"            ; Expansion of the BRUN character
                 .pend
 
 ;
-; Print the READY prompt
+; Get ready for the next line the user types.
+;
+; SuperBasic prints no READY banner: entering a line simply leaves the
+; cursor at the start of the next line. The old prompt was
+; CR "READY" CR, and its LEADING CR was doing more work than it looked
+; -- it was the only thing guaranteeing a fresh line after output that
+; does not end in a newline, of which the error printer is one. So the
+; banner is replaced by a cursor-column check, not by nothing.
 ;
 PRREADY         .proc
                 PHB
@@ -155,15 +162,19 @@ PRREADY         .proc
 
                 CALL ENSURETEXT         ; Make sure we have text displayed
 
+.if SYSTEM == SYSTEM_X816
+                CALL ATCOL0             ; Newline only if one is needed
+.else
                 setdbr `MPROMPT         ; Print the prompt
                 LDX #<>MPROMPT
                 CALL PRINTS
+.endif
 
                 PLP
                 PLB
                 RETURN
 
-                .databank BASIC_BANK 
+                .databank BASIC_BANK
                 .pend
 
 ;
@@ -253,6 +264,10 @@ no_ready_loop   CALL READLINE       ; Read characters until the user presses RET
                 BRA ready_loop
                 .pend
 
+.if SYSTEM != SYSTEM_X816
+; The classic banner, kept for the targets that still print one.
+; SuperBasic on the X816 shows no prompt at all -- see PRREADY.
 .section data
 MPROMPT         .null 13,"READY",13
 .send
+.endif

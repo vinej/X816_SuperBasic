@@ -61,6 +61,45 @@ do_bs       LDA #CHAR_BS            ; Erasing backspace: BS, space, BS
             .pend
 
 ;
+; Put the cursor at the start of a line, emitting a newline only if it
+; is not already in column 0.
+;
+; SuperBasic shows no READY banner, so nothing is written between one
+; line and the next -- which only works if output reliably ends with a
+; newline, and it does not: the error printer leaves the cursor sitting
+; after "Syntax error". The old banner began with a CR and quietly
+; covered that. Without a check the next line is typed onto the tail of
+; the message and SCRCOPYLINE, which reads the row back from the text
+; matrix, hands the tokenizer "Syntax error   PRINT 10/4" -- so every
+; command after an error became an error itself.
+;
+; The console owns the cursor, so ask it rather than tracking a column
+; here that could drift from the kernel's.
+;
+ATCOL0      .proc
+            PHP
+            PHB
+            setaxl
+            PHA
+            PHX
+            PHY
+
+            JSL KERN_CON_GETXY      ; C = column, X = row
+            AND #$00FF
+            BEQ done                ; Already at the left margin
+
+            CALL PRINTCR
+
+done        setaxl
+            PLY
+            PLX
+            PLA
+            PLB
+            PLP
+            RETURN
+            .pend
+
+;
 ; UART output: the X816 has no serial port. The BCONSOLE device mask
 ; never enables DEV_UART on this platform, but bios.s still assembles a
 ; call site, so provide a no-op.

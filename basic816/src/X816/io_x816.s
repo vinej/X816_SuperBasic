@@ -34,9 +34,19 @@ KEYFLAG         .byte ?
 ;
 ; Initialize the I/O system.
 ;
-; K_EXEC hands over in native mode with M=0/X=0 but with interrupts
-; masked (the shell never re-enables them) — the CLI here is what makes
-; the kernel's keyboard queue and cursor blink run at all.
+; NOTE: interrupts are NOT unmasked here, though it is the obvious place
+; and a CLI did live here. It could not work: this routine brackets
+; itself in PHP/PLP, and so does its caller INITBASIC, so both PLPs
+; restore the masked I flag that K_EXEC handed over and the CLI is
+; undone before anything can observe it. The result was a console with
+; no cursor — the blink is a VSYNC handler (X816_Calypsi ccursor.s in
+; KIRQ_VSYNC), so a masked I flag switches it off permanently. Typing
+; still worked throughout, because con_getkey polls the SMC over I2C
+; rather than being fed by an interrupt, which is what made the symptom
+; look like a cursor problem rather than an interrupt one.
+;
+; The CLI is in START (basic816.s) instead, outside every PHP/PLP pair,
+; which is where PORT.md §3's entry sequence always said it belonged.
 ;
 INITIO      .proc
             PHP
@@ -48,11 +58,13 @@ INITIO      .proc
             LDA #TEXT_ROWS          ; Pagination limit for the 80x60 console
             STA @lLINES_VISIBLE
 
+            LDA #0                  ; No Ctrl seen yet: FK_TESTBREAK would
+            STA @lCTRL_DOWN         ;  otherwise read uninitialised RAM as a
+                                    ;  held Ctrl and break on the first key
+
             setal
             LDA #$2A55              ; Seed the software PRNG (any nonzero)
             STA @lRNDSEED
-
-            CLI                     ; Interrupts on (masked at handover)
 
             PLP
             RETURN

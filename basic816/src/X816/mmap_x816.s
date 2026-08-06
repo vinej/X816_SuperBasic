@@ -57,6 +57,12 @@ BASIC_BANK = $00            ; Default data bank (kernel convention: DBR=0)
 ; FP_T $4B18-$4B19 (floats_x816.s).
 CURCOLOR = $004B1A          ; 1 byte
 
+; Set when the last key event was Ctrl, so FK_TESTBREAK can recognise the
+; 'C' that follows as a break. Lives here rather than in the direct page
+; because FK_TESTBREAK is reached by JSL from anywhere and reads it with
+; long addressing.
+CTRL_DOWN = $004B1B         ; 1 byte
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

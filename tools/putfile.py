@@ -14,6 +14,12 @@ def main(argv):
         print(__doc__.strip())
         return 2
     img, src, dest = argv[1], argv[2], argv[3]
+    # Callers pass a bare name ("BASIC.BIN"). A leading slash would be
+    # rewritten by MSYS argument conversion into a Windows path before
+    # python ever saw it -- "/BASIC.BIN" arrived as "C:/kick/Git/BASIC.BIN"
+    # and the file landed at "/C:/kick/Git/BASIC.BIN" inside the image,
+    # which the guest then could not find.
+    dest = "/" + dest.lstrip("/")
     try:
         from pyfatfs.PyFatFS import PyFatFS
     except ImportError:

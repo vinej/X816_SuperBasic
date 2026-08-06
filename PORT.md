@@ -159,11 +159,29 @@ Encoding and behavioral facts that shape `io_x816.s`:
   key (arrows, F-keys) by IBM key position; `$0000` = none. First pass: mask
   `#$FF00` and ignore specials (DurexForth's `kern_getin`); later, map arrows
   for line editing.
-- **Break (Ctrl-C):** Phase 1 = poll `K_CON_GETKEY` for `$03` in the
-  interpreter loop's break check. Later option: the physical break key via
+- **Break (Ctrl-C): there is no `$03` to poll for.** This bullet used to
+  say "poll `K_CON_GETKEY` for `$03`"; that was wrong and the code written
+  from it could never fire. `con_getkey` folds **Shift** into the character
+  it returns, but Ctrl, Alt, GUI and Caps Lock are passed through as key
+  events in their own right — *"making Ctrl-C a character is a design step,
+  not a mapping one"* (`X816_Calypsi/runtime/console.h`). Holding Ctrl and
+  pressing C therefore arrives as two polls: `$013A` (`KEY_SPECIAL|58`),
+  then `'c'`. `FK_TESTBREAK` latches the first and lets the next key decide.
+  Note `con_getkey` discards every key-up except Shift's, so Ctrl's release
+  is never seen and the latch is spent by whatever key follows.
+  Later option: the physical break key via
   `K_IRQ_SET` slot `KIRQ_NMI` (8) with a pending flag, as DurexForth does
   (`asm/x816.asm:108-129`) — the poll misses keys pressed while blocked
   inside a kernel key wait.
+- **Interrupts arrive masked and nothing else turns them on.** `K_EXEC`
+  hands over with I set and the shell never clears it, so the `CLI` in
+  §3's entry sequence is load-bearing: without it the kernel's VSYNC
+  handler never runs and **the console has no cursor at all**. It must sit
+  outside every `PHP`/`PLP` pair — a `CLI` inside `INITIO` is undone by
+  that routine's own `PLP`, and again by `INITBASIC`'s. Keyboard input is
+  *not* affected, because `con_getkey` polls the SMC over I2C rather than
+  being fed by an interrupt; that mismatch is what makes the symptom look
+  like a cursor bug rather than an interrupt one.
 - **Width discipline** (from `x816kernel.asm`'s header, worth copying
   verbatim): one crossing point, not ninety — enter `rep #$30` before `jsl`,
   restore the interpreter's width on *every* path including errors; never use

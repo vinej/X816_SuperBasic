@@ -7,7 +7,11 @@
 # travels the real SMC path (-autokeys). The checks:
 #
 #   1. the greeting banner prints    - SCREEN_PUTC crossing works at all
-#   2. READY appears                 - the REPL reached its prompt
+#   2. no READY banner anywhere      - SuperBasic prints none: entering a
+#                                      line leaves the cursor at the start
+#                                      of the next line and nothing else.
+#                                      Asserted as an ABSENCE, so the check
+#                                      fails if the prompt ever returns.
 #   3. `PRINT 1` answers `1`         - tokenizer, interpreter, ITOS and
 #                                      the software divide (DIVINT10)
 #   4. `XYZZY` answers `Syntax error`- the error path
@@ -141,8 +145,8 @@ if negative:
 
 if not banner:
     fail("no greeting banner -- BASIC.BIN did not run or SCREEN_PUTC is broken")
-if not any("READY" in r for r in rows):
-    fail("no READY prompt")
+if any("READY" in r for r in rows):
+    fail("a READY banner was printed -- SuperBasic prints no prompt")
 if not any(r.strip() == "1" for r in rows):
     fail("`PRINT 1` did not answer 1")
 if not any("Syntax error" in r for r in rows):
