@@ -18,18 +18,23 @@ the largest single piece of the port.
     16-bit xorshift seeded at startup. The argument is evaluated and
     ignored, as it was on the C256.
 [x] VAL STR$ HEX$ DEC PARSEINT - conversion between text and number.
-[ ] SIN COS TAN - throw. Reserved and stubbed.
+[x] SIN COS TAN - real. Five Horner terms on [-pi/4, pi/4]; the whole
+    circle folds into that range by subtracting multiples of pi/2 and
+    remembering how many. Worst error against double precision is under
+    1e-7, well inside the six digits PRINT shows. TAN is sin/cos, so
+    TAN(pi/2) reports division by zero rather than an infinity.
 [ ] ASIN ACOS ATAN - throw.
 [ ] LN EXP - throw. "^" with a float exponent depends on these.
 [x] SQR - square root. Newton-Raphson over the software float ops,
     seeded by halving the exponent field, four iterations. A negative
     operand is a domain error rather than a NaN.
 
-SQR is the exception among the transcendentals, and it is real: it
-needs no polynomial evaluator, only the four arithmetic primitives that
-were already tested.
+SQR came first because it needs no polynomial at all -- Newton-Raphson
+over the four arithmetic primitives. SIN, COS and TAN followed, and they
+did need one.
 
-The rest are stubbed rather than ported on purpose. The C256
+LN, EXP and the inverse trigonometry are stubbed rather than ported on
+purpose. The C256
 versions are not built on the arithmetic primitives - they contain about
 ninety direct accesses to the FP coprocessor's registers. On this machine
 those addresses are plain SDRAM, so running that code would read whatever

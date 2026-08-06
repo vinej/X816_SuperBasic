@@ -89,6 +89,14 @@ COPY_HS   = $004B78         ; word - source handle, 0 = closed
 COPY_HD   = $004B7A         ; word - destination handle, 0 = closed
 COPY_N    = $004B7C         ; word - bytes in the chunk being moved
 
+; Working values for the trigonometric range reduction.
+FP_TX     = $004B80         ; dword - the original argument
+FP_TR     = $004B84         ; dword - the reduced argument, in [-pi/4, pi/4]
+FP_TU     = $004B88         ; dword - r*r, what the polynomials are in
+FP_TS     = $004B8C         ; dword - TAN's numerator
+FP_TC     = $004B90         ; dword - TAN's denominator
+FP_TQ     = $004B94         ; word  - quadrant, 0-3
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

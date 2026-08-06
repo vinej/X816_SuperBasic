@@ -95,6 +95,8 @@ KEYS_A=$(keys_of \
     'PRINT 2^10' \
     'PRINT 1/0' \
     'PRINT SQR(2)' \
+    'PRINT SIN(1)' \
+    'PRINT COS(10)' \
     '10 PRINT 1.5' \
     'RUN')
 
@@ -241,6 +243,15 @@ if not any("Division by zero" in r for r in rows_a):
 # iteration as well as an outright break.
 if not any("1.41421" in r for r in rows_a):
     fail("`PRINT SQR(2)` did not answer 1.41421")
+# SIN and COS: five Horner terms on [-pi/4, pi/4], with the whole circle
+# folded into that range by subtracting multiples of pi/2. COS(10) is
+# the one that matters -- ten radians is past three quadrants, so it
+# checks the reduction and the quadrant sign, not just the polynomial.
+if not any("8.41470E-01" in r for r in rows_a):
+    fail("`PRINT SIN(1)` did not answer 8.41470E-01")
+if not any("-8.39071E-01" in r for r in rows_a):
+    fail("`PRINT COS(10)` did not answer -8.39071E-01 -- the range "
+         "reduction or the quadrant sign is wrong")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 
