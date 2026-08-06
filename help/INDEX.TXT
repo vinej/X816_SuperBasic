@@ -9,7 +9,8 @@ which is also where nearly all the unfinished work is.
 
  CONSOLE     text screen and colour   PRINT CLS LOCATE TEXTCOLOR
  KEYBOARD    keys, and the break key  INKEY GET INPUT
- JOYSTICK    SNES pads on VIA #1      JOY JOYB
+ JOYSTICK    SNES pads on VIA #1      JOY JOYHIT JOYSCAN
+ MOUSE       pointer via the SMC      MOUSE MX MY MB MWHEEL
  GRAPHIC     bitmap drawing           GRAPHICS PLOT LINE RECT FILL
  SPRITE      VERA sprites             SPRITE SPRITEAT SPRITESHOW
  TILE        tilemaps and layers      TILESET TILEMAP TILEAT

@@ -1,0 +1,45 @@
+=== MOUSE - the pointing device ===
+
+The mouse is real hardware on this machine and has been for a while: the
+SMC serves mouse packets and the CPU reads them over the I2C bus on VIA
+#1 (X816_core rtl/smc_x16.sv). It is not a KERNAL call, there is no ROM
+involved, and durexForth already drives it - so nothing below is
+speculative about the hardware, only about SuperBasic.
+
+None of it is bound yet.
+
+[ ] MOUSE on - switch the mouse on, zero the position, and ask the SMC
+    for a wheel-capable device. MOUSE 0 switches it off.
+[ ] MX - pointer column, clamped to 0-639.
+[ ] MY - pointer row, clamped to 0-479. Y counts DOWN the screen, which
+    is the PS/2 delta negated - a mouse pushed forward gives a smaller
+    MY, not a larger one.
+[ ] MB - buttons. Bit 0 left, bit 1 right, bit 2 middle.
+[ ] MWHEEL - signed wheel movement since the last read. Reading CLEARS
+    the accumulator, so two reads in a row give the second one nothing.
+    Read it once per pass and keep the value.
+
+There is no pointer on screen. The X16's KERNAL drew one with a hardware
+sprite; nothing here does, so the arrow is yours to draw and move - which
+is better than a pointer you cannot get out of your own way. A sprite is
+the cheap way, HELP SPRITE, and it also means the pointer can be anything
+you like.
+
+What the SMC actually offers, for whoever writes this: command $21 reads
+a four-byte movement packet (status, DX, DY, wheel) or zero when nothing
+is pending; $22 reports the device ID, $03 for an Intellimouse with a
+wheel; $20 requests a device ID; $42 is the same read as $21 but NACKs
+instead of returning zero when the queue is empty. Deltas are signed and
+relative, so MX and MY are an accumulator SuperBasic must keep itself -
+the hardware has no notion of where the pointer is.
+
+Each of MX, MY, MB and MWHEEL polling the SMC separately means four I2C
+transfers to read the state once. That is fine at human speed and
+wasteful in a loop; a single MOUSEPOLL that updates all four at once
+would be the better shape if this turns out to matter.
+
+THE MOUSE AND THE PADS SHARE ONE PORT. Both live on VIA #1 port A, and
+the keyboard's I2C runs on PA0/PA1 of that same port. A joystick scan
+must read-modify-write the direction register and leave those two pins
+exactly as it found them, or it corrupts an I2C transfer in flight and
+the mouse breaks from what looks like a mile away. HELP JOYSTICK.

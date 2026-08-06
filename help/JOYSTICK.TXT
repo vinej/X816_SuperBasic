@@ -1,27 +1,43 @@
 === JOYSTICK - game controllers ===
 
-SNES pads, wired to VIA #1 at $9F00-$9F0F. The same VIA carries the I2C
-link to the SMC, so the keyboard and the pads share a chip - reading one
-must not disturb the other.
+SNES pads, wired as a shift register on VIA #1 port A at $9F00-$9F0F.
+The core carries snes_pad (X816_core rtl/x16_periph.sv), fed from the
+MiSTer joystick input, so the hardware is there and answering -
+durexForth reads it today. SuperBasic has no keyword for it yet.
 
-There is nothing here yet: no keyword, no kernel call, no code.
+[ ] JOY(n) - read pad n, 1 to 4, as a button bitmap. Pad 0 on the X16 was
+    the keyboard pretending to be a joystick; there is nothing behind it
+    here, so it reads 0.
+[ ] JOYHIT(n) - true when a pad actually answered the scan. An absent pad
+    reads the same as a present pad with nothing pressed, so this is the
+    only way to tell them apart. It works because an absent line floats
+    high and the pad's third byte comes back $FF instead of $00.
+[ ] JOYSCAN - sample all four pads in one pass, for when you want a
+    consistent snapshot rather than four separate reads.
 
-[ ] JOY(n) - read pad n as a direction and a button mask, the classic
-    single-number form a beginner can use in one IF.
-[ ] JOYB(n) - the full button bitmap: B, Y, Select, Start, up, down,
-    left, right, A, X, L, R for a SNES pad.
-[ ] JOYCOUNT - how many pads are plugged in.
+Buttons want to come back ACTIVE HIGH - a pressed button is a 1 - which
+is the other way up from the wire. The layout durexForth settled on, and
+the one to match:
 
-Two notes for whoever writes it. There is no kernel call for the pads,
-so this is direct VIA work and the shift-register protocol has to be
-right - see the core's RTL and X816_core/doc/HARDWARE.md rather than an
-X16 source, because the wiring is this machine's.
+    bit 0 RIGHT     bit 4 START     bit  8 R
+    bit 1 LEFT      bit 5 SELECT    bit  9 L
+    bit 2 DOWN      bit 6 Y         bit 10 X
+    bit 3 UP        bit 7 B         bit 11 A
 
-And NUMLOCK on the keyboard switches keyboard/joystick mapping while
-SCRLK switches which joystick - both handled below SuperBasic. A pad read
-that disagrees with what the keys are doing is probably that, not a bug
-in the read.
+For a beginner's BASIC, that bitmap is the wrong first thing to offer.
+Something like JOYX(n) and JOYY(n) returning -1, 0 or 1, and JOYFIRE(n)
+for the main button, is one line in a game loop where AND-ing bit masks
+is three. Both layers are worth having; the bitmap should not be the only
+one.
 
-Mouse: the SMC can carry one, but nothing in the kernel exposes it and
-there is no plan on this page yet. If it arrives it belongs here, as
-MOUSE / MX / MY / MB.
+THE PADS AND THE MOUSE SHARE ONE PORT, and this is the trap on this page.
+The keyboard's I2C to the SMC runs on PA0/PA1 of the same VIA #1 port A
+that the pads shift through. A scan must read-modify-write the direction
+register and put those two pins back exactly as it found them; get it
+wrong and an I2C transfer in flight is corrupted, which shows up as the
+mouse or the keyboard misbehaving rather than as a joystick bug.
+HELP MOUSE.
+
+NUMLOCK switches keyboard/joystick mapping and SCRLK switches which
+joystick, both handled below SuperBasic. A pad that disagrees with what
+the keys are doing is probably one of those, not a fault in the read.
