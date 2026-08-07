@@ -132,7 +132,10 @@ KEYS_B=$(keys_of \
     'LOAD "C.BAS"' \
     'RUN' \
     'DEL "B.BAS"' \
-    'DEL "C.BAS"' \
+    'DEL "C.BAS"')
+
+
+KEYS_C=$(keys_of \
     'VPOKE &h10000,90' \
     'PRINT VPEEK(&h10000)' \
     'BORDER 0' \
@@ -143,7 +146,10 @@ KEYS_B=$(keys_of \
     'SPRITEAT 0,100,50' \
     'SPRITESIZE 0,2,2' \
     'SPRITE 0,0' \
-    'PRINT VPEEK(&h1FC02)')
+    'PRINT VPEEK(&h1FC02)' \
+    'TILEAT 70,50,65,7' \
+    'TILEAT 70,50,65,7' \
+    'PRINT VPEEK(&h328C)')
 
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
@@ -164,18 +170,20 @@ run_session () {        # $1 = tag, $2 = key script
 run_session A "$KEYS_A" || { echo "session A produced no recording"; exit 1; }
 if [ "$NEG" = "0" ]; then
     run_session B "$KEYS_B" || { echo "session B produced no recording"; exit 1; }
+    run_session C "$KEYS_C" || { echo "session C produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
+    cp "$OUT/outA.gif" "$OUT/outC.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-gif_a, gif_b, fontinc = sys.argv[1], sys.argv[2], sys.argv[3]
-negative = sys.argv[4] == "1"
+gif_a, gif_b, gif_c, fontinc = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+negative = sys.argv[5] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -220,7 +228,8 @@ def last_screen(path):
 
 rows_a = last_screen(gif_a)
 rows_b = [] if negative else last_screen(gif_b)
-rows = rows_a + rows_b
+rows_c = [] if negative else last_screen(gif_c)
+rows = rows_a + rows_b + rows_c
 
 def fail(msg):
     print("FAIL:", msg)
@@ -345,30 +354,39 @@ if len([r for r in rows_b if r.startswith("B        BAS")]) != 1:
 if len([r for r in rows_b if r.startswith("C        BAS")]) != 1:
     fail("COPY did not produce exactly one C.BAS listing")
 
-# ---- session B, part two: the hardware -----------------------------------
+# ---- session C: the hardware ---------------------------------------------
+# Its own session because B outgrew the 60-row console and SCROLLED, which
+# moved the tile cell out from under the address the check reads back.
 # VRAM is not in the CPU address space; VPOKE/VPEEK go through the port at
 # $9F20. $10000 is chosen over something lower for two reasons: it
 # exercises bit 16 of the address, which sits alone in ADDR_H, and it is
 # clear of the tilemap and font, so the poke leaves no stray character on
 # screen for the decoder to read past.
-if not any(r.strip() == "90" for r in rows_b):
+if not any(r.strip() == "90" for r in rows_c):
     fail("VPOKE then VPEEK did not round-trip a byte through VRAM")
 # The palette is VRAM as well, at $1FA00, two bytes an entry. $0F00 is
 # pure red, so the second byte -- the red nibble -- reads back as 15.
-if not any(r.strip() == "15" for r in rows_b):
+if not any(r.strip() == "15" for r in rows_c):
     fail("PAL did not write a palette entry that VPEEK can read back")
 # So is the PSG, at $1F9C0. SOUND cannot be heard from here, but its
 # registers can be read: 440 Hz becomes 1181 ($049D) because the
 # register is Hz * 2^17 / 48828.125, so the low byte is 157. That checks
 # the frequency conversion, not merely that something was written.
-if not any(r.strip() == "157" for r in rows_b):
+if not any(r.strip() == "157" for r in rows_c):
     fail("SOUND did not convert 440 Hz to the PSG frequency register")
 # Sprite attributes are VRAM as well, eight bytes each from $1FC00.
 # SPRITE 0,0 leaves the sprite hidden on purpose: enabling one with
 # whatever happened to be in VRAM for its image draws junk across the
 # screen, which the glyph decoder then has to read past.
-if not any(r.strip() == "100" for r in rows_b):
+if not any(r.strip() == "100" for r in rows_c):
     fail("SPRITEAT did not write the sprite X position")
+# The console is itself a tilemap at VRAM $00000, two bytes a cell and
+# 128 cells to a row, so cell (70,50) is at 50*256 + 70*2 = $328C.
+# That corner of the screen is chosen because the character really does
+# appear there, and anywhere nearer the top would land in a row the
+# decoder has to read.
+if not any(r.strip() == "65" for r in rows_c):
+    fail("TILEAT did not write a cell of the console tilemap")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, and round-tripped programs through SAVE, LOAD, DIR,")

@@ -352,3 +352,128 @@ S_SPRITESIZE    .proc
                 PLP
                 RETURN
                 .pend
+
+;;;
+;;; Tilemap cells and layer visibility.
+;;;
+;;; The console IS a tilemap: layer 0, VRAM $00000, two bytes a cell,
+;;; 128 cells to a row. So a cell address is y*256 + x*2, which is a
+;;; shift and an add rather than a multiply.
+;;;
+;;; A cell is a screen code and a colour attribute, foreground in the
+;;; low nibble and background in the high one. Writing one is therefore
+;;; a way to place a character AND its colours in a single statement,
+;;; which PRINT cannot do.
+;;;
+;;; Two more keywords that have thrown an argument error since phase 1.
+;;;
+
+;
+; TILEAT x, y, code, attr -- write one cell of the console tilemap.
+;
+S_TILEAT        .proc
+                PHP
+                TRACE "S_TILEAT"
+                setaxl
+
+                CALL EVALEXPR               ; column
+                CALL ASS_ARG1_BYTE
+                setal
+                LDA ARGUMENT1
+                AND #$00FF
+                ASL A                       ; two bytes a cell
+                STA @l VID_A
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR               ; row
+                CALL ASS_ARG1_BYTE
+                setal
+                LDA ARGUMENT1
+                AND #$00FF
+                XBA                         ; times 256: a row is 128 cells
+                CLC
+                ADC @l VID_A
+                STA @l VID_A
+                LDA #0
+                STA @l VID_A+2              ; the map is at VRAM $00000
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR               ; screen code
+                CALL ASS_ARG1_BYTE
+                setal
+                LDA ARGUMENT1
+                STA @l VID_A+4
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR               ; colour attribute
+                CALL ASS_ARG1_BYTE
+
+                CALL VRAM_PORT
+                setas
+                LDA @l VID_A+4
+                STA @l VERA_DATA0
+                LDA ARGUMENT1
+                STA @l VERA_DATA0
+
+                PLP
+                RETURN
+                .pend
+
+;
+; TILESHOW layer, on -- switch a display layer on or off.
+;
+; Layer 0 is the console on this machine, not layer 1 as on the X16, so
+; TILESHOW 0,0 blanks the text screen. It comes back.
+;
+S_TILESHOW      .proc
+                PHP
+                TRACE "S_TILESHOW"
+                setaxl
+
+                CALL EVALEXPR               ; which layer
+                CALL ASS_ARG1_BYTE
+                setal
+                LDA ARGUMENT1
+                AND #$0001
+                BEQ tsh_layer0
+                LDA #$20                    ; bit 5: layer 1
+                BRA tsh_mask
+tsh_layer0      LDA #$10                    ; bit 4: layer 0
+tsh_mask        STA @l VID_A
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR               ; on or off
+                CALL ASS_ARG1_BYTE
+
+                setas
+                LDA #0
+                STA @l VERA_CTRL            ; DCSEL 0
+                LDA ARGUMENT1
+                BEQ tsh_off
+
+                LDA @l VERA_DC_VIDEO
+                ORA @l VID_A
+                STA @l VERA_DC_VIDEO
+                PLP
+                RETURN
+
+tsh_off         LDA @l VID_A
+                EOR #$FF
+                AND @l VERA_DC_VIDEO
+                STA @l VERA_DC_VIDEO
+
+                PLP
+                RETURN
+                .pend

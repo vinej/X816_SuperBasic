@@ -129,14 +129,6 @@ S_TILEMAP       .proc
                 THROW ERR_ARGUMENT
                 .pend
 
-S_TILESHOW      .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_TILEAT        .proc
-                THROW ERR_ARGUMENT
-                .pend
-
 S_MEMCOPY       .proc
                 THROW ERR_ARGUMENT
                 .pend

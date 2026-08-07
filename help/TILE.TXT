@@ -5,12 +5,24 @@ A tilemap cell is two bytes: a tile code and a colour attribute
 is itself a tilemap - layer 0, VRAM $00000, 128 cells to a row - so
 writing cells is also how you paint the text screen without PRINT.
 
-All four keywords refuse today; they addressed VICKY's tile engine.
+Two of the four keywords work now. They were written for VICKY's tile
+engine and threw an argument error from phase 1.
+
+TILEAT takes no layer number: it writes the console's map, which is the
+one that is on screen, so a cell written is a character seen. It gained
+an attribute argument instead -- placing a character AND its colours in
+one statement, which PRINT cannot do. The layered form comes back when
+TILEMAP can point a layer somewhere else.
 
 [ ] TILESET n,addr - point a layer at its tile graphics in VRAM.
 [ ] TILEMAP n,addr - point it at its map.
-[ ] TILESHOW n,on - enable or disable the layer.
-[ ] TILEAT n,x,y,code - write one cell.
+[x] TILESHOW n,on - enable or disable a display layer. Layer 0 is the
+    console here, not layer 1 as on the X16, so TILESHOW 0,0 blanks the
+    text screen. It comes back.
+[x] TILEAT x,y,code,attr - write one cell of the console map. Address
+    arithmetic is y*256 + x*2, because a row is 128 cells of two bytes.
+    Codes are CP437 and the tile index IS the character code, so
+    TILEAT 5,3,65,7 really does put a grey A at column 5 of row 3.
 [ ] TILEGET n,x,y - read a cell's tile code back.
 [ ] TILEATTR n,x,y,attr - write a cell's colour attribute.
 [ ] LAYERMODE n,cfg - the layer config byte: map size, 256-colour text,
