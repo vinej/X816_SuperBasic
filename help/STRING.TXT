@@ -26,8 +26,10 @@ trip up anyone typing in a listing from a book. Worth deciding
 deliberately: either change it to one-based and say so loudly, or keep it
 and make sure it is the first line of this page - which for now it is.
 
-Nothing below exists. These are the string functions a BASIC is expected
-to have and this one does not, in roughly the order they are missed:
+The three below with a tick are SuperBasic's, not BASIC816's. The rest
+are what a BASIC is still expected to have and this one has not, in
+roughly the order they are missed -- and three of those are not missing
+for want of code. See the note after the list.
 
 [x] INSTR(s$,find$) - position of a substring. ZERO-BASED, and -1 when
     absent, rather than the usual 1-based-with-0-for-absent: MID$ counts
