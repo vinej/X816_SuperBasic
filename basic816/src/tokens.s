@@ -1323,6 +1323,7 @@ TOKENS2
             DEFTOK "SCROLLX", TOK_TY_STMNT, 0, S_SCROLLX, 0
             DEFTOK "SCROLLY", TOK_TY_STMNT, 0, S_SCROLLY, 0
             DEFTOK "PAL", TOK_TY_STMNT, 0, S_PAL, 0
+            DEFTOK "SOUND", TOK_TY_STMNT, 0, S_SOUND, 0
 ; CURSORX and CURSORY are written (functions_x816.s) but NOT tokenized.
 ; They take no parentheses, and the minus-sign exception below compares
 ; against BASE ids: an extended token's sub-id could collide with an

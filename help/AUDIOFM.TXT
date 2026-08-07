@@ -7,7 +7,12 @@ This is the page that matters most for a beginner's BASIC. A child should
 be able to make a noise in one line, and none of the register poking in
 HELP AUDIOYM is that line.
 
-[ ] SOUND ch,note,len - play a note on a channel and move on.
+[x] SOUND voice,hz,volume - play a tone on one of VERA's 16 PSG voices.
+    Voice 0-15, frequency in Hz, volume 0-63, both channels, a 50% pulse.
+    It keeps sounding until silenced, so SOUND v,0,0 is how a note ends.
+    NOT the YM2151: the PSG is simpler, it is VRAM rather than registers
+    with a busy flag, and it was therefore the one that could be written
+    first. The FM voices below are still to come.
 [ ] FMINIT - reset the chip and load a default instrument on every voice,
     so that SOUND works before anything is configured.
 [ ] FMNOTE ch,note - key a note on. Notes as semitone numbers, with

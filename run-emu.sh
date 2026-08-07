@@ -105,11 +105,6 @@ KEYS_A=$(keys_of \
     'PRINT UCASE$("abc")' \
     'PRINT "["+TRIM$(" x ")+"]"' \
     'PRINT STRING$(5,"*")' \
-    'VPOKE &h10000,90' \
-    'PRINT VPEEK(&h10000)' \
-    'BORDER 0' \
-    'PAL 1,&h0F00' \
-    'PRINT VPEEK(&h1FA03)' \
     '10 PRINT 1.5' \
     '20 A=TIMER:WAIT 200:PRINT TIMER-A' \
     '30 B=FRAMES:VSYNC:PRINT FRAMES-B' \
@@ -137,7 +132,14 @@ KEYS_B=$(keys_of \
     'LOAD "C.BAS"' \
     'RUN' \
     'DEL "B.BAS"' \
-    'DEL "C.BAS"')
+    'DEL "C.BAS"' \
+    'VPOKE &h10000,90' \
+    'PRINT VPEEK(&h10000)' \
+    'BORDER 0' \
+    'PAL 1,&h0F00' \
+    'PRINT VPEEK(&h1FA03)' \
+    'SOUND 0,440,32' \
+    'PRINT VPEEK(&h1F9C0)')
 
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
@@ -298,18 +300,6 @@ if not any(r.strip() == "[x]" for r in rows_a):
 if not any(r.strip() == "*****" for r in rows_a):
     fail("`PRINT STRING$(5,\"*\")` did not answer ***** -- an extended "
          "token did not survive tokenizing, storing or dispatch")
-# VRAM is not in the CPU address space; VPOKE/VPEEK go through the port
-# at $9F20. $10000 is chosen over something lower for two reasons: it
-# exercises bit 16 of the address, which lives on its own in ADDR_H, and
-# it is clear of the tilemap and font, so the poke does not put a
-# stray character on the screen the decoder then has to read past.
-if not any(r.strip() == "90" for r in rows_a):
-    fail("VPOKE then VPEEK did not round-trip a byte through VRAM")
-# The palette is VRAM too, at $1FA00, two bytes an entry. $0F00 is pure
-# red, so the second byte -- the red nibble -- reads back as 15. This
-# also re-checks VPEEK above $10000, where bit 16 is in play.
-if not any(r.strip() == "15" for r in rows_a):
-    fail("PAL did not write a palette entry that VPEEK can read back")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 # WAIT and VSYNC, measured INSIDE a running program: typing a line at the
@@ -350,6 +340,25 @@ if len([r for r in rows_b if r.startswith("B        BAS")]) != 1:
     fail("RENAME did not produce exactly one B.BAS listing")
 if len([r for r in rows_b if r.startswith("C        BAS")]) != 1:
     fail("COPY did not produce exactly one C.BAS listing")
+
+# ---- session B, part two: the hardware -----------------------------------
+# VRAM is not in the CPU address space; VPOKE/VPEEK go through the port at
+# $9F20. $10000 is chosen over something lower for two reasons: it
+# exercises bit 16 of the address, which sits alone in ADDR_H, and it is
+# clear of the tilemap and font, so the poke leaves no stray character on
+# screen for the decoder to read past.
+if not any(r.strip() == "90" for r in rows_b):
+    fail("VPOKE then VPEEK did not round-trip a byte through VRAM")
+# The palette is VRAM as well, at $1FA00, two bytes an entry. $0F00 is
+# pure red, so the second byte -- the red nibble -- reads back as 15.
+if not any(r.strip() == "15" for r in rows_b):
+    fail("PAL did not write a palette entry that VPEEK can read back")
+# So is the PSG, at $1F9C0. SOUND cannot be heard from here, but its
+# registers can be read: 440 Hz becomes 1181 ($049D) because the
+# register is Hz * 2^17 / 48828.125, so the low byte is 157. That checks
+# the frequency conversion, not merely that something was written.
+if not any(r.strip() == "157" for r in rows_b):
+    fail("SOUND did not convert 440 Hz to the PSG frequency register")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, and round-tripped programs through SAVE, LOAD, DIR,")

@@ -583,3 +583,93 @@ S_PAL           .proc
                 PLP
                 RETURN
                 .pend
+
+;
+; SOUND voice, hz, volume -- play a tone on one of VERA's 16 PSG voices.
+;
+; The PSG is VRAM as well, at $1F9C0, four bytes a voice:
+;
+;   +0/+1  frequency, 16-bit
+;   +2     bit 7 right, bit 6 left, bits 0-5 volume (0-63)
+;   +3     bits 6-7 waveform, bits 0-5 pulse width
+;
+; The frequency register is not Hz. VERA steps a 17-bit phase by this
+; value at 48828.125 Hz, so the register is Hz * 2^17 / 48828.125, or
+; Hz * 2.68435456 -- and 440 Hz comes out as 1181. That multiply is done
+; with the float engine rather than a scaled integer: the code is
+; already there, already tested, and this is not a hot path.
+;
+; A voice keeps playing until it is silenced, so SOUND v,0,0 is how a
+; note ends. Waveform is pulse at 50%, which is the one that sounds like
+; something on every note; choosing others can come later.
+;
+S_SOUND         .proc
+                PHP
+                TRACE "S_SOUND"
+                setaxl
+
+                CALL EVALEXPR               ; Which voice, 0-15
+                CALL ASS_ARG1_BYTE
+                setal
+                LDA ARGUMENT1
+                AND #$000F
+                ASL A                       ; Four bytes a voice
+                ASL A
+                CLC
+                ADC #<>VERA_PSG
+                STA @l VID_A
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+
+                CALL EVALEXPR               ; Frequency, in Hz
+                CALL ASS_ARG1_INT
+                CALL ITOF
+                setal
+                LDA #<>FC_PSGHZ             ; * 2.68435456
+                STA ARGUMENT2
+                LDA #(FC_PSGHZ) >> 16
+                STA ARGUMENT2+2
+                setas
+                LDA #TYPE_FLOAT
+                STA ARGTYPE2
+                setal
+                CALL OP_FP_MUL
+                CALL FTOI
+                LDA ARGUMENT1
+                STA @l VID_A+4              ; keep the register value
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+
+                CALL EVALEXPR               ; Volume, 0-63
+                CALL ASS_ARG1_BYTE
+
+                setas
+                LDA #0
+                STA @l VERA_CTRL            ; Data port 0, DCSEL 0
+                LDA @l VID_A
+                STA @l VERA_ADDR_L
+                LDA @l VID_A+1
+                STA @l VERA_ADDR_M
+                LDA #$11                    ; Bit 16, auto-increment 1
+                STA @l VERA_ADDR_H
+
+                LDA @l VID_A+4              ; frequency, low then high
+                STA @l VERA_DATA0
+                LDA @l VID_A+5
+                STA @l VERA_DATA0
+                LDA ARGUMENT1               ; volume, both channels
+                AND #$3F
+                ORA #$C0
+                STA @l VERA_DATA0
+                LDA #$20                    ; pulse, 50% duty
+                STA @l VERA_DATA0
+
+                PLP
+                RETURN
+                .pend

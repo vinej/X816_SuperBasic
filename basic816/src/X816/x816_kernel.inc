@@ -121,3 +121,6 @@ VERA_L0_VSCR_H  = $009F33       ; low nibble only
 VERA_PALETTE    = $01FA00       ; 256 entries, 2 bytes each, $0RGB
 VERA_SPRATTR    = $01FC00       ; 128 sprites, 8 bytes each
 VERA_PSG        = $01F9C0       ; 16 voices, 4 bytes each
+
+; Hz -> PSG frequency register: 2^17 / 48828.125, as IEEE-754 single.
+FC_PSGHZ        = $402BCC77     ; 2.68435456
