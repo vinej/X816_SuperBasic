@@ -129,17 +129,16 @@ LISTBYTE    .proc
             CALL PRINTC         ; Is not a token, just print the byte
             BRA done            ; And return
 
+            ; An extended token is $FF followed by its sub-id, so the
+            ; record has to be found the same way the interpreter finds
+            ; it -- and INCBIP at the end has to step over both bytes.
 is_token    setal
-            AND #$007F          ; Compute the index of the token
-            ASL A               ; In the token table
-            ASL A
-            ASL A
-
-            CLC
-            ADC #<>TOKENS       ; Set INDEX to the address of the token
+            CALL TOKAT          ; The 16-bit token value
+            CALL GETTOKREC      ; X = the record, in whichever table
+            setal
+            TXA
             STA INDEX
             LDA #`TOKENS
-            ADC #0
             STA INDEX+2
 
 pr_default  setdbr `TOKENS
@@ -150,7 +149,7 @@ pr_default  setdbr `TOKENS
             CALL PRINTS
 
 done        setal
-            CALL INCBIP
+            CALL TOKSKIP        ; one byte, or two for an extended token
             PLB
             PLD
             PLP

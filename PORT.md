@@ -550,33 +550,54 @@ converter it names is documented broken and bypassed in production.
    (SDRAM) under `SYSTEM_X816`. Worth remembering for any other test or
    example that hardcodes a scratch address.
 
-## 12. The token table is full (2026-08-06)
+## 12. Two-byte tokens (2026-08-06)
 
-**This is the blocking constraint on everything `help/` still lists.** A
-token is a byte with bit 7 set, so the ids run `$80-$FF` and there are
-exactly 128. The X816 build now uses all of them: 117 upstream, four for
-`CD`/`PWD`/`MKDIR`/`RMDIR`, four for `TIMER`/`FRAMES`/`WAIT`/`VSYNC`, and
-the last three for `INSTR`/`UCASE$`/`TRIM$`. `LCASE$`, `STRING$` and
-`SPACE$` were written and taken back out for want of a slot.
+The token table filled up: a token is a byte with bit 7 set, so the ids
+run `$80-$FF` and there are exactly 128. The X816 build used all of them
+— 117 upstream, four for `CD`/`PWD`/`MKDIR`/`RMDIR`, four for the timing
+group, three for the first string functions — and `LCASE$`, `STRING$`
+and `SPACE$` were written and then cut for want of an id. Everything
+`help/` still lists wants keywords too, so this was the blocking
+constraint on the whole feature plan rather than a nuisance.
 
-Sprites, tiles, the palette, three kinds of audio, the joystick, the
-mouse, the video and graphics statements — every one of them wants
-keywords, and there are none left. So the next substantial piece of work
-is not a feature: it is **a two-byte token scheme**. Reserve one id as an
-escape whose successor selects from a second table, which buys 256 more.
-Everything that consumes a token id has to learn it:
+**`$FF` is now an escape.** In a tokenized line it means "the next byte
+selects from `TOKENS2`", which leaves 127 base ids and buys 128 more.
+Extended sub-ids also start at `$80`, deliberately: every place that
+only asks *"token, or character?"* by testing bit 7 keeps working
+untouched, because both bytes answer the same way.
 
-| Where | What |
-|---|---|
-| `tokens.s` | `TKFINDTOKEN` (emit two bytes), `TKWRITE`, `TOKTYPE`, `TOKEVAL`, `TOKPRECED`, `TOKARITY` |
-| `eval.s` | the `BIT #$80` test at :564, `EVAL_FUNC`, the operator dispatch |
-| `interpreter.s` | `EXECSTMT`'s token-type dispatch |
-| `statements.s` | the `BPL`/`AND #$80` tests around variable names |
-| `listing.s` | `LIST` has to detokenize a two-byte form |
+A **token value** is now 16 bits — `$00id` base, `$FFsub` extended.
+`TOKAT` builds one from the line and `TOKSKIP` steps over whichever it
+is. The change was far smaller than feared because `GETTOKREC` is the
+single place that maps an id to a record: teaching it about the second
+table left `TOKTYPE`, `TOKEVAL`, `TOKPRECED` and `TOKARITY` untouched.
+What did need changing: `TKMATCH` (parameterised over a table),
+`TKSEARCH` (new, tries both), `TKWRITE` (writes two bytes),
+`TKNEXTBIG` (**must walk both tables**, or a keyword whose length occurs
+only in the extended table is never even tried), and the five dispatch
+sites in `eval.s`, `interpreter.s` and `listing.s`.
 
-`tokens.s` carries a `.cerror` on the table size, so the 129th token
+Proven end to end: `VSYNC` was the 128th token and moved into `TOKENS2`
+to free `$FF`, so a real statement is reached through the escape; it
+tokenizes, `LIST` detokenizes it back, and `RUN` executes it.
+`LCASE$`/`STRING$`/`SPACE$` do the same for functions.
+
+**Two width bugs came out of this, and both are the trap in §4.** In
+`TOKAT`, `PHY` sat before `setaxl`, so it saved at the caller's index
+width and popped sixteen bits — unbalancing the stack for any caller in
+8-bit index mode. Worse, the `setal` needed to receive a 16-bit token
+value leaked past `TOKTYPE` into code that reads *byte* globals, so
+`LDA STATE` became a 16-bit read that picked up its neighbour. The
+symptom was absurdly far from the cause: after any error, every COMMAND
+(`LIST`, `RUN`, `NEW`) failed with a syntax error while statements went
+on working, because the byte next to `STATE` only changed once an error
+had been reported. **Set the width back before returning to code you did
+not write.**
+
+`tokens.s` carries a `.cerror` on each table, so filling either one
 fails the build with a plain message instead of "too large for a 8 bit
-unsigned integer", which is how this was found.
+unsigned integer", which is how the ceiling was found in the first
+place.
 
 ## 13. Open decisions (carried from the feasibility study)
 

@@ -40,34 +40,24 @@ for want of code. See the note after the list.
 [x] UCASE$(s$) - upper case. Only a-z move: CP437's accented letters are
     not a fixed distance from their capitals, so shifting them by 32
     would produce unrelated glyphs.
-[ ] LCASE$(s$) - written, and then taken back out. No token left. See
-    below.
+[x] LCASE$(s$) - lower case, same caveat about the accented letters.
 [x] TRIM$(s$) - strip leading and trailing spaces. INPUT hands back
     exactly what was typed, so comparing it usually wants this first.
     LTRIM$/RTRIM$ for the halves separately are not here.
-[ ] STRING$(n,c$) - n copies of a character, for rules and bar charts.
-    Written, and then taken back out. No token left.
-[ ] SPACE$(n) - n spaces. Same.
+[x] STRING$(n,c$) - n copies of a character, for rules and bar charts.
+    A negative count gives "" and an oversized one is clamped to 255.
+[x] SPACE$(n) - n spaces.
 [ ] REPLACE$(s$,old$,new$) - substitution.
 [ ] SPLIT / JOIN into a string array - parsing a line of input is the
     single most common thing a beginner's program does with text.
 [ ] BIN$(n) and its inverse - handy next to HEX$ when poking hardware
     bits, which on this machine is most of what HELP says to do.
 
-THE TOKEN TABLE IS FULL, and that is now the limit on this whole
-directory rather than anything about strings. A token is a byte with bit
-7 set, so there are exactly 128 of them and this build uses every one.
-LCASE$, STRING$ and SPACE$ were written, did not fit, and were removed
-again; they are in the history of src/superbasic.s.
-
-Everything still unticked across these pages -- sprites, sound,
-graphics, the palette, the joystick -- wants keywords too, so the next
-real piece of work is a two-byte token scheme: reserve one id as an
-escape and let its successor select from a second table. Every consumer
-of a token id has to learn it (TOKTYPE, TOKEVAL, TOKPRECED, TOKARITY,
-the "is it a token" tests, and LIST). tokens.s now fails the build with
-a clear message rather than an arithmetic overflow when the 129th
-arrives.
+The token table filled up while these were being written, and LCASE$,
+STRING$ and SPACE$ were cut for want of an id. They are back: tokens are
+now TWO BYTES when they need to be, so there is room again. See PORT.md
+section 12 -- the escape is $FF, and these three are among the first
+tokens to live behind it.
 
 A note on memory. Building strings in a loop allocates, and the heap is
 in banks $02-$04 with the program text (HELP MEMORY). Long loops of

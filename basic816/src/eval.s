@@ -518,11 +518,8 @@ EVAL_FUNC   .proc
             PHP
             TRACE "EVAL_FUNC"
 
-            setas
-            LDA [BIP]           ; Get the token
-
             setal
-            AND #$00FF
+            CALL TOKAT          ; Get the token, one byte or two
             CALL TOKEVAL        ; Get the subroutine to evaluate the function
             STA JMP16PTR
 
@@ -536,7 +533,7 @@ EVAL_FUNC   .proc
             PLP
             RETURN
 
-OPSTUB      CALL INCBIP         ; Skip past the token
+OPSTUB      CALL TOKSKIP        ; Skip past the token, however wide
             JMP (JMP16PTR)      ; Annoying JMP to get around the fact we don't have an indirect JSR
             .pend
 
@@ -665,7 +662,12 @@ is_token    CMP #TOK_LPAREN     ; Is it an LPAREN
             CMP #TOK_RPAREN     ; Is it an RPAREN?
             BEQ is_rparen       ; Yes: handle the RPAREN
 
+            setal
+            CALL TOKAT          ; Get the token, one byte or two
             CALL TOKTYPE        ; Get the token type
+            setas               ; Back to byte width: chk_op below re-reads
+                                ;  the token with LDA [BIP], which must be
+                                ;  one byte
             CMP #TOK_TY_FUNC    ; Is it a function?
             BNE chk_op          ; No: check if it's an operator
 
@@ -695,7 +697,8 @@ is_digit    setal
             CALL PARSENUM       ; Try to evaluate the number
 got_number  LDX #<>ARGUMENT1
             CALL PHARGUMENT     ; And push it to the argument stack
-            BRA get_char
+            BRL get_char        ; (long: the two-byte token fetch above
+                                ;  pushed this out of BRA range)
 
             ; Process the top operator
 process1    CALL PROCESSOP      ; Process the operator at the top of the stack

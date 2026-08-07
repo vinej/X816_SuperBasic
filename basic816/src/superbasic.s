@@ -310,3 +310,119 @@ in_return   setas
             PLP
             RETURN
             .pend
+
+;
+; LCASE$(s) -- lower case. The mirror of UCASE$, same caveat about the
+; accented letters.
+;
+FN_LCASE    .proc
+            FN_START "FN_LCASE"
+            PHP
+            setaxl
+
+            CALL SB_ARGSTR
+            CALL TEMPSTRING
+
+            setxl
+            setas
+            LDY #0
+lc_loop     CPY #SB_MAXSTR
+            BEQ lc_done
+            LDA [ARGUMENT1],Y
+            BEQ lc_done
+            CMP #'A'
+            BLT lc_store
+            CMP #'Z'+1
+            BGE lc_store
+            CLC
+            ADC #32
+lc_store    STA [STRPTR],Y
+            INY
+            BRA lc_loop
+
+lc_done     CALL SB_RETSTR
+            FN_END
+            PLP
+            RETURN
+            .pend
+
+;
+; STRING$(n, c) -- n copies of the first character of c.
+; SPACE$(n)     -- n spaces, the common case of it.
+;
+FN_STRINGS  .proc
+            FN_START "FN_STRINGS"
+            PHP
+            setaxl
+
+            CALL SB_ARGINT              ; how many
+            setal
+            LDA ARGUMENT1
+            STA SB_I
+
+            CALL SB_COMMA
+            CALL SB_ARGSTR              ; of what
+            setas
+            LDA [ARGUMENT1]
+            STA SB_J
+
+            CALL SB_FILL
+
+            FN_END
+            PLP
+            RETURN
+            .pend
+
+FN_SPACES   .proc
+            FN_START "FN_SPACES"
+            PHP
+            setaxl
+
+            CALL SB_ARGINT
+            setal
+            LDA ARGUMENT1
+            STA SB_I
+            setas
+            LDA #' '
+            STA SB_J
+
+            CALL SB_FILL
+
+            FN_END
+            PLP
+            RETURN
+            .pend
+
+;
+; Build a string of SB_I copies of the character in SB_J.
+; A negative count gives an empty string and an oversized one is
+; clamped, rather than either being refused.
+;
+SB_FILL     .proc
+            PHP
+            setal
+            LDA SB_I
+            BPL sf_positive
+            LDA #0
+            STA SB_I
+sf_positive LDA SB_I
+            CMP #SB_MAXSTR+1
+            BLT sf_room
+            LDA #SB_MAXSTR
+            STA SB_I
+
+sf_room     CALL TEMPSTRING
+            setxl
+            setas
+            LDY #0
+sf_loop     CPY SB_I
+            BEQ sf_done
+            LDA SB_J
+            STA [STRPTR],Y
+            INY
+            BRA sf_loop
+
+sf_done     CALL SB_RETSTR
+            PLP
+            RETURN
+            .pend

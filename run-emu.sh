@@ -104,6 +104,7 @@ KEYS_A=$(keys_of \
     'PRINT INSTR("ABCDEFG","EF")' \
     'PRINT UCASE$("abc")' \
     'PRINT "["+TRIM$(" x ")+"]"' \
+    'PRINT STRING$(5,"*")' \
     '10 PRINT 1.5' \
     '20 A=TIMER:WAIT 200:PRINT TIMER-A' \
     '30 B=FRAMES:VSYNC:PRINT FRAMES-B' \
@@ -285,6 +286,13 @@ if not any(r.strip() == "ABC" for r in rows_a):
     fail("`PRINT UCASE$(\"abc\")` did not answer ABC")
 if not any(r.strip() == "[x]" for r in rows_a):
     fail("TRIM$ did not strip the spaces from \" x \"")
+# STRING$ lives in the EXTENDED token table, reached through the $FF
+# escape. It is here to prove the two-byte scheme end to end from the
+# tokenizer through execution -- VSYNC on line 30 proves the same for a
+# statement, and LIST proves the detokenizer.
+if not any(r.strip() == "*****" for r in rows_a):
+    fail("`PRINT STRING$(5,\"*\")` did not answer ***** -- an extended "
+         "token did not survive tokenizing, storing or dispatch")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 # WAIT and VSYNC, measured INSIDE a running program: typing a line at the
@@ -295,8 +303,12 @@ if not any("1.50000" in r for r in rows_a):
 if not any(r.strip().startswith("2.") and r.strip().endswith("E02")
            for r in rows_a):
     fail("`WAIT 200` did not take about 200 ms by the hardware clock")
-if not any(r.strip() == "1.00000" for r in rows_a):
-    fail("`VSYNC` did not advance the frame counter by exactly one")
+# One frame, or two: a frame boundary can fall between B=FRAMES and the
+# wait actually starting, and it does under -warp. What matters is that
+# VSYNC waited for a boundary at all rather than returning at once or
+# hanging, so accept either and reject everything else.
+if not any(r.strip() in ("1.00000", "2.00000") for r in rows_a):
+    fail("`VSYNC` did not advance the frame counter by one or two")
 
 # ---- session B: the card ------------------------------------------------
 # The exact match matters throughout: every typed line is echoed on

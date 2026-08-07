@@ -21,6 +21,31 @@ TOKEN_TEXT  .null \name
             .dstruct TOKEN,TOKEN_TEXT,len(\name),\type | \precedence,\evaluate,\arity
             .endm
 
+; ---------------------------------------------------------------------
+; TWO-BYTE TOKENS
+;
+; A token is a byte with bit 7 set, so there are 128 of them and the
+; base table filled up. $FF is now an ESCAPE: in a tokenized line it
+; means "the next byte selects from TOKENS2 instead". That leaves 127
+; base ids ($80-$FE) and buys 128 more.
+;
+; Extended sub-ids also start at $80, deliberately. Nothing then has to
+; care whether a byte it is scanning past is an id or a sub-id -- both
+; have bit 7 set -- so the many places that only ask "token, or
+; character?" keep working untouched.
+;
+; A token VALUE, as handed to GETTOKREC and its callers, is 16 bits:
+; $00id for a base token and $FFsub for an extended one. TOKAT builds
+; one from the line; TOKSKIP steps over whichever it is.
+; ---------------------------------------------------------------------
+TOK_EXTEND = $FF
+
+.section globals
+TKTAB       .dword ?        ; the table TKMATCH is currently searching
+TKEXT       .byte ?         ; non-zero once a match came from TOKENS2
+.send
+
+
 ;
 ; Token routines
 ;
@@ -385,7 +410,7 @@ chk_delim   TRACE "chk_delim"
 
             ; There is room for the token left in the string
 try_match   setas
-            CALL TKMATCH            ; Try to find the matching token
+            CALL TKSEARCH           ; Try both tables
             CMP #0                  ; Did we get one?
             BNE found               ; Yes: return it
 
@@ -400,6 +425,12 @@ go_next     setal
             BRA check_len           ; And try there
 
 found       TRACE_A "found"
+            PHA                     ; An extended token is never MINUS, and
+            LDA TKEXT               ;  its sub-id could collide with one
+            BEQ found_base
+            PLA
+            BRA done
+found_base  PLA
             CMP #TOK_MINUS          ; Found a token... is it minus?
             BNE done                ; Nope: go ahead and return it
 
@@ -436,6 +467,48 @@ done        TRACE "/TKFINDTOKEN"
             RETURN
 
 syntax      THROW ERR_SYNTAX        ; Throw a syntax error
+            .pend
+
+;
+; Look for the window's keyword in the base table and then, failing
+; that, in the extended one.
+;
+; Outputs:
+;   A = the id, or the SUB-id when TKEXT is set; 0 if there is no match
+;   TKEXT = 0 for a base token, 1 for an extended one
+;
+TKSEARCH    .proc
+            PHP
+            setas
+            STZ TKEXT
+
+            setal
+            LDA #<>TOKENS
+            STA TKTAB
+            LDA #`TOKENS
+            STA TKTAB+2
+            setas
+            CALL TKMATCH
+            CMP #0
+            BNE ts_done             ; Found in the base table
+
+            setal
+            LDA #<>TOKENS2
+            STA TKTAB
+            LDA #`TOKENS2
+            STA TKTAB+2
+            setas
+            CALL TKMATCH
+            CMP #0
+            BEQ ts_done             ; Not anywhere
+
+            PHA
+            LDA #1
+            STA TKEXT
+            PLA
+
+ts_done     PLP
+            RETURN
             .pend
 
 ;
@@ -495,10 +568,10 @@ check_prev  setas
 save_delim  STA SIGN1               ; SIGN1 := 1 if it is a variable name character
 
             setaxl
-            LDA #<>TOKENS           ; Set INDEX to point to the first token record
+            LDA TKTAB               ; Search whichever table TKSEARCH chose
             STA INDEX
             setas
-            LDA #`TOKENS
+            LDA TKTAB+2
             STA INDEX+2
 
             LDX #$80                ; Set the initial token ID
@@ -580,6 +653,12 @@ TKNEXTBIG   .proc
 
             STZ SCRATCH             ; Clear SCRATCH
 
+            ; Both tables have to be walked, or a keyword whose length
+            ; only occurs in the extended table would never be tried and
+            ; the token would simply never be recognised.
+            LDA #0
+            STA SCRATCH2            ; SCRATCH2 = which table we are on
+
 loop        setas
             LDY #TOKEN.length
             LDA [INDEX],Y           ; Get the length of the token
@@ -601,7 +680,18 @@ skip        setal                   ; Point INDEX to the next token record
 
             BRA loop                ; And go around for another pass
 
-done        setas                   ; Copy the length we found to CURTOKLEN
+done        setal                   ; First table finished: go round again
+            LDA SCRATCH2            ;  on the extended one
+            BNE tnb_finish
+            LDA #1
+            STA SCRATCH2
+            LDA #<>TOKENS2
+            STA INDEX
+            LDA #`TOKENS2
+            STA INDEX+2
+            BRA loop
+
+tnb_finish  setas                   ; Copy the length we found to CURTOKLEN
             LDA SCRATCH
             STA CURTOKLEN
 
@@ -629,20 +719,38 @@ TKWRITE     .proc
             setdp GLOBAL_VARS
 
             setas
-            STA [BIP]               ; Write the token to the line
+            setxs
+            LDX TKEXT               ; One byte, or two for an extended token
+            BEQ tw_base
 
-            setal                   ; Set INDEX to the address of the first byte to overwrite
-            CLC
+            LDY #1                  ; $FF then the sub-id
+            STA [BIP],Y
+            LDA #TOK_EXTEND
+            STA [BIP]
+            LDA #2
+            BRA tw_written
+
+tw_base     STA [BIP]               ; Write the token to the line
+            LDA #1
+
+tw_written  setal                   ; SCRATCH2 = bytes the token occupies.
+            AND #$00FF              ;  Clear the high byte: it was just an
+            STA SCRATCH2            ;  8-bit 1 or 2.
+
+            CLC                     ; INDEX = BIP + those bytes
             LDA BIP
-            ADC #1
+            ADC SCRATCH2
             STA INDEX
             LDA BIP+2
             ADC #0
             STA INDEX+2
 
             setxs
-            LDY CURTOKLEN           ; Y will be the number of characters to move down
-            DEY
+            setas
+            LDA CURTOKLEN           ; Characters to close up: the keyword
+            SEC                     ;  length, less what was written
+            SBC SCRATCH2
+            TAY
 
 copy_down   setas
             LDA [INDEX],Y           ; Get the byte to move down
@@ -674,19 +782,89 @@ done        PLD
 ; Outputs:
 ;   X = the bank relative address for the operator's token record
 ;
+; Inputs:
+;   A = a 16-bit token VALUE: $00id for a base token, $FFsub for an
+;       extended one. This is the single place that knows there are two
+;       tables, which is why TOKTYPE, TOKEVAL, TOKPRECED and TOKARITY
+;       needed no change at all.
+;
 GETTOKREC   .proc
             PHP
 
             setaxl
+            CMP #$FF00                  ; Extended?
+            BGE gtr_ext
+
             AND #$007F
             ASL A
             ASL A
             ASL A
-
             CLC
             ADC #<>TOKENS
-            TAX                         ; X is now the data bank relative address of the token record
+            TAX                         ; X is the data-bank relative address
+            PLP
+            RETURN
 
+gtr_ext     AND #$007F
+            ASL A
+            ASL A
+            ASL A
+            CLC
+            ADC #<>TOKENS2
+            TAX
+            PLP
+            RETURN
+            .pend
+
+;
+; Read the token at BIP as a 16-bit token value.
+;
+; Callers must be in 16-bit A: the value does not fit in eight bits, and
+; that is the whole point of it.
+;
+; Outputs:
+;   A = $00id, or $FFsub for an extended token
+;
+TOKAT       .proc
+            PHP
+            setaxl                      ; WIDTH FIRST, then the push. The
+            PHY                         ;  other way round PHY saves at the
+                                        ;  caller's index width and the PLY
+                                        ;  below pops sixteen bits, which
+                                        ;  unbalances the stack for every
+                                        ;  caller that was in 8-bit index
+                                        ;  mode -- EXECSTMT is one.
+            setas
+            LDA [BIP]
+            CMP #TOK_EXTEND
+            BEQ ta_ext
+            setal
+            AND #$00FF
+            BRA ta_done
+
+ta_ext      setxl
+            LDY #1
+            LDA [BIP],Y                 ; the sub-id
+            setal
+            AND #$00FF
+            ORA #$FF00
+
+ta_done     PLY
+            PLP
+            RETURN
+            .pend
+
+;
+; Step BIP over the token it points at, whichever kind it is.
+;
+TOKSKIP     .proc
+            PHP
+            setas
+            LDA [BIP]
+            CMP #TOK_EXTEND
+            BNE ts_single
+            CALL INCBIP
+ts_single   CALL INCBIP
             PLP
             RETURN
             .pend
@@ -1106,7 +1284,6 @@ TOK_TIMER = $80 + (* - TOKENS) / SIZE(TOKEN)
 TOK_FRAMES = $80 + (* - TOKENS) / SIZE(TOKEN)
             DEFTOK "FRAMES", TOK_TY_FUNC, 0, FN_FRAMES, 0
             DEFTOK "WAIT", TOK_TY_STMNT, 0, S_WAIT, 0
-            DEFTOK "VSYNC", TOK_TY_STMNT, 0, S_VSYNC, 0
 .endif
 
 ; A token is a byte with bit 7 set, so ids run $80-$FF and there are
@@ -1119,6 +1296,30 @@ TOK_FRAMES = $80 + (* - TOKENS) / SIZE(TOKEN)
 ;
 ; Fail here, plainly, rather than in whatever expression first computes
 ; an id above 255.
-.cerror (* - TOKENS) / SIZE(TOKEN) > 128, "Token table full: ids are $80-$FF, so 128 is the limit"
+; 127, not 128: $FF is TOK_EXTEND, the escape into the table below.
+.cerror (* - TOKENS) / SIZE(TOKEN) > 127, "Base token table full: $80-$FE is 127, and $FF is the escape"
+
+            .word 0, 0, 0, 0
+
+;
+; The extended table. Reached as $FF <sub-id>, sub-ids running from $80
+; exactly as the base ids do -- see the note by TOK_EXTEND.
+;
+; VSYNC was the 128th token and is here because something had to be:
+; freeing $FF for the escape cost one slot. It is also the proof that
+; the scheme carries a real statement and not just a spare id.
+;
+TOKENS2
+.if SYSTEM == SYSTEM_X816
+            DEFTOK "VSYNC", TOK_TY_STMNT, 0, S_VSYNC, 0
+.endif
+
+; The three string functions that would not fit before. Portable, like
+; the rest of the SuperBasic string layer.
+            DEFTOK "LCASE$", TOK_TY_FUNC, 0, FN_LCASE, 0
+            DEFTOK "STRING$", TOK_TY_FUNC, 0, FN_STRINGS, 0
+            DEFTOK "SPACE$", TOK_TY_FUNC, 0, FN_SPACES, 0
+
+.cerror (* - TOKENS2) / SIZE(TOKEN) > 128, "Extended token table full: sub-ids are $80-$FF"
 
             .word 0, 0, 0, 0

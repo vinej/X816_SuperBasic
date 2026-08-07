@@ -156,7 +156,11 @@ ON_ERROR    .proc
             CALL PR_INTEGER
             CALL PRINTCR
 
-skip_at
+skip_at     setdbr BASIC_BANK       ; The " at <line>" branch above restores
+                                    ;  this and the other one did not, so a
+                                    ;  direct-mode error returned to the REPL
+                                    ;  with DBR still pointing at ERRORMSG's
+                                    ;  bank.
 
 .if UNITTEST
 ERRLOCK     JMP ERRLOCK
@@ -629,7 +633,14 @@ else        CALL ISALPHA        ; Is it alphabetic?
 
             TRACE "CHECK TOKTYPE"
 
+            setal
+            CALL TOKAT          ; Get the token, one byte or two
             CALL TOKTYPE        ; Get the token type
+            setas               ; BACK TO BYTE WIDTH. Everything below reads
+                                ;  single-byte globals -- STATE in
+                                ;  particular -- and a 16-bit LDA STATE
+                                ;  picks up its neighbour, which made every
+                                ;  COMMAND fail after an unrelated error.
             STA SCRATCH         ; Save the type for later
 
             CMP #TOK_TY_STMNT   ; Is it a statement?
@@ -657,12 +668,13 @@ is_interact LDA SCRATCH         ; Get the token type
             BNE error           ; If not, it's an error
 
 ok_to_exec  TRACE "ok_to_exec"
-            LDA [BIP]           ; Get the original token again
+            setal
+            CALL TOKAT          ; Get the original token again
             CALL TOKEVAL        ; Get the execution vector for the statement or command
             setal
             STA JMP16PTR        ; Store it in the jump pointer
             CALL INITEVALSP     ; Initialize expression evaluation stack and arguments
-            CALL INCBIP
+            CALL TOKSKIP        ; Step over it, however wide
 
             CALL STSTUB         ; And call the subroutine to execute the statement or command
 
