@@ -528,3 +528,58 @@ S_SCROLLY       .proc
                 PLP
                 RETURN
                 .pend
+
+;
+; PAL index, rgb -- set one of VERA's 256 palette entries.
+;
+; The palette is not a register block: it is VRAM, at $1FA00, two bytes
+; an entry, little-endian. So this is a VPOKE in disguise, and the only
+; reason it deserves a keyword is that working the address out by hand
+; is exactly the sort of arithmetic a beginner's BASIC should absorb.
+;
+; The colour is 12-bit $0RGB. Entry 0 is the background.
+;
+; ADDR_H carries the auto-increment in its upper nibble; 1 there steps
+; the address after each write, so the two bytes go out back to back.
+;
+S_PAL           .proc
+                PHP
+                TRACE "S_PAL"
+                setaxl
+
+                CALL EVALEXPR               ; Which entry
+                CALL ASS_ARG1_BYTE
+                setal
+                LDA ARGUMENT1
+                AND #$00FF
+                ASL A                       ; Two bytes an entry
+                CLC
+                ADC #<>VERA_PALETTE
+                STA @l VID_A
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+
+                CALL EVALEXPR               ; The colour
+                CALL ASS_ARG1_INT
+
+                setas
+                LDA #0
+                STA @l VERA_CTRL            ; Data port 0, DCSEL 0
+                LDA @l VID_A
+                STA @l VERA_ADDR_L
+                LDA @l VID_A+1
+                STA @l VERA_ADDR_M
+                LDA #$11                    ; Bit 16 set, auto-increment 1
+                STA @l VERA_ADDR_H
+                LDA ARGUMENT1               ; Green and blue
+                STA @l VERA_DATA0
+                LDA ARGUMENT1+1             ; Red
+                AND #$0F
+                STA @l VERA_DATA0
+
+                PLP
+                RETURN
+                .pend

@@ -1,11 +1,14 @@
 === PAL - palettes ===
 
-Nothing here exists yet - there is no palette keyword in BASIC816 at all,
-so this page is entirely a plan. SETCOLOR is the one statement that
-would sit on top of it; it is reserved and refuses.
+VERA's palette is not a register block: it is VRAM, at $1FA00, two
+bytes an entry and little-endian. PAL is therefore a VPOKE in disguise,
+and the reason it earns a keyword is that working the address out by
+hand is exactly the arithmetic a beginner's BASIC should absorb. The
+rest of this page is still a plan; SETCOLOR, the BASIC816 spelling for
+the sixteen text colours, is reserved and still refuses.
 
-[ ] PAL index,rgb - set palette entry 0-255 to a 12-bit $RGB colour.
-    PAL 1,$0F00 makes colour 1 pure red.
+[x] PAL index,rgb - set palette entry 0-255 to a 12-bit $RGB colour.
+    PAL 1,&h0F00 makes colour 1 pure red.
 [ ] PALGET index - read an entry back. See the warning below.
 [ ] PALLOAD file$,start - load entries from a file, starting at an index.
 [ ] PALSAVE file$,start,count - save a RANGE, not all 256. See below.

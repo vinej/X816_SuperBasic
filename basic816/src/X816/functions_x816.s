@@ -248,3 +248,51 @@ FN_VPEEK    .proc
             PLP
             RETURN
             .pend
+
+;
+; CURSORX / CURSORY -- where the console cursor is.
+;
+; WRITTEN BUT NOT REACHABLE: they have no token. See the note in
+; tokens.s beside PAL -- a no-argument function needs a base id for the
+; minus-sign exception to be safe, and there are none left. Kept here
+; because the code is right and the day the minus rule asks for a token
+; TYPE instead of a number, they are two DEFTOKs away.
+;
+FN_CURSORX  .proc
+            TRACE "FN_CURSORX"
+            PHP
+            setaxl
+
+            JSL KERN_CON_GETXY          ; C = column, X = row
+            BCC curx_ok
+            LDA #0
+curx_ok     AND #$00FF
+            STA ARGUMENT1
+            STZ ARGUMENT1+2
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend
+
+FN_CURSORY  .proc
+            TRACE "FN_CURSORY"
+            PHP
+            setaxl
+
+            JSL KERN_CON_GETXY          ; the row comes back in X
+            BCC cury_ok
+            LDX #0
+cury_ok     TXA
+            AND #$00FF
+            STA ARGUMENT1
+            STZ ARGUMENT1+2
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend

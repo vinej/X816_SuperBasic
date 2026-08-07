@@ -1322,6 +1322,15 @@ TOKENS2
             DEFTOK "BORDER", TOK_TY_STMNT, 0, S_BORDER, 0
             DEFTOK "SCROLLX", TOK_TY_STMNT, 0, S_SCROLLX, 0
             DEFTOK "SCROLLY", TOK_TY_STMNT, 0, S_SCROLLY, 0
+            DEFTOK "PAL", TOK_TY_STMNT, 0, S_PAL, 0
+; CURSORX and CURSORY are written (functions_x816.s) but NOT tokenized.
+; They take no parentheses, and the minus-sign exception below compares
+; against BASE ids: an extended token's sub-id could collide with an
+; unrelated base one, so "LOCATE CURSORX-1,CURSORY" could misparse in a
+; way that depends on which ids happen to line up. A no-argument
+; function needs either a base id -- and there are none -- or a minus
+; rule that asks the token's TYPE rather than its number. The latter is
+; the right fix and is not five minutes' work.
 .endif
 
 ; The three string functions that would not fit before. Portable, like

@@ -108,6 +108,8 @@ KEYS_A=$(keys_of \
     'VPOKE &h10000,90' \
     'PRINT VPEEK(&h10000)' \
     'BORDER 0' \
+    'PAL 1,&h0F00' \
+    'PRINT VPEEK(&h1FA03)' \
     '10 PRINT 1.5' \
     '20 A=TIMER:WAIT 200:PRINT TIMER-A' \
     '30 B=FRAMES:VSYNC:PRINT FRAMES-B' \
@@ -303,6 +305,11 @@ if not any(r.strip() == "*****" for r in rows_a):
 # stray character on the screen the decoder then has to read past.
 if not any(r.strip() == "90" for r in rows_a):
     fail("VPOKE then VPEEK did not round-trip a byte through VRAM")
+# The palette is VRAM too, at $1FA00, two bytes an entry. $0F00 is pure
+# red, so the second byte -- the red nibble -- reads back as 15. This
+# also re-checks VPEEK above $10000, where bit 16 is in play.
+if not any(r.strip() == "15" for r in rows_a):
+    fail("PAL did not write a palette entry that VPEEK can read back")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 # WAIT and VSYNC, measured INSIDE a running program: typing a line at the
