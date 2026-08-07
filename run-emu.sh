@@ -139,7 +139,11 @@ KEYS_B=$(keys_of \
     'PAL 1,&h0F00' \
     'PRINT VPEEK(&h1FA03)' \
     'SOUND 0,440,32' \
-    'PRINT VPEEK(&h1F9C0)')
+    'PRINT VPEEK(&h1F9C0)' \
+    'SPRITEAT 0,100,50' \
+    'SPRITESIZE 0,2,2' \
+    'SPRITE 0,0' \
+    'PRINT VPEEK(&h1FC02)')
 
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
@@ -359,6 +363,12 @@ if not any(r.strip() == "15" for r in rows_b):
 # the frequency conversion, not merely that something was written.
 if not any(r.strip() == "157" for r in rows_b):
     fail("SOUND did not convert 440 Hz to the PSG frequency register")
+# Sprite attributes are VRAM as well, eight bytes each from $1FC00.
+# SPRITE 0,0 leaves the sprite hidden on purpose: enabling one with
+# whatever happened to be in VRAM for its image draws junk across the
+# screen, which the glyph decoder then has to read past.
+if not any(r.strip() == "100" for r in rows_b):
+    fail("SPRITEAT did not write the sprite X position")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, and round-tripped programs through SAVE, LOAD, DIR,")

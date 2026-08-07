@@ -121,18 +121,6 @@ S_FILL          .proc
                 THROW ERR_ARGUMENT
                 .pend
 
-S_SPRITE        .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_SPRITEAT      .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_SPRITESHOW    .proc
-                THROW ERR_ARGUMENT
-                .pend
-
 S_TILESET       .proc
                 THROW ERR_ARGUMENT
                 .pend
@@ -673,3 +661,5 @@ S_SOUND         .proc
                 PLP
                 RETURN
                 .pend
+
+.include "X816/sprites_x816.s"

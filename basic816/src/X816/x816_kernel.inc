@@ -110,6 +110,7 @@ VERA_CTRL       = $009F25       ; bit 0 = data port, bits 1-6 = DCSEL
 ; rather than assumed from the X16: the border is reg_composer[3] and
 ; the layer scroll is reg_layer[0][3..4], of which only the LOW NIBBLE
 ; of the high byte belongs to the scroll.
+VERA_DC_VIDEO   = $009F29       ; DCSEL 0: bit 4 layer0, 5 layer1, 6 sprites
 VERA_DC_BORDER  = $009F2C       ; needs DCSEL = 0
 VERA_L0_HSCR_L  = $009F30
 VERA_L0_HSCR_H  = $009F31       ; low nibble only

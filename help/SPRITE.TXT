@@ -4,18 +4,27 @@ VERA has 128 sprites. Their attributes live in VRAM at $1FC00, eight
 bytes each: image address, X, Y, collision/z-depth/flip, and two size
 codes. Sprite pixels are 4bpp or 8bpp elsewhere in VRAM.
 
-BASIC816 has three sprite keywords and all three refuse here - they were
-written for the C256's VICKY sprite registers, which this machine does
-not have. The names are reserved; the implementations are not written.
+BASIC816's three sprite keywords were written for the C256's VICKY and
+threw an argument error here from phase 1. They mean something now: the
+attributes are VRAM, so no register protocol was needed, only the data
+port that VPOKE already uses.
 
-[ ] SPRITE n,zdepth - set a sprite's depth and switch the layer on.
+Bytes +6 and +7 each pack several fields -- collision mask, z-depth and
+the flips in one, height, width and palette offset in the other -- so
+every statement here is a read-modify-write. Writing a whole byte would
+silently clear whatever else lived in it.
+
+[x] SPRITE n,zdepth - set a sprite's depth and switch the layer on.
     z 0=off, 1=behind the layers, 2=between them, 3=in front.
-[ ] SPRITEAT n,x,y - move a sprite. Positions are 12-bit and signed
-    enough to walk off every edge.
-[ ] SPRITESHOW n,on - show or hide one sprite without losing its setup.
-[ ] SPRITEIMAGE n,addr - point a sprite at its pixels in VRAM. 4bpp data
-    must be 32-byte aligned.
-[ ] SPRITESIZE n,w,h - size codes 0-3 = 8, 16, 32, 64 pixels.
+[x] SPRITEAT n,x,y - move a sprite. Ten bits each, so 0-1023, which is
+    enough to walk off every edge of a 640x480 screen.
+[x] SPRITESHOW n,on - show or hide one sprite without losing its setup.
+    "Show" means z-depth 3, in front; a sprite that belongs behind a
+    layer should say so with SPRITE n,1 or n,2.
+[x] SPRITEIMG n,addr - point a sprite at its pixels in VRAM. The address
+    is stored shifted right five, so 4bpp images are 32-byte aligned.
+    Naming note: SPRITEIMG, not SPRITEIMAGE.
+[x] SPRITESIZE n,w,h - size codes 0-3 = 8, 16, 32, 64 pixels.
 [ ] SPRITEGET n,x,y - read a position back.
 [ ] SPRITELOAD n,file$ - load pixels straight into a sprite's image area.
 [ ] SPRITESAVE n,file$ - and back out again. Self-sizing: the two size

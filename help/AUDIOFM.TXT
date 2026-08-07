@@ -1,11 +1,14 @@
 === AUDIOFM - FM notes and instruments ===
 
 The playable layer over the YM2151: eight FM channels, addressed by note
-and instrument rather than by register. None of it is written.
+and instrument rather than by register. None of THAT is written.
 
-This is the page that matters most for a beginner's BASIC. A child should
-be able to make a noise in one line, and none of the register poking in
-HELP AUDIOYM is that line.
+What does work is SOUND, over VERA's PSG -- a different and much simpler
+sound chip, which happens to live in VRAM and so needed no register
+protocol at all. This page mattered most for a beginner's BASIC because
+a child should be able to make a noise in one line, and none of the
+register poking in HELP AUDIOYM is that line. SOUND is that line; the FM
+voices below would make it a good one.
 
 [x] SOUND voice,hz,volume - play a tone on one of VERA's 16 PSG voices.
     Voice 0-15, frequency in Hz, volume 0-63, both channels, a 50% pulse.
