@@ -1078,6 +1078,15 @@ TOK_RECT = $E7
 ; $F6
             DEFTOK "INKEY", TOK_TY_FUNC, 0, FN_INKEY, 0
 
+; The SuperBasic string layer (superbasic.s). Portable, so unguarded:
+; nothing in it touches hardware and any target gets it.
+;
+; Three of them, and they are THE LAST THREE TOKENS -- see the .cerror
+; at the end of the table.
+            DEFTOK "INSTR", TOK_TY_FUNC, 0, FN_INSTR, 0
+            DEFTOK "UCASE$", TOK_TY_FUNC, 0, FN_UCASE, 0
+            DEFTOK "TRIM$", TOK_TY_FUNC, 0, FN_TRIM, 0
+
 .if SYSTEM == SYSTEM_X816
 ; Directory navigation. New keywords rather than ports: the C256 kernel
 ; had no working directory, so BASIC816 never had tokens for these. They
@@ -1099,5 +1108,17 @@ TOK_FRAMES = $80 + (* - TOKENS) / SIZE(TOKEN)
             DEFTOK "WAIT", TOK_TY_STMNT, 0, S_WAIT, 0
             DEFTOK "VSYNC", TOK_TY_STMNT, 0, S_VSYNC, 0
 .endif
+
+; A token is a byte with bit 7 set, so ids run $80-$FF and there are
+; exactly 128 of them. This build now uses every one. Anything further --
+; and help/ still lists sprites, sound, graphics and the rest, all
+; wanting keywords -- needs a two-byte scheme: one id reserved as an
+; escape, whose successor selects from a second table. Every consumer of
+; an id would have to learn it: TOKTYPE, TOKEVAL, TOKPRECED, TOKARITY,
+; the "is it a token" tests in eval.s and statements.s, and LIST.
+;
+; Fail here, plainly, rather than in whatever expression first computes
+; an id above 255.
+.cerror (* - TOKENS) / SIZE(TOKEN) > 128, "Token table full: ids are $80-$FF, so 128 is the limit"
 
             .word 0, 0, 0, 0

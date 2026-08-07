@@ -29,21 +29,43 @@ and make sure it is the first line of this page - which for now it is.
 Nothing below exists. These are the string functions a BASIC is expected
 to have and this one does not, in roughly the order they are missed:
 
-[ ] INSTR(s$,find$[,start]) - position of a substring, 0 if absent. The
-    biggest gap: without it, searching a string means a FOR loop over
-    MID$, which is slow and awkward for the beginner this language is for.
-[ ] UCASE$(s$) / LCASE$(s$) - case conversion. Needed the moment you
-    compare anything a user typed.
-[ ] TRIM$(s$) - strip leading and trailing spaces, with LTRIM$/RTRIM$ if
-    the halves are wanted separately. INPUT hands back exactly what was
-    typed, spaces and all.
+[x] INSTR(s$,find$) - position of a substring. ZERO-BASED, and -1 when
+    absent, rather than the usual 1-based-with-0-for-absent: MID$ counts
+    from zero here, so INSTR has to as well or its result cannot be
+    handed straight to it. MID$(s$, INSTR(s$,f$), n) means what it looks
+    like. An empty needle is found at 0. A start offset is not accepted
+    yet.
+[x] UCASE$(s$) - upper case. Only a-z move: CP437's accented letters are
+    not a fixed distance from their capitals, so shifting them by 32
+    would produce unrelated glyphs.
+[ ] LCASE$(s$) - written, and then taken back out. No token left. See
+    below.
+[x] TRIM$(s$) - strip leading and trailing spaces. INPUT hands back
+    exactly what was typed, so comparing it usually wants this first.
+    LTRIM$/RTRIM$ for the halves separately are not here.
 [ ] STRING$(n,c$) - n copies of a character, for rules and bar charts.
-[ ] SPACE$(n) - n spaces; STRING$(n," ") with a friendlier name.
+    Written, and then taken back out. No token left.
+[ ] SPACE$(n) - n spaces. Same.
 [ ] REPLACE$(s$,old$,new$) - substitution.
 [ ] SPLIT / JOIN into a string array - parsing a line of input is the
     single most common thing a beginner's program does with text.
 [ ] BIN$(n) and its inverse - handy next to HEX$ when poking hardware
     bits, which on this machine is most of what HELP says to do.
+
+THE TOKEN TABLE IS FULL, and that is now the limit on this whole
+directory rather than anything about strings. A token is a byte with bit
+7 set, so there are exactly 128 of them and this build uses every one.
+LCASE$, STRING$ and SPACE$ were written, did not fit, and were removed
+again; they are in the history of src/superbasic.s.
+
+Everything still unticked across these pages -- sprites, sound,
+graphics, the palette, the joystick -- wants keywords too, so the next
+real piece of work is a two-byte token scheme: reserve one id as an
+escape and let its successor select from a second table. Every consumer
+of a token id has to learn it (TOKTYPE, TOKEVAL, TOKPRECED, TOKARITY,
+the "is it a token" tests, and LIST). tokens.s now fails the build with
+a clear message rather than an arithmetic overflow when the 129th
+arrives.
 
 A note on memory. Building strings in a loop allocates, and the heap is
 in banks $02-$04 with the program text (HELP MEMORY). Long loops of

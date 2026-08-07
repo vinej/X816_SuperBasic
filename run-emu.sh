@@ -101,6 +101,9 @@ KEYS_A=$(keys_of \
     'PRINT EXP(1)' \
     'PRINT ATAN(10)' \
     'PRINT 2^-1' \
+    'PRINT INSTR("ABCDEFG","EF")' \
+    'PRINT UCASE$("abc")' \
+    'PRINT "["+TRIM$(" x ")+"]"' \
     '10 PRINT 1.5' \
     '20 A=TIMER:WAIT 200:PRINT TIMER-A' \
     '30 B=FRAMES:VSYNC:PRINT FRAMES-B' \
@@ -273,6 +276,15 @@ if not any("1.47112" in r for r in rows_a):
 if not any("5.00000E-01" in r for r in rows_a):
     fail("`PRINT 2^-1` did not answer 5.00000E-01 -- a negative exponent "
          "must route through EXP(y*LN(x))")
+# The SuperBasic string layer. INSTR is ZERO-BASED so that its result
+# can be handed straight to MID$, which counts from zero on this BASIC;
+# "EF" sits at offset 4 of "ABCDEFG".
+if not any(r.strip() == "4" for r in rows_a):
+    fail("`PRINT INSTR(\"ABCDEFG\",\"EF\")` did not answer 4")
+if not any(r.strip() == "ABC" for r in rows_a):
+    fail("`PRINT UCASE$(\"abc\")` did not answer ABC")
+if not any(r.strip() == "[x]" for r in rows_a):
+    fail("TRIM$ did not strip the spaces from \" x \"")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 # WAIT and VSYNC, measured INSIDE a running program: typing a line at the

@@ -550,7 +550,35 @@ converter it names is documented broken and bypassed in production.
    (SDRAM) under `SYSTEM_X816`. Worth remembering for any other test or
    example that hardcodes a scratch address.
 
-## 12. Open decisions (carried from the feasibility study)
+## 12. The token table is full (2026-08-06)
+
+**This is the blocking constraint on everything `help/` still lists.** A
+token is a byte with bit 7 set, so the ids run `$80-$FF` and there are
+exactly 128. The X816 build now uses all of them: 117 upstream, four for
+`CD`/`PWD`/`MKDIR`/`RMDIR`, four for `TIMER`/`FRAMES`/`WAIT`/`VSYNC`, and
+the last three for `INSTR`/`UCASE$`/`TRIM$`. `LCASE$`, `STRING$` and
+`SPACE$` were written and taken back out for want of a slot.
+
+Sprites, tiles, the palette, three kinds of audio, the joystick, the
+mouse, the video and graphics statements — every one of them wants
+keywords, and there are none left. So the next substantial piece of work
+is not a feature: it is **a two-byte token scheme**. Reserve one id as an
+escape whose successor selects from a second table, which buys 256 more.
+Everything that consumes a token id has to learn it:
+
+| Where | What |
+|---|---|
+| `tokens.s` | `TKFINDTOKEN` (emit two bytes), `TKWRITE`, `TOKTYPE`, `TOKEVAL`, `TOKPRECED`, `TOKARITY` |
+| `eval.s` | the `BIT #$80` test at :564, `EVAL_FUNC`, the operator dispatch |
+| `interpreter.s` | `EXECSTMT`'s token-type dispatch |
+| `statements.s` | the `BPL`/`AND #$80` tests around variable names |
+| `listing.s` | `LIST` has to detokenize a two-byte form |
+
+`tokens.s` carries a `.cerror` on the table size, so the 129th token
+fails the build with a plain message instead of "too large for a 8 bit
+unsigned integer", which is how this was found.
+
+## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public
    (https://github.com/vinej/X816_SuperBasic) and GPLv3 as a whole; new

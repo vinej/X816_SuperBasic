@@ -48,6 +48,7 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "operators.s"
 .include "statements.s"
 .include "functions.s"
+.include "superbasic.s"          ; the SuperBasic language layer
 .include "commands.s"
 .include "variables.s"
 .include "integers.s"
