@@ -17,6 +17,10 @@ LINES_PER_PAGE = 10     ; The number of lines to print on a page before pausing
 DEV_SCREEN = $80        ; Use the screen and keyboard for the console device
 DEV_UART = $40          ; Use UART for console device
 DEV_BUFFER = $20        ; Use the current text memory buffer for output or input
+DEV_CHANNEL = $10       ; Send output to, and take input from, an open file
+                        ;  channel (X816 only; see X816/channels_x816.s).
+                        ;  Set for the duration of PRINT # and INPUT #, so
+                        ;  both borrow the ordinary statement wholesale.
 
 .section globals
 BCONSOLE    .byte ?     ; Device for BASIC console
@@ -69,6 +73,15 @@ IPRINTC     .proc
             setxl
 
             STA @lSAVE_A
+
+.if SYSTEM == SYSTEM_X816
+            LDA @lBCONSOLE      ; Redirected by PRINT #? Then the channel is
+            AND #DEV_CHANNEL    ;  the only sink -- a file is not the screen.
+            BEQ chk_out         ; This has to be tested BEFORE chk_out, whose
+            LDA @lSAVE_A        ;  own BEQ jumps to check_scrn and would
+            CALL CHN_PUTC       ;  otherwise leap straight over it.
+            BRA done
+.endif
 
 chk_out     LDA @lBCONSOLE      ; Check to see if we should send to an output buffer
             AND #DEV_BUFFER

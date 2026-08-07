@@ -4,10 +4,22 @@ VERA has a 4 KB audio FIFO taking signed 8- or 16-bit PCM, at three
 registers inside its block at $9F20-$9F3F. Nothing in SuperBasic drives
 it yet.
 
+[x] PCMVOL v - output volume 0-15. Read-modify-write, because the same
+    byte carries the sample format.
+[x] PCMMODE bits,stereo - 8 or 16 bit, 0 mono or 1 stereo.
+[x] PCMRESET - empty the FIFO and stop. Bit 7 alone resets; bits 7 and 6
+    together mean LOOP on this hardware, not "reset harder", so the two
+    must never be set at once.
+[x] PCMOUT b - push one sample byte.
+[ ] PCMFREE - written, but not tokenized: it takes no parentheses. See
+    the note beside CURSORX in tokens.s.
 [ ] PCMCTRL n - $9F3B. Volume 0-15, bit 4 stereo, bit 5 16-bit, bit 7
     resets the FIFO. Reading it back gives two bits the write side has no
     use for: bit 7 full, bit 6 empty.
-[ ] PCMRATE n - $9F3C. 0 stops, 128 is about 48 kHz.
+[x] PCMRATE n - $9F3C. 0 stops, 128 is about 48 kHz, and the step is
+    25000000/(512*128), roughly 381.5 Hz. Anything above 128 is read by
+    the hardware as 256-n, which is a wrap and not a clamp, so it is
+    refused here instead.
 [ ] PCMPUT b - $9F3D. Push one sample byte; dropped if the FIFO is full.
 [ ] PCMFULL - true when it cannot take more.
 [ ] PCMEMPTY - true when it has run dry, which is the one a feeder

@@ -92,6 +92,15 @@ IINPUTLINE      .proc
 
                 setxl
                 setas
+                LDA @lBCONSOLE      ; Redirected by INPUT #? Take the line
+                AND #DEV_CHANNEL    ;  off the channel and do not touch the
+                BEQ il_keyboard     ;  keyboard or the cursor at all.
+                setal
+                CALL CHN_GETLINE
+                PLP
+                RETURN
+
+il_keyboard     setas
                 LDA #1              ; Show the cursor
                 CALL SHOWCURSOR
 

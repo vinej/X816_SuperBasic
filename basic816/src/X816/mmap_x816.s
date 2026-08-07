@@ -114,6 +114,36 @@ WAIT_N    = $004BB4         ; dword - scratch: the interval, or the frame
 ; VRAM access and the layer registers.
 VID_A     = $004BB8         ; dword - a VRAM address, or a scratch byte
 
+; Record I/O channels (X816/channels_x816.s). The table is four 16-byte
+; records; the buffers are a page each and live up at $8000, in the part
+; of the application window nothing else had claimed.
+; The two pointers a channel is worked through are direct-page globals
+; rather than fixed addresses here, because the records and buffers are
+; reached as [CHN_P],Y and [CHN_B],Y and only the direct page has that
+; addressing mode.
+; The scratch pair sits BELOW the table, not above it: four 16-byte
+; records fill $4BC0-$4BFF exactly, and putting them at $4BF8 overlaid
+; channel 4's own fields.
+CHN_W     = $004BBC         ; word  - a byte in transit
+CHN_SAVE  = $004BBE         ; word  - BCONSOLE across a redirected PRINT
+CHN_TAB   = $004BC0         ; 64 bytes - 4 records of 16, ending at $4BFF
+CHN_BUF   = $008000         ; 4 pages, one a channel
+
+; Joystick, I2C and mouse state (X816/input_x816.s). Up here with the
+; channel buffers because the scratch page down at $4B00 is full.
+JOY_MASK  = $008400         ; byte - which VIA data line this pad is on
+JOY_W     = $008402         ; word - the sixteen bits as they shift in
+I2C_W     = $008404         ; byte - a sampled data line
+I2C_B     = $008406         ; byte - the byte being shifted either way
+I2C_ACK   = $008408         ; byte - whether the master will acknowledge
+I2C_DEV   = $00840A         ; byte - device address, not yet shifted
+I2C_REG   = $00840C         ; byte - register within the device
+MOUSE_X   = $008410         ; word - accumulated, because the hardware only
+MOUSE_Y   = $008412         ;  ever reports movement
+MOUSE_B   = $008414         ; byte - button flags from the last packet
+MOUSE_D   = $008416         ; 2 bytes - the X and Y steps of one packet
+MOUSE_N   = $008418         ; word - which of the three MOUSE() wants
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

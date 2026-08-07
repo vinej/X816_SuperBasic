@@ -5,6 +5,22 @@ The core carries snes_pad (X816_core rtl/x16_periph.sv), fed from the
 MiSTer joystick input, so the hardware is there and answering -
 durexForth reads it today. SuperBasic has no keyword for it yet.
 
+[x] JOY(n) - read pad n, 0 to 3, as a button bitmap, 1 meaning held:
+
+      bit 0 A       bit 4 up      bit 8  B
+      bit 1 X       bit 5 down    bit 9  Y
+      bit 2 select  bit 6 left    bit 10 left shoulder
+      bit 3 start   bit 7 right   bit 11 right shoulder
+
+    Pulse the latch on PA2 and every pad snapshots at once; sixteen
+    clocks on PA3 shift them all out together, each on its own data line
+    in PA7 down to PA4. The wire is active low and the top four bits are
+    tied high, so the word is inverted on the way out: an absent pad
+    reads as no buttons rather than as every button at once.
+
+    Nothing here can be checked without a pad plugged in. The headless
+    test shows the sixteen-bit shift completes and the inversion
+    happens; it cannot show the bit order is right.
 [ ] JOY(n) - read pad n, 1 to 4, as a button bitmap. Pad 0 on the X16 was
     the keyboard pretending to be a joystick; there is nothing behind it
     here, so it reads 0.

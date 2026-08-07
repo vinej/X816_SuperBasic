@@ -16,16 +16,25 @@ voices below would make it a good one.
     NOT the YM2151: the PSG is simpler, it is VRAM rather than registers
     with a busy flag, and it was therefore the one that could be written
     first. The FM voices below are still to come.
-[ ] FMINIT - reset the chip and load a default instrument on every voice,
-    so that SOUND works before anything is configured.
-[ ] FMNOTE ch,note - key a note on. Notes as semitone numbers, with
-    middle C somewhere sensible and named-note strings a later nicety.
-[ ] FMOFF ch - key it off. A note held is a note that keeps playing.
-[ ] FMVOL ch,vol - channel volume 0-127, applied as attenuation to the
-    total-level registers.
+[x] FMINIT - silence every channel and load one usable instrument on all
+    eight. Without it the chip powers up with every operator at zero
+    output level and total silence, which reads as "FM is broken" rather
+    than "FM needs an instrument". The patch is not a good sound. It is
+    an audible one.
+[x] FMNOTE ch,note - key a note on. Semitones, twelve to the octave, 48
+    near middle C. The chip does not take semitones: it wants an octave
+    and a note code whose four-bit field SKIPS the values 3, 7, 11 and
+    15, so the twelve codes are a table rather than arithmetic. Getting
+    that wrong transposes everything above D by a semitone, which sounds
+    like bad tuning rather than like a bug.
+[x] FMOFF ch - key it off. A note held is a note that keeps playing.
+[x] FMVOL ch,vol - channel volume 0-127, loudest at 127. The chip has no
+    volume, only a per-operator attenuation where 0 is loudest, so this
+    inverts; and it writes only the carriers, because writing a
+    modulator would change the timbre instead of the loudness.
 [ ] FMINST ch,n - select one of a built-in instrument set.
 [ ] FMLOAD file$ - load an instrument bank from the card.
-[ ] FMPAN ch,lr - left, right or both.
+[x] FMPAN ch,lr - 1 left, 2 right, 3 both.
 [ ] PLAY s$ - a music string, the classic BASIC way: notes, octaves,
     lengths and rests in one argument.
 

@@ -8,6 +8,32 @@ speculative about the hardware, only about SuperBasic.
 
 None of it is bound yet.
 
+[x] MOUSE(n) - 0 the column, 1 the row, 2 the buttons (bit 0 left, bit 1
+    right, bit 2 middle). One function with an index rather than three
+    without, because a function taking no parentheses cannot be
+    tokenized yet - see the note beside CURSORX in tokens.s.
+[x] MOUSEAT x,y - put the pointer somewhere. There is nothing to tell
+    the hardware: the controller only ever reports MOVEMENT, so the
+    position is SuperBasic's own, accumulated here and clamped to the
+    screen. This is how a game centres the pointer before it starts.
+[x] I2CPEEK(dev,reg) - read any register of any device on the bus, and
+    the reason the rest of this page could be written at all. The bus is
+    bit-banged on PA0 and PA1 - genuine open drain, a line pulled low by
+    making it an output and released by making it an input - and none of
+    that can be checked with no mouse attached. But the system
+    controller reports its own firmware version at $30 to $32, so
+
+      PRINT I2CPEEK(&h42,&h30)
+
+    prints 47: a number this code did not produce. A device that is not
+    on the bus returns -1 rather than an invented byte.
+
+    One thing to know before using it. A REPEATED start does not work
+    here. A start is recognised only from the stopped state, so the
+    textbook write-the-register-then-repeated-start-and-read is taken
+    for a data bit and everything after it is nonsense. A full stop in
+    the middle does work, and the device keeps the register number
+    across it.
 [ ] MOUSE on - switch the mouse on, zero the position, and ask the SMC
     for a wheel-capable device. MOUSE 0 switches it off.
 [ ] MX - pointer column, clamped to 0-639.

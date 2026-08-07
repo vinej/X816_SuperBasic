@@ -1,10 +1,14 @@
 # PORT.md — BASIC816 → X816 port sketch
 
-Status: **Phases 0-3 done, 2026-08-06.** The platform skeleton boots, the
-software math layer is in (§11), and programs load and save to the SD card.
-Transcendentals still throw, and everything else that touches hardware —
-graphics, sprites, sound, joystick, mouse, timers — is unbound; the `help/`
-pages are the checklist and §9 phase 5 the order.
+Status: **Phases 0-4 done, phase 5 well under way, 2026-08-07.** The platform
+skeleton boots, the software math layer is in (§11) including the
+transcendentals, programs load and save to the SD card, and the token table has
+a second half (§12) so there is room to keep going. Of the hardware: video,
+palette, sprites, tiles, the PSG, VERA PCM, the YM2151, the controllers and the
+mouse all answer, and record I/O — `OPEN`, `CLOSE`, `PRINT #`, `INPUT #`,
+`EOF` — works on real FAT32 (§14). Still unbound: the font words, screen modes,
+bitmap graphics, and interrupt hooks. The `help/` pages are the checklist —
+98 done, 101 to go — and §9 phase 5 the order.
 This started as a plan expanding the feasibility study at
 `X816_core/doc/SUPERBASIC.md` (2026-08-03) — source layout, memory map, kernel
 I/O bindings, the math-layer rewrite, and the SuperBasic feature layer — and
@@ -603,6 +607,89 @@ not write.**
 fails the build with a plain message instead of "too large for a 8 bit
 unsigned integer", which is how the ceiling was found in the first
 place.
+
+## 14. Record I/O and the four hardware devices (2026-08-07)
+
+Five things that had never been touched: file channels, VERA PCM, the
+YM2151, the controllers, and the mouse. What is worth writing down is
+not the register maps -- those are in the code -- but the four defects
+that cost real time, because three of them are the same defect.
+
+### Borrow the statement, do not rewrite it
+
+`PRINT #1` and `INPUT #1` reimplement nothing. BASIC816 already funnels
+every character `PRINT` emits through `IPRINTC`, which consults a device
+bitmask (`BCONSOLE`), and every line `INPUT` reads through `IINPUTLINE`.
+So a channel is one more bit in that mask: `PRINT #` sets it, calls the
+ordinary `S_PRINT`, and puts it back. Strings, integers, floats, comma
+columns, the trailing semicolon -- all of it works on a file because
+none of it knows it is on a file. Two statements of about thirty lines
+each instead of two of three hundred, and no second formatter to drift.
+
+The prompt `INPUT` prints goes to the same sink, so it lands on
+`CHN_PUTC`, which discards it because the channel is open for reading.
+Suppressing it needed no flag.
+
+### Carry cannot survive PLP
+
+Three separate bugs, one shape:
+
+- `I2C_TXBYTE` read the acknowledge bit and then executed `PLP`, which
+  restored the flags saved on entry -- carry included. Every transfer
+  looked acknowledged whether or not a device was listening.
+- `CHN_NEED` compared a 16-bit mode field against a byte it had only
+  written eight bits of, so the stale high byte made every channel look
+  like the wrong kind.
+- `S_OPEN` recorded the mode with `PHY` AFTER `K_FS_OPEN`. The kernel is
+  not obliged to preserve `Y` and does not, so what got recorded was
+  whatever the call happened to leave.
+
+The rule the I2C file now states at the top: **a routine that returns
+its answer in a flag must not save the processor status.** Those leaf
+routines run at a documented width and let the one caller bracket it.
+
+### A repeated start is not detected on this bus
+
+The textbook way to read a device register is write-the-number, repeated
+start, read. Here a start is recognised only from the *stopped* state,
+so a repeated one is taken for a data bit and everything after it is
+nonsense. A full stop in the middle works, and the device keeps the
+register number across it.
+
+### Test what the code did not produce
+
+The FM chip gives nothing back -- its status register reports timer and
+busy flags, never a register -- so those five statements can only be
+shown to run. That is worth being plain about rather than dressing up.
+
+The other three do better, and the pattern is the same each time: assert
+against a number that came from somewhere else.
+
+- PCM: the control byte reads back, and `122` is `$7A`, which is
+  16-bit + stereo + volume 10 + the FIFO-empty flag the hardware adds.
+- Record I/O: pyfatfs -- an independent FAT32 implementation -- reads
+  `REC.TXT` off the card as `b' 1234
+REC-OK
+'`. The screen only ever
+  proves SuperBasic can read back what SuperBasic wrote.
+- I2C: the system controller reports its own firmware version, `47`,
+  compiled into the emulator. Reading it exercises start, address,
+  register, stop, start, address, eight shifted-in bits, NACK and stop.
+  And `$55` -- nothing is there -- must return -1, which is a negative
+  control that ships with the feature.
+
+The joystick has no such number. With no pad attached every line reads
+high and `JOY` inverts that to "no buttons"; the check shows the shift
+completes, and cannot show the bit order. Said so on the help page.
+
+### A defect inherited from BASIC816
+
+`PRINT` writes a leading space before positive numbers, and a leading
+blank hangs the number parsers -- from the keyboard exactly as much as
+from a file, so this is upstream's and not the port's. `INPUT` skips
+blanks first on the X816 now. The fix is guarded so the C256 build still
+reproduces stock byte for byte; the audit is worth more than the tidy
+diff.
 
 ## 13. Open decisions (carried from the feasibility study)
 

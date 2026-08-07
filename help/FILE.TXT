@@ -28,9 +28,38 @@ calls, KERNEL.md section 6), and what is still missing is the binding.
 [x] PWD - print it.
 [x] MKDIR "path" - create a directory.
 [x] RMDIR "path" - remove an empty one.
-[ ] OPEN / CLOSE / INPUT# / PRINT# - record and text I/O on an open
-    handle. The kernel is handle-based and seekable, so this is a better
-    fit here than the C64's channel model ever was.
+[x] OPEN #n,"path","R" or "W" - open one of four channels. The mode is
+    a string because a bare R would tokenize as a variable; only its
+    first letter is read, so "READ" and "WRITE" work too. Re-opening a
+    channel closes it first, or a program edited and re-run leaks a
+    kernel handle every time round.
+[x] CLOSE #n - close one channel. CLOSE on its own closes all four.
+    A write channel is only flushed when it is closed, so a program that
+    stops early loses the tail of its file. Every BASIC has worked this
+    way; it is still the commonest way to lose data.
+[x] PRINT #n, ... - everything PRINT can do, sent to a file: strings,
+    integers, floats, the comma columns, the trailing semicolon. None of
+    it is reimplemented. PRINT already routes every character through
+    one sink, so PRINT # switches the sink and calls PRINT.
+[x] INPUT #n, var [, var] - and the mirror image, filling the same
+    buffer a typed line goes into. One value to a LINE, not to a comma,
+    which is also what PRINT # writes.
+[x] EOF(n) - true once a read channel has run out. True BEFORE the
+    failing read, so WHILE NOT EOF(1) ... INPUT #1 ... WEND reads every
+    line and stops, instead of processing one phantom empty line.
+[ ] SEEK #n,pos and LOC(n) - the kernel is seekable and nothing here
+    uses it. Fixed-length records would follow from this.
+[ ] LINE INPUT #n - a whole line, commas and all.
+
+Channels are buffered a page at a time, so PRINT #1,X in a loop is not
+one card transaction per character.
+
+Numbers are written the way PRINT writes them, which means a leading
+space in front of positive ones. Reading that back exposed a defect
+inherited from BASIC816: a leading blank hangs the number parsers, from
+the keyboard just as much as from a file. INPUT skips blanks first on
+this machine now. The C256 build is left alone, so that it still
+reproduces stock byte for byte.
 
 A file is opened by path and returns a handle; reads and writes take a
 parameter block. Errors come back with carry set and a KERR code in C,

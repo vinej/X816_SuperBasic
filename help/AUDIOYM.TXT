@@ -6,7 +6,8 @@ datasheet: $08 KEYON, $20+ per channel, $60+ total level, and so on.
 
 SuperBasic has no audio keywords at all today. Everything here is a plan.
 
-[ ] YMPOKE reg,value - write a YM2151 register.
+[x] YMPOKE reg,value - write a YM2151 register. The escape hatch: every
+    FM statement on the AUDIOFM page is shorthand for some of these.
 [ ] YMPEEK(reg) - what was last written there. A shadow, not a probe:
     the chip answers writes only, there is no register readback in the
     hardware, so a program that wants to know must remember.

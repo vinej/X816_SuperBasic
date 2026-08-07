@@ -148,8 +148,39 @@ KEYS_C=$(keys_of \
     'SPRITE 0,0' \
     'PRINT VPEEK(&h1FC02)' \
     'TILEAT 70,50,65,7' \
-    'TILEAT 70,50,65,7' \
-    'PRINT VPEEK(&h328C)')
+    'PRINT VPEEK(&h328C)' \
+    'PCMVOL 10' \
+    'PCMRATE 64' \
+    'PCMMODE 16,1' \
+    'PRINT PEEK(&h9F3B)' \
+    'FMINIT' \
+    'FMNOTE 0,48' \
+    'FMVOL 0,100' \
+    'FMOFF 0' \
+    'PRINT I2CPEEK(&h42,&h30)' \
+    'PRINT I2CPEEK(&h55,&h30)' \
+    'PRINT JOY(0)' \
+    'MOUSEAT 321,50' \
+    'PRINT MOUSE(0)' \
+    'PRINT "FMOK"')
+
+# Record I/O gets a session of its own because B was already 22 lines
+# and the console is 60 rows: the last thing wanted is another
+# scroll silently moving what an assertion reads.
+KEYS_D=$(keys_of \
+    'OPEN #1,"REC.TXT","W"' \
+    'PRINT #1,1234' \
+    'PRINT #1,"REC-OK"' \
+    'CLOSE #1' \
+    'OPEN #1,"REC.TXT","R"' \
+    'INPUT #1,A' \
+    'INPUT #1,B$' \
+    'PRINT A' \
+    'PRINT B$' \
+    'PRINT EOF(1)' \
+    'CLOSE #1' \
+    'PRINT #9,1' \
+    'PRINT "UNWEDGED"')
 
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
@@ -171,19 +202,22 @@ run_session A "$KEYS_A" || { echo "session A produced no recording"; exit 1; }
 if [ "$NEG" = "0" ]; then
     run_session B "$KEYS_B" || { echo "session B produced no recording"; exit 1; }
     run_session C "$KEYS_C" || { echo "session C produced no recording"; exit 1; }
+    run_session D "$KEYS_D" || { echo "session D produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
+    cp "$OUT/outA.gif" "$OUT/outD.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-gif_a, gif_b, gif_c, fontinc = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-negative = sys.argv[5] == "1"
+gif_a, gif_b, gif_c, gif_d, fontinc = (sys.argv[1], sys.argv[2], sys.argv[3],
+                                       sys.argv[4], sys.argv[5])
+negative = sys.argv[6] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -229,7 +263,8 @@ def last_screen(path):
 rows_a = last_screen(gif_a)
 rows_b = [] if negative else last_screen(gif_b)
 rows_c = [] if negative else last_screen(gif_c)
-rows = rows_a + rows_b + rows_c
+rows_d = [] if negative else last_screen(gif_d)
+rows = rows_a + rows_b + rows_c + rows_d
 
 def fail(msg):
     print("FAIL:", msg)
@@ -388,10 +423,85 @@ if not any(r.strip() == "100" for r in rows_c):
 if not any(r.strip() == "65" for r in rows_c):
     fail("TILEAT did not write a cell of the console tilemap")
 
+# PCM: the control byte reads back, so this is an assertion and not a
+# hope. 122 is $7A -- 16-bit ($20), stereo ($10), volume 10 ($0A), and
+# the FIFO-empty flag ($40) the hardware adds for itself.
+if not any(r.strip() == "122" for r in rows_c):
+    fail("the VERA PCM control register did not read back what PCMMODE set")
+
+# The YM2151 gives nothing back at all -- its status register reports
+# timer and busy flags, never a register -- so the FM statements can
+# only be shown to run. FMOK printing means none of the five threw.
+if not any(r.strip() == "FMOK" for r in rows_c):
+    fail("one of the FM statements threw")
+
+# The strongest check on this page. 47 is the system controller's
+# firmware major version, compiled into the emulator and not produced by
+# any code here, and reading it exercises the whole bit-banged I2C
+# master: start, address, register, stop, start, address again, eight
+# shifted-in bits, NACK, stop.
+if not any(r.strip() == "47" for r in rows_c):
+    fail("I2CPEEK did not read the system controller version over I2C")
+# ...and its own negative control: nothing lives at $55, so the master
+# has to notice the missing acknowledge rather than invent a byte.
+if not any(r.strip() == "-1" for r in rows_c):
+    fail("I2CPEEK invented an answer for a device that is not on the bus")
+
+# No controller is attached in a headless run, so every line reads high
+# and JOY inverts that to "no buttons". This shows the sixteen-bit shift
+# completes and the result is inverted; it cannot show the bit order.
+if not any(r.strip() == "0" for r in rows_c):
+    fail("JOY did not report an absent controller as no buttons held")
+# The pointer position is SuperBasic's own, since the hardware reports
+# only movement -- so MOUSEAT setting it and MOUSE reading it back is
+# the whole contract, and 321 is nothing else on any screen.
+if not any(r.strip() == "321" for r in rows_c):
+    fail("MOUSE did not read back the position MOUSEAT set")
+
+# ---- session D: record I/O ------------------------------------------------
+# The whole round trip: PRINT # writes through the buffer layer, CLOSE
+# flushes it, INPUT # reads it back through the same layer, and EOF says
+# when to stop. The two values are deliberately unlike anything else on
+# any screen so a stray match cannot pass for a read.
+if not any(r.strip() == "1.23400E03" for r in rows_d):
+    fail("INPUT #1 did not read back the number PRINT #1 wrote")
+if not any(r.strip() == "REC-OK" for r in rows_d):
+    fail("INPUT #1 did not read back the string PRINT #1 wrote")
+if not any(r.strip() == "-1" for r in rows_d):
+    fail("EOF(1) was not true at the end of the file")
+# A throw inside a redirected PRINT skips the restore at the end of the
+# statement. If PRREADY did not undo the redirect, every later PRINT
+# would go into a file and the console would look dead.
+if not any(r.strip() == "UNWEDGED" for r in rows_d):
+    fail("the console did not recover from an error inside PRINT #")
+
 print("PASS: SuperBasic booted from the card, ran the language and float")
-print("      checks, and round-tripped programs through SAVE, LOAD, DIR,")
-print("      DEL, RENAME and COPY on a real FAT32 card")
+print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")
+print("      RENAME and COPY, and wrote and read a data file with PRINT #")
+print("      and INPUT #, all on a real FAT32 card")
 for r in rows:
     if r:
         print("   ", r)
 PY
+
+# The screen only proves SuperBasic can read back what SuperBasic wrote.
+# pyfatfs is a second, independent FAT32 implementation, so it can tell a
+# correct file from a merely self-consistent one -- and it is the only
+# thing here that sees the bytes rather than the glyphs.
+if [ "$NEG" = "0" ]; then
+python - "$WOUT/cardD.img" <<'PYCHECK' || exit 1
+import sys
+from pyfatfs.PyFatFS import PyFatFS
+fs = PyFatFS(sys.argv[1])
+try:
+    with fs.open("/REC.TXT", "rb") as f:
+        got = f.read()
+finally:
+    fs.close()
+want = b" 1234" + bytes([13]) + b"REC-OK" + bytes([13])
+if got != want:
+    print("FAIL: REC.TXT on the card is %r, expected %r" % (got, want))
+    sys.exit(1)
+print("PASS: and pyfatfs reads that same file back as %r" % (got,))
+PYCHECK
+fi

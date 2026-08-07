@@ -163,6 +163,12 @@ PRREADY         .proc
                 CALL ENSURETEXT         ; Make sure we have text displayed
 
 .if SYSTEM == SYSTEM_X816
+                CALL CHN_UNHOOK         ; An error inside PRINT #n skips the
+                                        ;  restore at the end of the statement,
+                                        ;  so the console would still be
+                                        ;  writing into the file. Undo it here,
+                                        ;  where every path back to the prompt
+                                        ;  passes.
                 CALL ATCOL0             ; Newline only if one is needed
 .else
                 setdbr `MPROMPT         ; Print the prompt

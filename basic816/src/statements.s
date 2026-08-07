@@ -15,6 +15,18 @@ S_INPUT         .proc
                 PHP
                 TRACE "S_INPUT"
 
+.if SYSTEM == SYSTEM_X816
+                setas               ; INPUT #n, ... reads from a channel
+                CALL PEEK_TOK
+                CMP #'#'
+                BNE in_console
+                setal
+                CALL S_INPUTCH
+                PLP
+                RETURN
+in_console
+.endif
+
 varloop         CALL SKIPWS
 
                 setas
@@ -92,6 +104,15 @@ in_float        setal               ; Parse the input as an integer (or try to)
                 LDA #`IOBUF
                 STA BIP+2
 
+.if SYSTEM == SYSTEM_X816
+                CALL SKIPWS         ; Leading blanks hang the number parsers,
+                                    ;  and PRINT puts one in front of every
+                                    ;  positive number -- so INPUT #1 reading
+                                    ;  back what PRINT #1 wrote would wedge.
+                                    ;  Upstream BASIC816 has the same defect
+                                    ;  from the keyboard; guarded so that the
+                                    ;  C256 build still reproduces stock.
+.endif
                 CALL PARSENUM       ; Attempt to parse the number
 
                 setal
@@ -114,6 +135,15 @@ in_integer      setal               ; Parse the input as an integer (or try to)
 
                 ; TODO: intercept errors
 
+.if SYSTEM == SYSTEM_X816
+                CALL SKIPWS         ; Leading blanks hang the number parsers,
+                                    ;  and PRINT puts one in front of every
+                                    ;  positive number -- so INPUT #1 reading
+                                    ;  back what PRINT #1 wrote would wedge.
+                                    ;  Upstream BASIC816 has the same defect
+                                    ;  from the keyboard; guarded so that the
+                                    ;  C256 build still reproduces stock.
+.endif
                 CALL PARSEINT       ; Attempt to parse the integer
 
                 setal
@@ -1288,6 +1318,17 @@ S_PRINT         .proc
                 PHP
                 TRACE "S_PRINT"
 
+.if SYSTEM == SYSTEM_X816
+                setas               ; PRINT #n, ... goes to a file channel.
+                CALL PEEK_TOK       ;  S_PRINTCH eats the "#n," and calls
+                CMP #'#'            ;  back here, so this cannot recurse
+                BNE pr_console      ;  more than once.
+                setal
+                CALL S_PRINTCH
+                PLP
+                RETURN
+pr_console
+.endif
                 setas
                 CALL PEEK_TOK       ; Look ahead to the next non-whitespace character
                 CMP #0              ; Is it EOL or :?

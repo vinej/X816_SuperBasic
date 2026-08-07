@@ -1326,14 +1326,50 @@ TOKENS2
             DEFTOK "SOUND", TOK_TY_STMNT, 0, S_SOUND, 0
             DEFTOK "SPRITEIMG", TOK_TY_STMNT, 0, S_SPRITEIMG, 0
             DEFTOK "SPRITESIZE", TOK_TY_STMNT, 0, S_SPRITESIZE, 0
-; CURSORX and CURSORY are written (functions_x816.s) but NOT tokenized.
-; They take no parentheses, and the minus-sign exception below compares
-; against BASE ids: an extended token's sub-id could collide with an
-; unrelated base one, so "LOCATE CURSORX-1,CURSORY" could misparse in a
-; way that depends on which ids happen to line up. A no-argument
-; function needs either a base id -- and there are none -- or a minus
-; rule that asks the token's TYPE rather than its number. The latter is
-; the right fix and is not five minutes' work.
+
+; Record I/O. PRINT # and INPUT # need no keywords of their own: the
+; ordinary statements look for the "#" themselves, which is both the
+; real BASIC spelling and one fewer token spent.
+            DEFTOK "OPEN", TOK_TY_STMNT, 0, S_OPEN, 0
+            DEFTOK "CLOSE", TOK_TY_STMNT, 0, S_CLOSE, 0
+            DEFTOK "EOF", TOK_TY_FUNC, 0, FN_EOF, 0
+
+; Audio. SOUND (the PSG) is above; these are the other two chips.
+            DEFTOK "PCMVOL", TOK_TY_STMNT, 0, S_PCMVOL, 0
+            DEFTOK "PCMRATE", TOK_TY_STMNT, 0, S_PCMRATE, 0
+            DEFTOK "PCMMODE", TOK_TY_STMNT, 0, S_PCMMODE, 0
+            DEFTOK "PCMRESET", TOK_TY_STMNT, 0, S_PCMRESET, 0
+            DEFTOK "PCMOUT", TOK_TY_STMNT, 0, S_PCMOUT, 0
+            DEFTOK "YMPOKE", TOK_TY_STMNT, 0, S_YMPOKE, 0
+            DEFTOK "FMINIT", TOK_TY_STMNT, 0, S_FMINIT, 0
+            DEFTOK "FMNOTE", TOK_TY_STMNT, 0, S_FMNOTE, 0
+            DEFTOK "FMOFF", TOK_TY_STMNT, 0, S_FMOFF, 0
+            DEFTOK "FMVOL", TOK_TY_STMNT, 0, S_FMVOL, 0
+            DEFTOK "FMPAN", TOK_TY_STMNT, 0, S_FMPAN, 0
+
+; Input. MOUSE takes an index rather than being three no-argument
+; functions, for the reason set out below.
+            DEFTOK "JOY", TOK_TY_FUNC, 0, FN_JOY, 0
+            DEFTOK "I2CPEEK", TOK_TY_FUNC, 0, FN_I2CPEEK, 0
+            DEFTOK "MOUSE", TOK_TY_FUNC, 0, FN_MOUSE, 0
+            DEFTOK "MOUSEAT", TOK_TY_STMNT, 0, S_MOUSEAT, 0
+; CURSORX, CURSORY (functions_x816.s) and PCMFREE (audio_x816.s) are
+; written but NOT tokenized. All three take no parentheses, and the
+; minus-sign exception in TKFINDTOKEN compares against BASE ids: an
+; extended token's sub-id could collide with an unrelated base one, so
+; "LOCATE CURSORX-1,CURSORY" would misparse depending on which ids
+; happen to line up.
+;
+; The general fix is now clear, and it removes the TOK_TIMER/TOK_FRAMES
+; special cases as well: a function token sitting immediately before a
+; minus can ONLY be a no-argument function, because anything taking
+; parentheses would have ended in ")" and been caught by the test above
+; it. So the rule is "previous token is of type TOK_TY_FUNC" -- one
+; GETTOKREC call, no list to maintain, base and extended alike.
+;
+; What it needs first is for PREVCHAR to say whether the byte it
+; returned was an extended token's sub-id, i.e. whether a $FF sits in
+; front of it. That is the whole of the remaining work.
 .endif
 
 ; The three string functions that would not fit before. Portable, like

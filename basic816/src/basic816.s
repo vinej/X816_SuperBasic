@@ -49,6 +49,11 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "statements.s"
 .include "functions.s"
 .include "superbasic.s"          ; the SuperBasic language layer
+.if SYSTEM == SYSTEM_X816
+.include "X816/channels_x816.s"  ; record I/O: OPEN, CLOSE, PRINT #, INPUT #
+.include "X816/audio_x816.s"     ; VERA PCM and the YM2151
+.include "X816/input_x816.s"     ; joystick, I2C, mouse
+.endif
 .include "commands.s"
 .include "variables.s"
 .include "integers.s"
