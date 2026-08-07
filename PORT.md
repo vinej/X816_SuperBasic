@@ -387,10 +387,15 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
      keystone for what follows: sound envelopes, PCM refill and
      collision detection all want "run this every frame". The open
      problem is re-entering the interpreter from an interrupt safely.
-  3. `help/VIDEO.TXT` — `VPOKE`/`VPEEK`, `SCREEN`, `BORDER`, hardware
-     `SCROLLX`/`SCROLLY`, and the font words. Redefinable characters are
-     the best value-per-byte on any of these pages: no new hardware
-     support, and they give tiles and a custom alphabet at once.
+  3. `help/VIDEO.TXT` — **`VPOKE`/`VPEEK`, `BORDER`, `SCROLLX`/`SCROLLY`
+     done 2026-08-06**, the first group written after the token escape
+     existed. `VPOKE`/`VPEEK` matter out of proportion to their size:
+     sprites, tiles and the palette all live in VRAM, so they can be
+     driven from BASIC now, before any of those get statements of their
+     own. Still to do here: `SCREEN` and the font words — redefinable
+     characters are the best value-per-byte on any of these pages, since
+     they need no new hardware support and give tiles and a custom
+     alphabet at once.
   4. `help/GRAPHIC.TXT` — bitmap drawing. Decide VERA 320x240 vs VERA2
      640x480 first; VERA2 is the recommendation (framebuffer is plain
      SDRAM at `$E0:0000`, so `PLOT` is a store, and the console survives).

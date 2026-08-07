@@ -212,3 +212,39 @@ frames_ok   STA ARGUMENT1
             PLP
             RETURN
             .pend
+
+;
+; VPEEK(addr) -- read a byte of VRAM. The inverse of VPOKE.
+;
+FN_VPEEK    .proc
+            FN_START "FN_VPEEK"
+            PHP
+            setaxl
+
+            CALL EVALEXPR
+            CALL ASS_ARG1_INT
+
+            setas
+            LDA #0                      ; Data port 0, DCSEL 0
+            STA @l VERA_CTRL
+            LDA ARGUMENT1
+            STA @l VERA_ADDR_L
+            LDA ARGUMENT1+1
+            STA @l VERA_ADDR_M
+            LDA ARGUMENT1+2
+            AND #$01
+            STA @l VERA_ADDR_H
+            LDA @l VERA_DATA0
+
+            setal
+            AND #$00FF
+            STA ARGUMENT1
+            STZ ARGUMENT1+2
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            FN_END
+            PLP
+            RETURN
+            .pend

@@ -104,4 +104,14 @@ VERA_ADDR_L     = $009F20
 VERA_ADDR_M     = $009F21
 VERA_ADDR_H     = $009F22
 VERA_DATA0      = $009F23
-VERA_CTRL       = $009F25
+VERA_CTRL       = $009F25       ; bit 0 = data port, bits 1-6 = DCSEL
+
+; Composer and layer registers, verified against the emulator's video.c
+; rather than assumed from the X16: the border is reg_composer[3] and
+; the layer scroll is reg_layer[0][3..4], of which only the LOW NIBBLE
+; of the high byte belongs to the scroll.
+VERA_DC_BORDER  = $009F2C       ; needs DCSEL = 0
+VERA_L0_HSCR_L  = $009F30
+VERA_L0_HSCR_H  = $009F31       ; low nibble only
+VERA_L0_VSCR_L  = $009F32
+VERA_L0_VSCR_H  = $009F33       ; low nibble only

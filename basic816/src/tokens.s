@@ -1314,6 +1314,16 @@ TOKENS2
             DEFTOK "VSYNC", TOK_TY_STMNT, 0, S_VSYNC, 0
 .endif
 
+.if SYSTEM == SYSTEM_X816
+; Video. The first feature group to be written since the escape existed,
+; and the reason it was worth writing.
+            DEFTOK "VPOKE", TOK_TY_STMNT, 0, S_VPOKE, 0
+            DEFTOK "VPEEK", TOK_TY_FUNC, 0, FN_VPEEK, 0
+            DEFTOK "BORDER", TOK_TY_STMNT, 0, S_BORDER, 0
+            DEFTOK "SCROLLX", TOK_TY_STMNT, 0, S_SCROLLX, 0
+            DEFTOK "SCROLLY", TOK_TY_STMNT, 0, S_SCROLLY, 0
+.endif
+
 ; The three string functions that would not fit before. Portable, like
 ; the rest of the SuperBasic string layer.
             DEFTOK "LCASE$", TOK_TY_FUNC, 0, FN_LCASE, 0

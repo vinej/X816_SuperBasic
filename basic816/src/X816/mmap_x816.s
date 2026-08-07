@@ -111,6 +111,9 @@ FP_ASGN   = $004BAC         ; word  - sign of the argument, $8000 negative
 WAIT_T    = $004BB0         ; dword - the millisecond count to wait for
 WAIT_N    = $004BB4         ; dword - scratch: the interval, or the frame
 
+; VRAM access and the layer registers.
+VID_A     = $004BB8         ; dword - a VRAM address, or a scratch byte
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

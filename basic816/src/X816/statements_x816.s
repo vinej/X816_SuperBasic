@@ -394,3 +394,137 @@ vsync_loop      JSL FK_TESTBREAK
 
 vsync_break     THROW ERR_BREAK
                 .pend
+
+;;;
+;;; Video: VRAM, the border and hardware scrolling.
+;;;
+;;; VERA's 128 KB is NOT in the CPU address space. It is reached through
+;;; a port: an address in $9F20-$9F22, then reads or writes at $9F23.
+;;; Data port 0 is used throughout, which is the same reasoning
+;;; SCRCOPYLINE relies on -- the kernel's cursor interrupt uses port 1
+;;; and restores what it touches, so port 0 is ours.
+;;;
+
+;
+; VPOKE addr, value -- write a byte of VRAM.
+;
+; The address is 17 bits: bit 16 goes in the low bit of ADDR_H, whose
+; upper nibble is the auto-increment and is left at zero here. A
+; statement that set an increment would be lying about being a poke.
+;
+S_VPOKE         .proc
+                PHP
+                TRACE "S_VPOKE"
+                setaxl
+
+                CALL EVALEXPR               ; The VRAM address
+                CALL ASS_ARG1_INT
+                setal
+                LDA ARGUMENT1
+                STA @l VID_A
+                LDA ARGUMENT1+2
+                STA @l VID_A+2
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+
+                CALL EVALEXPR               ; The byte
+                CALL ASS_ARG1_BYTE
+
+                setas
+                LDA #0
+                STA @l VERA_CTRL            ; Data port 0, DCSEL 0
+                LDA @l VID_A
+                STA @l VERA_ADDR_L
+                LDA @l VID_A+1
+                STA @l VERA_ADDR_M
+                LDA @l VID_A+2
+                AND #$01                    ; Bit 16, no auto-increment
+                STA @l VERA_ADDR_H
+                LDA ARGUMENT1
+                STA @l VERA_DATA0
+
+                PLP
+                RETURN
+                .pend
+
+;
+; BORDER c -- the colour around the display.
+;
+S_BORDER        .proc
+                PHP
+                TRACE "S_BORDER"
+                setaxl
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+
+                setas
+                LDA #0                      ; DCSEL 0: the composer block
+                STA @l VERA_CTRL
+                LDA ARGUMENT1
+                STA @l VERA_DC_BORDER
+
+                PLP
+                RETURN
+                .pend
+
+;
+; SCROLLX n / SCROLLY n -- hardware scroll of the console layer, 0-4095.
+;
+; Free smooth scrolling: the display is offset by the hardware and
+; nothing is redrawn. Only the LOW NIBBLE of the high byte is the
+; scroll, so it is a read-modify-write -- clobbering the rest would
+; disturb the layer.
+;
+S_SCROLLX       .proc
+                PHP
+                TRACE "S_SCROLLX"
+                setaxl
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_INT
+
+                setas
+                LDA #0
+                STA @l VERA_CTRL
+                LDA ARGUMENT1
+                STA @l VERA_L0_HSCR_L
+                LDA @l VERA_L0_HSCR_H
+                AND #$F0                    ; keep what is not ours
+                STA @l VID_A
+                LDA ARGUMENT1+1
+                AND #$0F
+                ORA @l VID_A
+                STA @l VERA_L0_HSCR_H
+
+                PLP
+                RETURN
+                .pend
+
+S_SCROLLY       .proc
+                PHP
+                TRACE "S_SCROLLY"
+                setaxl
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_INT
+
+                setas
+                LDA #0
+                STA @l VERA_CTRL
+                LDA ARGUMENT1
+                STA @l VERA_L0_VSCR_L
+                LDA @l VERA_L0_VSCR_H
+                AND #$F0
+                STA @l VID_A
+                LDA ARGUMENT1+1
+                AND #$0F
+                ORA @l VID_A
+                STA @l VERA_L0_VSCR_H
+
+                PLP
+                RETURN
+                .pend

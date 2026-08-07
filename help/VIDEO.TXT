@@ -1,25 +1,33 @@
 === VIDEO - VRAM, screen modes and the font ===
 
+These are the first statements written after the token table gained a
+second half (PORT.md section 12); before that there were no keywords
+left to give them.
+
 VERA's 128 KB of video RAM is NOT in the CPU address space. It is reached
 through a port: set an address in $9F20-$9F22, then read or write $9F23,
 and the address auto-increments. Everything on the graphics pages - tiles,
 sprite pixels, the palette, the font - lives behind that port.
 
-[ ] VPOKE addr,value - write a byte of VRAM.
-[ ] VPEEK(addr) - read one back.
+[x] VPOKE addr,value - write a byte of VRAM. The address is 17 bits;
+    bit 16 lives on its own in ADDR_H, whose upper nibble is the
+    auto-increment and is left at zero here.
+[x] VPEEK(addr) - read one back.
 [ ] VADDR addr - point the port once, then stream. Worth having as well
     as VPOKE: a bulk copy that re-sends the address for every byte does
     three writes where it needs one.
 [ ] SCREEN mode - 0 the text console, 128 the 320x240 bitmap. The X16's
     other text modes (80x30, 40x60, 40x30) are scale settings and could
     follow. HELP GRAPHIC for the VERA2 alternative at 640x480.
-[ ] BORDER c - the border colour.
+[x] BORDER c - the border colour.
 [ ] CURSORX / CURSORY - read the cursor position back. The kernel has
     CON_GETXY and SuperBasic already calls it internally; there is no
     keyword for it.
-[ ] SCROLLX n / SCROLLY n - HARDWARE scroll of a layer, 0-4095. Free
-    smooth scrolling with no redraw at all, which is the difference
-    between a playable game and a slideshow on a machine this size.
+[x] SCROLLX n / SCROLLY n - HARDWARE scroll of the console layer,
+    0-4095. Free smooth scrolling with no redraw at all, which is the
+    difference between a playable game and a slideshow on a machine this
+    size. Only the low nibble of each high byte is the scroll, so both
+    are read-modify-write; clobbering the rest disturbs the layer.
 
 --- the font ---
 

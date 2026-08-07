@@ -105,6 +105,9 @@ KEYS_A=$(keys_of \
     'PRINT UCASE$("abc")' \
     'PRINT "["+TRIM$(" x ")+"]"' \
     'PRINT STRING$(5,"*")' \
+    'VPOKE &h10000,90' \
+    'PRINT VPEEK(&h10000)' \
+    'BORDER 0' \
     '10 PRINT 1.5' \
     '20 A=TIMER:WAIT 200:PRINT TIMER-A' \
     '30 B=FRAMES:VSYNC:PRINT FRAMES-B' \
@@ -293,6 +296,13 @@ if not any(r.strip() == "[x]" for r in rows_a):
 if not any(r.strip() == "*****" for r in rows_a):
     fail("`PRINT STRING$(5,\"*\")` did not answer ***** -- an extended "
          "token did not survive tokenizing, storing or dispatch")
+# VRAM is not in the CPU address space; VPOKE/VPEEK go through the port
+# at $9F20. $10000 is chosen over something lower for two reasons: it
+# exercises bit 16 of the address, which lives on its own in ADDR_H, and
+# it is clear of the tilemap and font, so the poke does not put a
+# stray character on the screen the decoder then has to read past.
+if not any(r.strip() == "90" for r in rows_a):
+    fail("VPOKE then VPEEK did not round-trip a byte through VRAM")
 if not any("1.50000" in r for r in rows_a):
     fail("`RUN` of a stored float literal did not answer 1.50000")
 # WAIT and VSYNC, measured INSIDE a running program: typing a line at the
