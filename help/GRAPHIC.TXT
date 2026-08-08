@@ -1,15 +1,37 @@
 === GRAPHIC - bitmap drawing ===
 
-Nothing here works yet. Every statement below is tokenized and every one
-of them refuses with an argument error (X816/statements_x816.s), because
-the C256 versions drove VICKY registers that do not exist on this
-machine. They are listed because the keywords are already reserved.
+The recommendation at the bottom of this page was taken: this is VERA2,
+640x480 at 8bpp, whose framebuffer is ORDINARY CPU MEMORY at $E0:0000.
+PLOT is a computed address and a store - no port, no sequencing, nothing
+left latched - and the console is untouched, so text and graphics
+coexist and a program can print while it draws.
 
-[ ] GRAPHICS mode - enter a bitmap mode, 0 to go back to text.
-[ ] BITMAP n,addr - point a bitmap layer at its pixel data.
-[ ] CLRBITMAP - clear the bitmap.
-[ ] PLOT x,y,c - set one pixel.
-[ ] LINE x1,y1,x2,y2,c - draw a line.
+[x] GRAPHICS mode - 0 off, 1 on (640x480, 256 colours). passthru is
+    switched on with the layer, which is what lets VERA's opaque pixels
+    through on top and keeps the console readable over the bitmap.
+    Mode 2 in the hardware is 4bpp; the drawing statements here assume
+    one byte is one pixel, so it is refused rather than half-supported.
+[x] GRAPHICSAT - $B5 if the bitmap layer is there, 0 if it is not. Worth
+    a keyword because the answer is three-valued in a way a beginner
+    meets: the layer can be absent, or present but switched off in the
+    OSD, and both read 0 from a program's point of view. Better to say
+    "turn the bitmap layer on" than to draw into nothing.
+[ ] BITMAP n,addr - point a bitmap layer at its pixel data. On VERA2
+    this is the DISPLAY BASE at $9F62-$9F64, latched at vsync - which is
+    page flipping, and 1 MB holds two 8bpp frames.
+[x] CLRBITMAP c - fill the frame. 307,200 stores, done by running the
+    data bank up the four whole banks the frame covers and then the
+    45,056 bytes left over.
+[x] PLOT x,y,c - set one pixel. Pixels outside the screen are DROPPED,
+    not refused: clipping is what a drawing statement should do.
+[x] POINT(x,y) - read one back, or -1 if it is off screen.
+[x] LINE x1,y1,x2,y2,c - draw a line. Bresenham in the form that needs
+    no quadrant cases: dy is carried negative and the error is compared
+    against both deltas each step, so one loop draws every direction
+    including the vertical and the horizontal.
+[x] PAL2 index,rgb - VERA2 has a palette of its own, and nothing like
+    VERA's: an index register auto-increments and writing the HIGH half
+    commits the entry, so the two halves must go out in order.
 [ ] RECT x1,y1,x2,y2,c - rectangle. Filled or outline is an argument
     still to be decided.
 [ ] FILL x,y,c - flood fill.
@@ -37,3 +59,11 @@ X816_core/doc/VERA2.md. For a beginner's BASIC this is the easier and
 faster target, and it is the recommended one.
 
 Filling and blitting are not loops you have to write: HELP VERAFX.
+
+One thing the code here has to work around, and it is worth knowing
+before adding to it. The 65816 reaches a computed 24-bit address through
+[ptr] addressing, and [ptr] must live in the direct page - which is one
+page, and full. So a pixel address is split into a bank and a 16-bit
+offset, the bank is pushed into DBR, and the store is a plain
+absolute-indexed one. No pointer anywhere, and fewer cycles than the
+indirect would have been.

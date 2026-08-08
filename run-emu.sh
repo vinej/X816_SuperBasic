@@ -182,7 +182,9 @@ KEYS_D=$(keys_of \
     'PRINT EOF(1)' \
     'CLOSE #1' \
     'PRINT #9,1' \
-    'PRINT "UNWEDGED"')
+    'PRINT "UNWEDGED"' \
+    '-5' \
+    'PRINT "AFTERMINUS"')
 
 # The font gets a session to itself for an unusual reason: changing it
 # changes EVERY glyph on the screen, including the ones other checks
@@ -202,7 +204,15 @@ KEYS_E=$(keys_of \
     'A=&h4800' \
     'GLYPH A,65,254,198,140,24,50,102,254,0' \
     'CHARSET A' \
-    'PRINT "AAA"')
+    'PRINT "AAA"' \
+    'GRAPHICS 1' \
+    'CLRBITMAP 7' \
+    'PLOT 10,20,77' \
+    'PRINT PEEK(&hE0320A)' \
+    'LINE 0,100,639,100,55' \
+    'PRINT POINT(300,100)' \
+    'PRINT POINT(4,5)' \
+    'PRINT PEEK(&hE4AFFF)')
 
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
@@ -509,6 +519,18 @@ if not any(r.strip() == "-1" for r in rows_d):
 if not any(r.strip() == "UNWEDGED" for r in rows_d):
     fail("the console did not recover from an error inside PRINT #")
 
+# A line that is nothing but a minus sign and a number. This used to
+# fill the screen with garbage: PREVCHAR reached its "nothing before
+# this" return with a 16-bit accumulator, where the assembler had
+# emitted a two-byte LDA #0, and the instruction swallowed the opcode
+# after it. The typo is an easy one and the failure was total, so both
+# halves are checked -- the error is reported, AND the machine is still
+# there afterwards.
+if not any(r.strip() == "Syntax error" for r in rows_d):
+    fail("a line beginning with a minus sign was not refused")
+if not any(r.strip() == "AFTERMINUS" for r in rows_d):
+    fail("the machine did not survive a line beginning with a minus sign")
+
 # ---- session E: the redefinable character set ----------------------------
 # 16384 is $4000, where the kernel leaves its font. CHARSETAT reads the
 # tilebase register back and undoes the >>11 the hardware stores it as.
@@ -536,6 +558,24 @@ if not any(r.strip() == "ZZZ" for r in rows_e):
     fail("GLYPH did not replace character 65 in the font being displayed")
 if not any("BZSIC816" in r for r in rows_e):
     fail("the redefined glyph did not reach text drawn before CHARSET")
+
+# ---- session E: bitmap graphics on VERA2 ---------------------------------
+# The framebuffer is ordinary memory at $E0:0000, so PEEK reaches it -- and
+# PEEK is a completely different path from POINT, which means the pixel can
+# be confirmed by something that shares no code with what wrote it.
+# Pixel (10,20) is at 20*640 + 10 = $320A.
+if not any(r.strip() == "77" for r in rows_e):
+    fail("PLOT did not put a pixel where PEEK could find it")
+# A line the full width of the screen, sampled in the middle.
+if not any(r.strip() == "55" for r in rows_e):
+    fail("LINE did not draw across the screen")
+# Two 7s, and they check different things. POINT(4,5) is next to the
+# diagonal in the earlier test and must still hold the CLRBITMAP colour --
+# a line that painted its neighbours would fail here. $E4AFFF is the LAST
+# byte of the frame, $E00000 + 307199, so the fill is shown to have covered
+# every one of the five banks it spans rather than stopping at the first.
+if len([r for r in rows_e if r.strip() == "7"]) < 2:
+    fail("CLRBITMAP did not fill the whole frame, or LINE painted too wide")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

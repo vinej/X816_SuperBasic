@@ -728,22 +728,43 @@ the part of the rule the old list could not reach.
 
 ### A crash found on the way
 
-`PREVCHAR`'s "no previous character" path returned WITHOUT its `PLP`.
-`PHP` pushes one byte and `RTS` pops two for a return address, so taking
-that path jumped into hyperspace -- and the caller *expects* to take it,
-since it tests for the 0. **Typing a line that begins with a minus sign
-was enough**: the screen filled with garbage.
+**Typing a line that begins with a minus sign killed the machine.** The
+screen filled with garbage. `BIPPREV` is zeroed at the start of every
+line, so this is not an exotic input -- `10 -5` did it too.
 
-`BIPPREV` is zeroed at the start of every line, so this is not an exotic
-input. The `PLP` is there now, guarded like the `INPUT` fix in section
-14 so the C256 build still reproduces stock -- it has the same bug.
+There were two faults in `PREVCHAR`'s "no previous character" path, and
+the smaller one was found first.
 
-That is an improvement and not yet a cure. The line no longer corrupts
-memory; it throws `ERR_SYNTAX`, and a throw from inside `TOKENIZE` does
-not come back the way one from the evaluator does -- the machine stops
-instead of printing "Syntax error". Errors raised during tokenizing are
-evidently not something the REPL was built for. Worth chasing, and it is
-a different bug from the one that was fixed.
+It returned WITHOUT its `PLP`: `PHP` pushes one byte and `RTS` pops two,
+so the return address was junk. Real, and fixed. It was not the cause.
+
+The cause was width. `ret_false` is reached two ways -- from the scan
+loop, where the accumulator is already 8 bits, and from the `BIPPREV`
+test at the top, where `setaxl` has just made it 16. The assembler only
+sees the last `setas` in program order, so it emitted a two-byte
+`LDA #0`; arriving 16 bits wide, that instruction **ate the opcode after
+it** and execution walked off into whatever followed.
+
+One `SEP #$20` at the label fixes it, and a line starting with a minus
+now prints "Syntax error" and comes back, in direct mode and when typed
+with a line number.
+
+Two things this cost time by hiding:
+
+The first fix made it worse to look at. Correcting the `PLP` turned a
+hard crash into a hang, which reads like progress and is not. What it
+actually did was change *where* the wreck ended up.
+
+An intermediate theory -- that a `THROW` raised inside `TOKENIZE` does
+not come back the way one from the evaluator does -- was wrong, and was
+written into this file before being checked. It survived because the
+evidence for it (no message, machine stopped) was equally consistent
+with the real fault. Throwing from the tokenizer works, and the stock
+behaviour was kept: `10 -5` is refused at entry rather than stored as a
+line that could never run.
+
+Both fixes are guarded, so the C256 build still reproduces stock. It has
+the same bug.
 
 ## 16. The font, and a test that lied (2026-08-07)
 
@@ -826,6 +847,55 @@ writing down: **a passing test says the cases it runs are right, and
 nothing whatever about the cases it does not.** The arithmetic was
 checked against a table of five addresses afterwards, on paper, which
 took a minute and found it immediately.
+
+## 18. Bitmap graphics, and the direct page running out (2026-08-08)
+
+The GRAPHIC help page had recommended VERA2 over VERA's own bitmap mode,
+and the recommendation was right. VERA's 320x240 mode puts pixels in
+VRAM behind a port, and 76,800 bytes from VRAM `$00000` covers the
+console's map and its font -- so the text screen is destroyed while you
+draw. VERA2 is 640x480 and its framebuffer is **ordinary CPU memory** at
+`$E0:0000`, so `PLOT` is a computed address and a store, and the console
+is untouched. `GRAPHICS 1` sets passthru with the layer, which lets
+VERA's opaque pixels through on top: text and graphics at once.
+
+### No direct page left
+
+The obvious way to reach a computed 24-bit address is `[ptr]`, and
+`[ptr]` must live in the direct page. The direct page is one page of 256
+bytes and it is **full** -- the build fails on `Too many direct page
+variables` for four more.
+
+Two rewrites came out of that, and both are better than what they
+replaced:
+
+The line multiply. y*640 needs 19 bits, and the first version shifted a
+32-bit value in memory with `ASL`/`ROL`, which have no long addressing
+mode and so wanted a direct-page dword. But 640 is 5*128, and y*5 cannot
+overflow 16 bits for y below 480 -- so the multiply is two shifts and an
+add in the accumulator, and the 19-bit result is split by shifting the
+same value both ways: the low word is `t<<7`, the bits above are `t>>9`.
+No memory shifts at all.
+
+The store. A pixel address is split into a bank and a 16-bit offset, the
+bank is pushed into `DBR`, and the store is `STA 0,X`. It needs no
+pointer anywhere, and it is fewer cycles than the indirect would have
+been. `CLRBITMAP` then falls out of the same idea: run `DBR` up the four
+whole banks the frame covers, filling 65,536 bytes each as X wraps, then
+the 45,056 left over. 4*65536 + 45056 = 307,200 exactly.
+
+### What the checks assert
+
+The framebuffer being ordinary memory pays off again in the testing:
+`PEEK` reaches it, and **`PEEK` shares no code with `POINT`**. So the
+pixel `PLOT` wrote is confirmed by a path that had nothing to do with
+writing it -- which is the difference between a check and a tautology.
+
+`$E4AFFF` is the last byte of the frame, `$E00000 + 307199`. Asserting
+on it is how `CLRBITMAP` is shown to have covered all five banks rather
+than stopping at the first. And `POINT(639,479)` exercises the bank
+arithmetic at the far corner, which is the value most likely to be
+wrong and the least likely to be tried by hand.
 
 ## 13. Open decisions (carried from the feasibility study)
 

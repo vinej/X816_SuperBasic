@@ -156,6 +156,24 @@ FNT_CODE  = $008424         ; word - the glyph GLYPH is redefining
 FNT_ROWS  = $008426         ; 8 bytes - its scanlines, collected before the
                             ;  VRAM port is pointed anywhere
 
+; Bitmap drawing (X816/graphics_x816.s). All signed 16-bit: a negative
+; coordinate has to survive the arithmetic so that a line running off
+; the edge is clipped rather than wrapped.
+GX        = $008430         ; word - the pixel being drawn, or a line cursor
+GY        = $008432
+GX1       = $008434         ; word - the far end of a line
+GY1       = $008436
+GDX       = $008438         ; word - the deltas, dy carried NEGATIVE
+GDY       = $00843A
+GSX       = $00843C         ; word - the step, +1 or -1
+GSY       = $00843E
+GERR      = $008440         ; word - the running error
+GE2       = $008442         ; word - twice it
+GCOL      = $008444         ; word - the pen
+GT        = $008446         ; word - y*5, on the way to y*640
+GOFF      = $008448         ; word - the pixel's offset within its bank
+GBANK     = $00844A         ; word - and which bank that is, $E0 to $E4
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

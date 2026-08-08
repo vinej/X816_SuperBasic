@@ -204,6 +204,19 @@ go_back     DEY
             ; minus sign was enough to do it. Guarded so that the C256
             ; build still reproduces stock; it has the same bug.
 ret_false   TRACE "/PREVCHAR"
+.if SYSTEM == SYSTEM_X816
+            ; SEP, not decoration. This label is reached two ways: from
+            ; the loop below, where A is already 8 bits, and from the
+            ; "BIPPREV is zero" test at the top, where setaxl has just
+            ; made it 16. The assembler only sees the last setas in
+            ; program order, so it emits a TWO-byte LDA #0 -- and
+            ; arriving here 16 bits wide, that instruction eats the
+            ; opcode after it and execution walks off into the line.
+            ;
+            ; That is what actually broke a line beginning with a minus
+            ; sign, and the missing PLP below only made the wreck worse.
+            setas
+.endif
             LDA #0
 .if SYSTEM == SYSTEM_X816
             PLP
@@ -1451,6 +1464,13 @@ TOKENS2
             DEFTOK "GLYPH", TOK_TY_STMNT, 0, S_GLYPH, 0
             DEFTOK "FONTCOPY", TOK_TY_STMNT, 0, S_FONTCOPY, 0
             DEFTOK "LAYERMODE", TOK_TY_STMNT, 0, S_LAYERMODE, 0
+
+; Bitmap graphics on VERA2, whose framebuffer is ordinary memory. PLOT,
+; LINE and CLRBITMAP are BASIC816 keywords that have thrown since phase
+; 1 because they drove VICKY registers.
+            DEFTOK "GRAPHICSAT", TOK_TY_FUNC, 0, FN_GRAPHICSAT, 0
+            DEFTOK "POINT", TOK_TY_FUNC, 0, FN_POINT, 0
+            DEFTOK "PAL2", TOK_TY_STMNT, 0, S_PAL2, 0
 .endif
 
 ; The three string functions that would not fit before. Portable, like

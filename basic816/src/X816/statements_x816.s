@@ -97,23 +97,7 @@ S_SETCOLOR      .proc
                 THROW ERR_ARGUMENT
                 .pend
 
-S_GRAPHICS      .proc
-                THROW ERR_ARGUMENT
-                .pend
-
 S_BITMAP        .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_CLRBITMAP     .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_PLOT          .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_LINE          .proc
                 THROW ERR_ARGUMENT
                 .pend
 
