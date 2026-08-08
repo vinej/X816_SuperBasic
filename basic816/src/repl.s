@@ -256,8 +256,15 @@ INTERACT        .proc
                 TXS
 
 ready_loop      CALL PRREADY        ; Print the READY prompt
-no_ready_loop   CALL READLINE       ; Read characters until the user presses RETURN
+no_ready_loop   CALL AUTO_PROMPT    ; AUTO puts the next line number on the
+                                    ;  screen BEFORE the line is typed, which
+                                    ;  is all it has to do: SCRCOPYLINE takes
+                                    ;  the whole console line, so the number
+                                    ;  arrives as if it had been typed
+                CALL READLINE       ; Read characters until the user presses RETURN
                 CALL SCRCOPYLINE    ; Copy the line the cursor is on to the INPUTBUF
+                CALL AUTO_CHECK     ; ... and a line with nothing after that
+                                    ;  number means the user is finished
 
                 JSL FK_TESTBREAK    ; Make sure the BREAK bit is cleared.
 

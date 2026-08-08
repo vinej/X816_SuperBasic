@@ -292,6 +292,19 @@ CLRINTERP   .proc
             CALL S_CLR                  ; Erase all variables
             CALL S_RESTORE              ; Reset DATAPTR to the beginning
             STZ GOSUBDEPTH              ; Clear the depth of the GOSUB stack
+
+            ; The SuperBasic layer's state. It lives in `variables`, which
+            ; is uninitialised memory -- so without this AUTO comes up
+            ; switched on with a garbage step, and it did. PROCDEPTH has
+            ; to be cleared for a better reason: a run stopped inside a
+            ; procedure would otherwise leave frames counted that the
+            ; return stack no longer holds.
+            setaxl
+            LDA #0
+            STA @l PROCDEPTH
+            STA @l PROCLOCALS
+            setas
+            STA @l AUTO_ON
 .if SYSTEM == SYSTEM_X816
             CALL IRQ_DISARM             ; RUN, NEW and LOAD all come through
                                         ;  here, and a handler that outlived
@@ -390,6 +403,16 @@ SKIPTOTOK   .proc
 
 loop        LDA [BIP]           ; Get the character
             BEQ end_of_line     ; EOL? Yes: move to the next line
+
+            CMP #TOK_EXTEND     ; A TWO-BYTE token: step over BOTH bytes.
+            BEQ skip_ext        ;  This scanner compares raw bytes, and an
+                                ;  extended token's SUB-ID occupies the same
+                                ;  number space as a base token's id -- so
+                                ;  without this, sub-id $9E (PCMFREE) reads
+                                ;  as TOK_NEXT and sub-id $9B (MOUSEAT) as
+                                ;  TOK_FOR, and the nesting count goes wrong
+                                ;  in a program that merely MENTIONS them.
+
             CMP TARGETTOK       ; Is it the one we want?
             BEQ check_depth     ; Yes: check the depth
 
@@ -405,6 +428,10 @@ loop        LDA [BIP]           ; Get the character
 
 incloop     CALL INCBIP         ; Otherwise: Point to the next character
             BRA loop            ; and keep scanning
+
+skip_ext    CALL INCBIP         ; the escape, then the sub-id, so neither is
+            CALL INCBIP         ;  ever compared against a base token
+            BRA loop
 
 end_of_line CALL NEXTLINE       ; Go to the next line
             setal

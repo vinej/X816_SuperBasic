@@ -1051,17 +1051,8 @@ S_GOSUB         .proc
                 LDA CURLINE+2
                 PHA
 
-                CALL SKIPWS
-
-                CALL PARSEINT               ; Get an integer line number
-
-                LDA ARGUMENT1               ; Check the number
-                BEQ syntax_err              ; If 0, no number was found... syntax error
-
-                CALL FINDLINE               ; Try to find the line
-                BCC not_found               ; If not found... LINE NOT FOUND error
-
-                TRACE "found"
+                CALL TARGET_FIND            ; a line number, or a LABEL
+                BCC not_found
 
                 setas                       ; Tell the interpreter to restart at the selected line
                 LDA #EXEC_GOTO
@@ -1122,41 +1113,853 @@ underflow       TRACE "underflow"
                 THROW ERR_STACKUNDER
                 .pend
 
-; Test an expression.
-; If it's true (non-zero), execute statements after the THEN
-; If if's false (zero), execute
+;;;
+;;; IF, in two forms
+;;;
+;;; The classic one, which BASIC816 had:
+;;;
+;;;     IF <test> THEN <line number>
+;;;
+;;; and the block one, which is what makes this SuperBasic:
+;;;
+;;;     IF <test> THEN
+;;;       ...
+;;;     ELSE
+;;;       ...
+;;;     ENDIF
+;;;
+;;; They are told apart by what follows THEN: a line number, or nothing.
+;;;
+;;; NO STATE IS KEPT, and that is the whole trick. ELSE can only ever be
+;;; REACHED by falling out of a branch that was taken, so it always means
+;;; "skip to my ENDIF" and needs to know nothing else. ENDIF does
+;;; nothing at all. A false IF skips to its ELSE or its ENDIF. There is
+;;; no stack, nothing to unwind, and a GOTO out of a block leaves nothing
+;;; behind to leak.
+;;;
+
 ;
-; Modes:
-; Simple - IF <test> THEN <line number>
+; Skip forward to the ELSE or the ENDIF that closes this block.
+;
+; Inputs:
+;   IFMODE = 1 to stop at an ELSE as well, 0 for an ENDIF only
+;   CURLINE = the line the IF or ELSE is on
+;
+; Outputs:
+;   CURLINE, BIP = just past the token that closed the block
+;   EXECACTION = EXEC_RETURN, because BIP is set and must not be reset
+;
+; ONLY THE FIRST TOKEN OF EACH LINE IS LOOKED AT, so IF, ELSE and ENDIF
+; must start their own lines in the block form. That restriction is
+; worth having rather than working around: a scanner that walked every
+; token would have to understand strings, REM and the two-byte escape,
+; or it would eventually find an ENDIF inside a quoted string. Reading
+; one token a line cannot make that mistake -- and SKIPTOTOK, which does
+; walk tokens, had exactly that class of bug until today.
+;
+SKIPBLOCK       .proc
+                PHP
+                setaxl
+
+                setas
+                STZ NESTING
+
+sb_line         CALL NEXTLINE               ; CURLINE and LINENUM move on
+                setal
+                LDA LINENUM
+                BEQ sb_noend                ; ran off the end of the program
+
+                CLC                         ; BIP := this line's first token
+                LDA CURLINE
+                ADC #LINE_TOKENS
+                STA BIP
+                setas
+                LDA CURLINE+2
+                ADC #0
+                STA BIP+2
+                CALL SKIPWS
+
+                setal
+                CALL TOKAT                  ; 16-bit, so $FF is handled here
+
+                CMP @l BLKCLOSE
+                BEQ sb_close
+                CMP @l BLKOPEN
+                BEQ sb_deeper
+                CMP @l BLKALT
+                BEQ sb_alt
+                BRA sb_line
+
+sb_deeper       setas                       ; an inner block: its end is not
+                INC NESTING                 ;  the one we are looking for
+                BRA sb_line
+
+sb_close        setas
+                LDA NESTING
+                BEQ sb_found
+                DEC NESTING
+                BRA sb_line
+
+sb_alt          setas
+                LDA NESTING
+                BNE sb_line                 ; belongs to an inner block
+
+sb_found        setal
+                CALL TOKSKIP                ; step past it, however wide
+                setas
+                LDA #EXEC_RETURN            ; BIP is already where execution
+                STA EXECACTION              ;  resumes, so it must not be
+                                            ;  reset to the head of the line
+                PLP
+                RETURN
+
+sb_noend        PLP
+                THROW ERR_SYNTAX
+                .pend
+
+;
+; Set the three tokens SKIPBLOCK looks for.
+;
+; A is the opener, X the closer, Y the alternative ending -- pass the
+; closer again when there is no second one.
+;
+BLK_SET         .proc
+                PHP
+                setaxl
+                STA @l BLKOPEN
+                setal
+                TXA
+                STA @l BLKCLOSE
+                TYA
+                STA @l BLKALT
+                PLP
+                RETURN
+                .pend
+
+S_ELSE          .proc
+                PHP
+                TRACE "S_ELSE"
+                setaxl
+                LDA #TOK_IF                 ; an ELSE closes at its ENDIF and
+                LDX #TOK_ENDIF              ;  never at another ELSE, so the
+                LDY #TOK_ENDIF              ;  alternative is the closer again
+                CALL BLK_SET
+                CALL SKIPBLOCK
+                PLP
+                RETURN
+                .pend
+
+;
+; ENDIF -- nothing to do. Both branches arrive here and carry on.
+;
+S_ENDIF         .proc
+                TRACE "S_ENDIF"
+                RETURN
+                .pend
+
+;;;
+;;; PROC, ENDPROC and LOCAL
+;;;
+;;;     10 PROC box(3, 4)
+;;;     ...
+;;;     100 DEFPROC box(w, h)
+;;;     110   LOCAL i
+;;;     120   FOR i = 1 TO h
+;;;     130     PRINT w
+;;;     140   NEXT
+;;;     150 ENDPROC
+;;;
+;;; DEFPROC defines and PROC calls, rather than BBC BASIC's PROCname,
+;;; because a keyword and a name cannot be glued together by a tokenizer
+;;; that matches keywords anywhere in a line.
+;;;
+;;; THERE IS NO PROCEDURE TABLE. A call searches the program for its
+;;; DEFPROC exactly as GOSUB searches for a line number -- the same cost,
+;;; the same code shape, and nothing to register, to invalidate on NEW,
+;;; or to get out of step with the program text.
+;;;
+;;; PARAMETERS ARE LOCAL, automatically. Binding one is the same
+;;; operation LOCAL performs: push the old value on the return stack,
+;;; count it into the frame, then assign. ENDPROC puts all of them back,
+;;; so a procedure cannot quietly change a variable its caller was using
+;;; as a loop counter.
+;;;
+;;; They bind LAST FIRST. Arguments go on the argument stack as they are
+;;; evaluated and a stack gives them up in reverse, so rather than find
+;;; somewhere to turn them round, the binding walks the parameter list to
+;;; the Nth name, then the (N-1)th. The list is short and the walk is a
+;;; few bytes of code instead of a buffer.
+;;;
+
+;
+; Compare the name at PROCNAME with the one at SCRATCH. Both are raw
+; program text, ending at any character a name cannot contain.
+;
+; C set when they match. Case-insensitive: the tokenizer leaves
+; identifiers exactly as typed, and a procedure called in two cases is
+; one procedure.
+;
+PROCNAMECMP     .proc
+                PHP
+                setas
+                setxl
+                LDY #0
+
+pn_loop         LDA [PROCNAME],Y
+                AND #$DF                    ; a case-insensitive compare that
+                STA @l PROCCH                  ;  needs no table: among the
+                LDA [SCRATCH],Y             ;  characters a name may contain,
+                AND #$DF                    ;  clearing bit 5 folds case and
+                CMP @l PROCCH                  ;  collides with nothing else
+                BNE pn_no
+
+                LDA [SCRATCH],Y             ; equal -- but is the name over?
+                CALL ISVARCHAR
+                BCC pn_yes                  ; both ended, on the same character
+
+                INY
+                CPY #40                     ; no name is this long
+                BNE pn_loop
+
+pn_yes          PLP
+                SEC
+                RETURN
+pn_no           PLP
+                CLC
+                RETURN
+                .pend
+
+;
+; Step BIP over a name.
+;
+PROC_SKIPNAME   .proc
+                PHP
+                setas
+psn_loop        LDA [BIP]
+                CALL ISVARCHAR
+                BCC psn_done
+                CALL INCBIP
+                BRA psn_loop
+psn_done        PLP
+                RETURN
+                .pend
+
+;
+; Find the line whose first token is NAMETOK and whose name matches
+; PROCNAME -- a DEFPROC for a call, a LABEL for a GOTO.
+;
+; The same search serves both because they are the same question, and it
+; is the question GOSUB has always asked of a line number: walk the
+; program until something matches. Nothing is registered in advance, so
+; nothing can be stale.
+;
+; Outputs:
+;   C set, CURLINE = its line and BIP just past the name; or C clear
+;
+NAME_FIND       .proc
+                PHP
+                setaxl
+
+                LDA #<>BASIC_BOT
+                STA CURLINE
+                LDA #`BASIC_BOT
+                STA CURLINE+2
+
+pf_check        setaxl
+                LDY #LINE_NUMBER
+                LDA [CURLINE],Y
+                BEQ pf_none                 ; number 0: the end of the program
+
+                CLC                         ; BIP := the line's first token
+                LDA CURLINE
+                ADC #LINE_TOKENS
+                STA BIP
+                setas
+                LDA CURLINE+2
+                ADC #0
+                STA BIP+2
+                CALL SKIPWS
+
+                setal
+                CALL TOKAT
+                CMP @l NAMETOK
+                BNE pf_next
+
+                CALL TOKSKIP
+                CALL SKIPWS
+                setal                       ; the header's name
+                LDA BIP
+                STA SCRATCH
+                LDA BIP+2
+                STA SCRATCH+2
+                CALL PROCNAMECMP
+                BCS pf_found
+
+pf_next         CALL NEXTLINE
+                BRA pf_check
+
+pf_found        CALL PROC_SKIPNAME
+                PLP
+                SEC
+                RETURN
+pf_none         PLP
+                CLC
+                RETURN
+                .pend
+
+;
+; Save the variable named by TOFIND/TOFINDTYPE on the return stack and
+; count it into the frame, so that ENDPROC can put it back.
+;
+; The NAME POINTER is what is saved, and it points into the program text,
+; which does not move while a program runs. It cannot be TOFIND by then:
+; VAR_FIND rewrites TOFIND to its uppercased copy in TEMPBUF, and the
+; next lookup overwrites that.
+;
+PROC_MAKELOCAL  .proc
+                PHP
+                setaxl
+
+                LDA TOFIND+2
+                CALL PHRETURN
+                LDA TOFIND
+                CALL PHRETURN
+                setas
+                LDA TOFINDTYPE
+                setal
+                AND #$00FF
+                CALL PHRETURN
+
+                CALL VAR_FIND               ; its value, if it has one yet
+                BCS pml_have
+                setal                       ; never assigned: keep a zero, so
+                LDA #0                      ;  ENDPROC restores it to nothing
+                STA ARGUMENT1               ;  rather than to rubbish
+                STA ARGUMENT1+2
+                BRA pml_push
+pml_have        CALL VAR_REF
+pml_push        setal
+                LDA ARGUMENT1+2
+                CALL PHRETURN
+                LDA ARGUMENT1
+                CALL PHRETURN
+
+                setal
+                LDA @l PROCLOCALS       ; INC has no long addressing mode
+                INC A
+                STA @l PROCLOCALS
+
+                PLP
+                RETURN
+                .pend
+
+;
+; TOFIND := the PROCIDX'th parameter of the header at PROCHDR, 1-based.
+;
+PROC_PARAM      .proc
+                PHP
+                setaxl
+                PHY
+
+                LDA @l PROCHDR
+                STA BIP
+                LDA @l PROCHDR+2
+                STA BIP+2
+
+                CALL SKIPWS
+                setas
+                LDA [BIP]
+                CMP #TOK_LPAREN
+                BNE pp_none
+                CALL INCBIP
+
+                setaxl
+                LDY #0
+pp_next         CALL SKIPWS
+                setas
+                LDA [BIP]
+                CALL ISALPHA
+                BCC pp_none
+                CALL VAR_FINDNAME
+                BCC pp_none
+
+                setaxl
+                INY
+                TYA                         ; CPY has no long mode either
+                CMP @l PROCIDX
+                BEQ pp_found
+
+                CALL SKIPWS
+                setas
+                LDA [BIP]
+                CMP #','
+                BNE pp_none
+                CALL INCBIP
+                BRA pp_next
+
+pp_found        setaxl
+                PLY
+                PLP
+                SEC
+                RETURN
+pp_none         setaxl
+                PLY
+                PLP
+                CLC
+                RETURN
+                .pend
+
+;
+; DEFPROC, arrived at by falling into it. A definition is not a thing to
+; execute, so this steps over the body to its ENDPROC -- which is how a
+; procedure can sit anywhere in the program, including above the code
+; that calls it.
+;
+S_DEFPROC       .proc
+                PHP
+                TRACE "S_DEFPROC"
+                setaxl
+                LDA #TOK_DEFPROC
+                LDX #TOK_ENDPROC
+                LDY #TOK_ENDPROC
+                CALL BLK_SET
+                CALL SKIPBLOCK
+                PLP
+                RETURN
+                .pend
+
+;
+; LOCAL v [, v ...] -- keep these until ENDPROC puts them back.
+;
+; A local NUMBER starts at zero and a local STRING starts empty, which is
+; worth the few bytes: a local that starts as whatever the caller left
+; there is a bug that only appears the second time the procedure runs.
+;
+S_LOCAL         .proc
+                PHP
+                TRACE "S_LOCAL"
+                setaxl
+
+                LDA @l PROCDEPTH
+                BEQ sl_outside
+
+sl_name         CALL SKIPWS
+                setas
+                LDA [BIP]
+                CALL ISALPHA
+                BCC sl_syntax
+                CALL VAR_FINDNAME
+                BCC sl_syntax
+
+                CALL PROC_MAKELOCAL
+
+                setas                       ; and start it empty
+                LDA TOFINDTYPE
+                CMP #TYPE_STRING
+                BEQ sl_string
+                setal
+                LDA #0
+                STA ARGUMENT1
+                STA ARGUMENT1+2
+                BRA sl_settype
+sl_string       setal
+                LDA #<>proc_empty
+                STA ARGUMENT1
+                LDA #`proc_empty
+                STA ARGUMENT1+2
+sl_settype      setas
+                LDA TOFINDTYPE
+                STA ARGTYPE1
+                setal
+                CALL VAR_SET
+
+                CALL SKIPWS
+                setas
+                LDA [BIP]
+                CMP #','
+                BNE sl_done
+                CALL INCBIP
+                BRA sl_name
+
+sl_done         PLP
+                RETURN
+sl_outside      PLP
+                THROW ERR_STACKUNDER
+sl_syntax       THROW ERR_SYNTAX
+                .pend
+
+proc_empty      .byte 0                     ; what a LOCAL string starts as
+
+;
+; PROC name [(a [, a ...])] -- call one.
+;
+S_PROC          .proc
+                PHP
+                TRACE "S_PROC"
+                setaxl
+                PHX
+                PHY
+
+                CALL SKIPWS
+                setal                       ; the name, kept while the
+                LDA BIP                     ;  arguments are evaluated
+                STA PROCNAME
+                LDA BIP+2
+                STA PROCNAME+2
+                setas
+                LDA [BIP]
+                CALL ISALPHA
+                BCS sp_named                ; the error exits are at the far
+                JMP sp_syntax               ;  end of a long statement
+sp_named        CALL PROC_SKIPNAME
+
+                ; ---- the arguments, onto the argument stack ----
+                setaxl
+                LDY #0
+                CALL SKIPWS
+                setas
+                LDA [BIP]
+                CMP #TOK_LPAREN
+                BNE sp_noargs
+                CALL INCBIP
+
+sp_arg          CALL SKIPWS
+                setas
+                LDA [BIP]
+                CMP #TOK_RPAREN
+                BEQ sp_close
+
+                setaxl
+                PHY                         ; EVALEXPR is a whole interpreter
+                CALL EVALEXPR               ;  and Y is not its to keep
+                setaxl
+                LDX #ARGUMENT1
+                CALL PHARGUMENT
+                PLY
+                INY
+                CPY #9
+                BCC sp_okcount
+                JMP sp_toomany
+sp_okcount
+
+                CALL SKIPWS
+                setas
+                LDA [BIP]
+                CMP #','
+                BNE sp_close
+                CALL INCBIP
+                BRA sp_arg
+
+sp_close        setas
+                LDA [BIP]
+                CMP #TOK_RPAREN
+                BEQ sp_rparen
+                JMP sp_syntax
+sp_rparen       CALL INCBIP
+
+sp_noargs       setaxl
+                TYA                         ; nor STY
+                STA @l PROCARGN
+                CALL SKIPSTMT               ; BIP is now past the call
+
+                ; ---- the frame: what GOSUB saves, plus the local count ----
+                setaxl
+                LDA CURLINE+2
+                CALL PHRETURN
+                LDA CURLINE
+                CALL PHRETURN
+                LDA BIP+2
+                CALL PHRETURN
+                LDA BIP
+                CALL PHRETURN
+                LDA @l PROCLOCALS              ; the CALLER's, restored by ENDPROC
+                CALL PHRETURN
+                setal
+                LDA #0
+                STA @l PROCLOCALS
+                LDA @l PROCDEPTH
+                INC A
+                STA @l PROCDEPTH
+
+                ; ---- find it ----
+                setaxl
+                LDA #TOK_DEFPROC
+                STA @l NAMETOK
+                CALL NAME_FIND
+                BCS sp_found
+                JMP sp_nosuch
+sp_found
+
+                setal                       ; where the parameter list begins,
+                LDA BIP                     ;  returned to once per parameter
+                STA @l PROCHDR
+                LDA BIP+2
+                STA @l PROCHDR+2
+
+                ; ---- bind, last parameter first ----
+                setal
+                LDA @l PROCARGN
+                BEQ sp_body
+                STA @l PROCIDX
+
+sp_bind         setaxl                      ; the argument stack gives them
+                LDX #ARGUMENT1              ;  up in reverse, which is why
+                CALL PLARGUMENT             ;  PROCIDX counts down
+                setal
+                LDA ARGUMENT1               ; park it: reading the parameter's
+                STA @l PROCVAL                 ;  old value lands in ARGUMENT1
+                LDA ARGUMENT1+2
+                STA @l PROCVAL+2
+                setas
+                LDA ARGTYPE1
+                STA @l PROCVALT
+
+                CALL PROC_PARAM
+                BCS sp_gotparam
+                JMP sp_argcount
+sp_gotparam
+
+                CALL PROC_MAKELOCAL         ; a parameter IS a local
+
+                setal
+                LDA @l PROCVAL
+                STA ARGUMENT1
+                LDA @l PROCVAL+2
+                STA ARGUMENT1+2
+                setas
+                LDA @l PROCVALT                ; the ARGUMENT's type; TOFINDTYPE
+                STA ARGTYPE1                ;  is still the PARAMETER's, so
+                setal                       ;  VAR_SET casts between them
+                CALL VAR_SET
+
+                setal
+                LDA @l PROCIDX
+                DEC A
+                STA @l PROCIDX
+                BNE sp_bind
+
+sp_body         setal                       ; the body is the lines below the
+                LDA @l PROCHDR                 ;  header, so finish the header
+                STA BIP                     ;  line and fall off the end of it
+                LDA @l PROCHDR+2
+                STA BIP+2
+                CALL SKIPSTMT
+
+                setas
+                LDA #EXEC_RETURN            ; CURLINE and BIP are both set
+                STA EXECACTION
+
+                PLY
+                PLX
+                PLP
+                RETURN
+
+sp_syntax       THROW ERR_SYNTAX
+sp_toomany      THROW ERR_ARGUMENT
+sp_nosuch       THROW ERR_NOTFOUND
+sp_argcount     THROW ERR_ARGUMENT
+                .pend
+
+;
+; LABEL name -- a place to jump to that is not a number.
+;
+; It does nothing when it is reached, which is the whole of it: a GOTO
+; that finds a label lands ON the label's line, the statement returns,
+; and execution carries on into whatever follows. Nothing has to skip
+; over it and nothing has to remember it.
+;
+S_LABEL         .proc
+                PHP
+                TRACE "S_LABEL"
+                CALL SKIPSTMT               ; the name is not for executing
+                PLP
+                RETURN
+                .pend
+
+;
+; Find what a GOTO, GOSUB or THEN is aiming at: a line number, or a
+; LABEL.
+;
+; Outputs:
+;   C set and CURLINE at the target; BIP left just past the name or the
+;   number, ON THE ORIGINAL LINE -- GOSUB has to go on from there to
+;   work out where to come back to.
+;
+TARGET_FIND     .proc
+                PHP
+                setaxl
+
+                CALL SKIPWS
+                setas
+                LDA [BIP]
+                CALL ISALPHA
+                BCS tf_label
+
+                setaxl                      ; a line number, as it always was
+                CALL PARSEINT
+                LDA ARGUMENT1
+                BEQ tf_no
+                CALL FINDLINE
+                BCC tf_no
+                BRA tf_yes
+
+tf_label        setal                       ; a name: the same search PROC
+                LDA BIP                     ;  uses, pointed at LABEL instead
+                STA PROCNAME
+                LDA BIP+2
+                STA PROCNAME+2
+                CALL PROC_SKIPNAME          ; past it, at the CALL site
+
+                setal                       ; NAME_FIND scans with BIP, and
+                LDA BIP                     ;  the caller still needs it
+                PHA
+                LDA BIP+2
+                PHA
+
+                setaxl
+                LDA #TOK_LABEL
+                STA @l NAMETOK
+                CALL NAME_FIND
+
+                setal                       ; PLA moves N and Z, never C
+                PLA
+                STA BIP+2
+                PLA
+                STA BIP
+                BCC tf_no
+
+tf_yes          PLP
+                SEC
+                RETURN
+tf_no           PLP
+                CLC
+                RETURN
+                .pend
+
+;
+; ENDPROC -- put every local back, then return to the caller.
+;
+S_ENDPROC       .proc
+                PHP
+                TRACE "S_ENDPROC"
+                setaxl
+
+                LDA @l PROCDEPTH
+                BEQ se_outside
+
+se_locals       setal
+                LDA @l PROCLOCALS
+                BEQ se_frame
+
+                CALL PLRETURN               ; the reverse of PROC_MAKELOCAL
+                STA ARGUMENT1
+                CALL PLRETURN
+                STA ARGUMENT1+2
+                CALL PLRETURN
+                setas
+                STA ARGTYPE1
+                STA TOFINDTYPE
+                setal
+                CALL PLRETURN
+                STA TOFIND
+                CALL PLRETURN
+                setas
+                STA TOFIND+2
+                setal
+                CALL VAR_SET
+
+                setal
+                LDA @l PROCLOCALS
+                DEC A
+                STA @l PROCLOCALS
+                BRA se_locals
+
+se_frame        setaxl
+                CALL PLRETURN
+                STA @l PROCLOCALS              ; the caller's count
+                CALL PLRETURN
+                STA BIP
+                CALL PLRETURN
+                setas
+                STA BIP+2
+                setal
+                CALL PLRETURN
+                STA CURLINE
+                CALL PLRETURN
+                setas
+                STA CURLINE+2
+                setal
+                LDA @l PROCDEPTH
+                DEC A
+                STA @l PROCDEPTH
+
+                setas
+                LDA #EXEC_RETURN
+                STA EXECACTION
+                PLP
+                RETURN
+
+se_outside      PLP
+                THROW ERR_STACKUNDER
+                .pend
+
+; Test an expression, and take one of the two forms above.
 S_IF            .proc
                 PHP
                 TRACE "S_IF"
 
                 CALL EVALEXPR               ; Evaluate the expression
-                CALL IS_ARG1_Z              ; Check to see if the result is FALSE (0)
-                BEQ is_false                ; If so, handle the FALSE case
+                CALL IS_ARG1_Z              ; Z set when the result is FALSE
+                setas
+                BEQ if_false
+                LDA #1
+                BRA if_keep
+if_false        LDA #0
+if_keep         STA @l IFTRUE                  ; kept across the THEN check
 
                 setas
-                LDA #TOK_THEN               ; Verify that the next token is THEN and eat it
-                CALL EXPECT_TOK             ; If THEN is not the next token, it's a syntax error
+                LDA #TOK_THEN               ; THEN is required in BOTH forms.
+                CALL EXPECT_TOK             ;  BASIC816 checked it only when
+                                            ;  the test was true, so a false
+                                            ;  "IF x GOTO 100" was skipped in
+                                            ;  silence instead of reported.
 
-                CALL PARSEINT               ; Get the line number
-                CALL IS_ARG1_Z              ; Check that we got a valid one
-                BEQ syntax_err              ; If not, we have a syntax error
-                                            ; TODO: will need to be expanded to support other forms of IF
+                CALL SKIPWS
+                setas
+                LDA [BIP]
+                BEQ if_block                ; nothing after THEN: the block
+                                            ;  form, and the body is the
+                                            ;  lines below
 
-                CALL FINDLINE               ; Try to find the line
-                BCC not_found               ; If not found... LINE NOT FOUND error
+                ; ---- IF <test> THEN <line number> ----
+                setas
+                LDA @l IFTRUE
+                BEQ if_notaken
+
+                CALL TARGET_FIND            ; a line number, or a LABEL
+                BCC not_found
 
                 TRACE_L "TRUE",CURLINE
-
-                setas                       ; Tell the interpreter to restart at the selected line
+                setas                       ; Restart at the selected line
                 LDA #EXEC_GOTO
                 STA EXECACTION
                 BRA done
 
-is_false        TRACE "FALSE"
+if_notaken      TRACE "FALSE"
                 CALL SKIPSTMT               ; Skip to the next EOL or ":"
+                BRA done
+
+                ; ---- IF <test> THEN / ELSE / ENDIF ----
+if_block        setas
+                LDA @l IFTRUE
+                BNE done                    ; true: fall into the body
+
+                setaxl                      ; false: to the ELSE or the ENDIF,
+                LDA #TOK_IF                 ;  whichever comes first at this
+                LDX #TOK_ENDIF              ;  level
+                LDY #TOK_ELSE
+                CALL BLK_SET
+                CALL SKIPBLOCK
 
 done            PLP
                 RETURN
@@ -1183,17 +1986,8 @@ S_GOTO          .proc
                 PHP
                 TRACE "S_GOTO"
 
-                CALL SKIPWS
-
-                CALL PARSEINT               ; Get an integer line number
-
-                LDA ARGUMENT1               ; Check the number
-                BEQ syntax_err              ; If 0, no number was found... syntax error
-
-                CALL FINDLINE               ; Try to find the line
-                BCC not_found               ; If not found... LINE NOT FOUND error
-
-                TRACE "foo"
+                CALL TARGET_FIND            ; a line number, or a LABEL
+                BCC not_found
 
                 setas                       ; Tell the interpreter to restart at the selected line
                 LDA #EXEC_GOTO

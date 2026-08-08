@@ -1,0 +1,143 @@
+=== LANGUAGE - structure, and what makes this SuperBasic ===
+
+BASIC816 is a classic line-numbered BASIC and a good one. This page is
+the layer added on top of it: the things that let a program be read from
+the outside without following every GOTO to find out what it does.
+
+It is deliberately the one page here that is NOT about the X816. Nothing
+on it touches VERA, the SMC or the kernel, so it is portable work and
+any future target gets it too.
+
+--- what was already here ---
+
+[x] GOTO line / GOSUB line / RETURN - the classic three.
+[x] FOR v = a TO b [STEP s] ... NEXT - counted loops.
+
+    NEXT TAKES NO VARIABLE. "NEXT I" is a syntax error, because NEXT
+    reads its record off the return stack and never parses a name, so
+    the " I" is left over for the statement checker. Write NEXT.
+[x] DO ... LOOP, with WHILE or UNTIL on either end:
+
+        DO WHILE A < 10 ... LOOP
+        DO ... LOOP UNTIL A = 10
+
+[x] LONG VARIABLE NAMES, already, and all of the characters matter:
+    COUNTER and COUNTX are two variables, not one. The binding table
+    stores the whole name and compares the whole name.
+
+    A name ending in $ is a string and one ending in % is an integer;
+    a bare name is a float. That matters more than it looks - PRINT ERR
+    reports "Variable not found" while PRINT ERR% prints the number,
+    because the lookup matches the TYPE before the name. HELP FILE.
+
+--- structure ---
+
+[x] IF <test> THEN <line number> - the classic form, unchanged.
+[x] IF <test> THEN ... ELSE ... ENDIF - the block form:
+
+        100 IF SCORE > 99 THEN
+        110   PRINT "WELL DONE"
+        120 ELSE
+        130   PRINT "AGAIN?"
+        140 ENDIF
+
+    The two are told apart by what follows THEN: a line number, or
+    nothing at all.
+
+    IF, ELSE and ENDIF MUST START THEIR OWN LINES in the block form.
+    The scanner that finds the end of a block reads the first token of
+    each line and no more, which is a restriction worth having rather
+    than working around: a scanner that walked every token would have to
+    understand strings, REM and two-byte tokens, or it would one day find
+    an ENDIF inside a quoted string.
+
+    Blocks nest. An ELSE is optional. A GOTO out of a block leaves
+    nothing behind to clean up, because a block keeps no state at all -
+    ELSE can only be REACHED by falling out of a branch that ran, so it
+    always means "skip to my ENDIF", and ENDIF does nothing whatever.
+
+    One difference from BASIC816 worth knowing: THEN is now required in
+    both forms even when the test is false. Upstream only checked for it
+    on the true path, so "IF X GOTO 100" was skipped in silence when X
+    was zero and reported when it was not.
+
+[x] DEFPROC name(a,b) ... ENDPROC, PROC name(a,b), and LOCAL - named
+    procedures with parameters:
+
+        10 PROC box(3, 4)
+        20 END
+        100 DEFPROC box(w, h)
+        110   LOCAL i
+        120   FOR i = 1 TO h
+        130     PRINT w
+        140   NEXT
+        150 ENDPROC
+
+    DEFPROC defines and PROC calls. BBC BASIC writes PROCname with the
+    name glued on, and a tokenizer that matches keywords anywhere in a
+    line cannot do that, so there are two keywords instead of one.
+
+    PARAMETERS ARE LOCAL, always. A procedure that takes a parameter
+    called X cannot disturb the caller's X - the old value goes on the
+    return stack and ENDPROC puts it back. LOCAL does the same for any
+    other name, and a local number starts at 0 and a local string empty,
+    so nothing is inherited by accident.
+
+    A definition can sit anywhere, above or below what calls it: falling
+    into a DEFPROC steps over the body to its ENDPROC. There is no
+    procedure table - a call searches the program for its DEFPROC the
+    same way GOSUB searches for a line number - so nothing has to be
+    declared before it is used and NEW cannot leave a stale entry.
+
+    Up to eight arguments. RECURSION WORKS, because a call is a frame on
+    the return stack like any other, but the return stack is 4 KB, so
+    something that recurses without end will fill it.
+
+    NAMES MUST NOT CONTAIN A KEYWORD. This is not a rule of procedures -
+    it is how the tokenizer works and it has always applied to variables
+    too - but it bites here because procedure names read like words:
+    a procedure called LOOPY tokenizes as LOOP followed by Y and the
+    line stops making sense. TALLY is fine. If a name gives an
+    unexplainable syntax error, look for a keyword inside it.
+[x] LABEL name, and GOTO / GOSUB / THEN taking one:
+
+        10 GOTO start
+        20 PRINT "never"
+        30 LABEL start
+        40 GOSUB helper
+        50 IF A = 1 THEN finish
+
+    A LABEL does nothing when it is reached, which is all it has to do:
+    a jump lands ON the label's line and carries straight on. There is no
+    table of them, so nothing has to be declared before it is used and
+    nothing goes stale - a jump searches the program the same way GOTO
+    has always searched for a line number.
+
+    Watch the keyword rule above: a label called DONE begins with DO and
+    tokenizes as DO followed by NE. FINISH is fine.
+[x] AUTO [start [, step]] - number the lines as they are typed. 10 and
+    10 by default; AUTO 0 switches it off, and so does pressing RETURN on
+    a line with nothing after the number.
+
+    That last one matters more than it sounds. An empty numbered line
+    DELETES the line it names, so a beginner leaving AUTO the obvious way
+    would otherwise silently remove the line they had just written.
+[ ] RENUM - renumber the program and every reference to a line.
+
+    The references are the work. A line number in a GOTO is stored as
+    the DIGITS the user typed, so changing 100 to 1000 makes that line
+    one byte longer and everything after it has to move. Labels take
+    most of the need for this away, which is why they came first.
+[ ] A full-screen editor. The console is 80x60 and the arrow keys
+    already arrive as key events, so this is possible rather than
+    hypothetical. HELP KEYBOARD.
+
+    DELIBERATELY NOT NEXT. It is the largest thing on this page and the
+    one that changes how everything else is used, so it waits until the
+    rest of the layer is settled.
+
+--- a note on why the line numbers are still here ---
+
+They are not the enemy; typing them by hand is. RENUM, AUTO and labels
+are on the list above precisely so that a program can stop being ABOUT
+its line numbers without the interpreter having to stop using them.

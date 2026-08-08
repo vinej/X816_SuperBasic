@@ -6,3 +6,4 @@ build/
 *.lbl
 *.img
 *.gif
+.run-frozen.sh

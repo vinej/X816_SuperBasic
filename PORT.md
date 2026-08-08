@@ -1265,6 +1265,251 @@ neither the BASIC nor the test computed.
 
 Size: **41,829 bytes**, against the 65,280-byte cap. C256 still 53,959.
 
+## 23. The C256 build stops being an audit (2026-08-08)
+
+**Decided: the 53,959-byte check is retired. The C256 target must still
+ASSEMBLE; it no longer has to produce a particular binary, and portable
+changes are no longer guarded to keep it doing so.**
+
+The number was worth having while the *intent* was "do not change
+portable behaviour" — it proved cheaply that an edit to `dos.s` or
+`interpreter.s` had not moved anything the C256 depended on. §8's
+SuperBasic layer abandons that intent deliberately: `PROC`/`ENDPROC`
+/`LOCAL` and multi-line `IF` are edits to `interpreter.s`,
+`statements.s`, `tokens.s` and `variables.s`, and wrapping a whole
+language layer in `.if SYSTEM == SYSTEM_X816` would double the source
+and make every future subtree merge painful.
+
+The question that settles it is who consumes the C256 binary, and the
+answer is nobody. SuperBasic is the X816's BASIC. The C256 target is the
+upstream we started from, vendored at `bea8847`.
+
+**The guards were also working against the one thing the C256 side is
+still good for.** A genuine BASIC816 bug fixed *unguarded* is a clean
+patch to send upstream; the same fix wrapped in `.if` has to be
+untangled first. Guarding made contributing back harder, not easier.
+
+What stays:
+
+- **The C256 build must still assemble.** `build-c256.sh` does exactly
+  that and asserts nothing about the size. It costs five seconds and
+  catches a broken label or a syntax error in shared code, which is a
+  real class of mistake and the only one byte-identity was ever catching
+  by the end.
+- **`.if SYSTEM` stays where the platforms genuinely differ**, which is
+  a statement about the machines and not about a binary. `BRUN` needs an
+  address here and does not there (§20); `CMD_MONITOR` refuses here
+  (§19). Those conditionals describe something true.
+- **The X816 exec cap still matters.** 65,280 bytes is a real limit on a
+  real loader, and every phase note records the size against it.
+
+Retired: "check that number after touching portable files — it is the
+audit."
+
+## 24. The SuperBasic layer starts: block IF (2026-08-08)
+
+§8 tier A, and the first work written **unguarded** in the portable core
+under §23. `help/LANGUAGE.TXT` is new and is the page this layer
+accumulates on — the one page here that is deliberately not about the
+X816.
+
+### Two of the three tier-A items were smaller than the plan said
+
+**Long variable names already work.** `COUNTER` and `COUNTX` are two
+variables; so are `SCORE$` and `SCOREZ$`. The binding stores the whole
+name and `VARNAMECMP` compares the whole name. §8 listed this as an item
+"if base is limited" — it isn't. Checked with a probe rather than by
+reading, because the reading could have been wrong.
+
+**`DO`/`LOOP` with `WHILE`/`UNTIL` on either end** was already there
+too. `WHILE`/`WEND` as a separate form is not, and does not need to be.
+
+### Block IF keeps NO state, which is the whole trick
+
+    IF <test> THEN / ELSE / ENDIF
+
+`ELSE` can only ever be **reached** by falling out of a branch that ran,
+so it always means the same thing — skip to my `ENDIF` — and needs to
+know nothing about how it got there. `ENDIF` does nothing at all. A
+false `IF` skips to its `ELSE` or its `ENDIF`. There is no stack, no
+frame, nothing to unwind, and a `GOTO` out of a block leaks nothing.
+
+`ELSE` had a token and a `TOK_TY_BYWRD` type that nothing in the tree
+referenced; it becomes a statement. `ENDIF` is new and portable, in the
+extended table because the base one is full, with its id computed
+positionally so it stays right whatever is added above it.
+
+**The block scanner reads the FIRST TOKEN OF EACH LINE and no more**,
+which is why `IF`, `ELSE` and `ENDIF` must start their own lines. That
+is a restriction worth having rather than working around — see the bug
+below for what the alternative costs.
+
+`THEN` is now required in both forms even on the false path. Upstream
+checked for it only when the test was true, so `IF X GOTO 100` was
+skipped in silence when X was zero and reported when it was not.
+
+### And a latent bug in the portable core, found by reading it
+
+`SKIPTOTOK` — the depth-aware scanner that `READ` uses to find `DATA` —
+compares **raw bytes**, and has no idea the `$FF` escape exists. An
+extended token's sub-id occupies the same number space as a base token's
+id, so:
+
+| sub-id | keyword | reads as |
+|---|---|---|
+| `$9E` | `PCMFREE` | `TOK_NEXT` |
+| `$9B` | `MOUSEAT` | `TOK_FOR` |
+
+A program that merely **mentions** `PCMFREE` between a `READ` and its
+`DATA` could have its nesting count go wrong. The help page's own
+recommended feeding loop mentions `PCMFREE`. Fixed by stepping over the
+escape and its sub-id together, so neither is ever compared against a
+base id.
+
+It is the same lesson the block scanner is built around: a scanner that
+walks tokens has to understand every token there is, and one that reads
+a single token a line cannot make the mistake.
+
+### PROC, ENDPROC and LOCAL
+
+`DEFPROC` defines and `PROC` calls. BBC BASIC's `PROCname` glues the name
+to the keyword and a tokenizer that matches keywords **anywhere in a
+line** cannot do that, so it costs two keywords instead of one.
+
+**There is no procedure table.** A call searches the program for its
+`DEFPROC` exactly as `GOSUB` searches for a line number — same cost, same
+code shape, nothing to register, nothing to invalidate on `NEW`, and
+nothing that can get out of step with the program text. Falling into a
+`DEFPROC` steps over the body to its `ENDPROC`, which is what lets a
+definition sit above or below its callers.
+
+**Parameters are local, and binding one is exactly what `LOCAL` does:**
+push the old value on the return stack, count it into the frame, assign.
+`ENDPROC` puts every one back. The frame is what `GOSUB` saves plus the
+caller's local count, so recursion works for free.
+
+**They bind last first.** Arguments go on the argument stack as they are
+evaluated and a stack returns them in reverse, so rather than find
+somewhere to turn them round, the binding walks the header's parameter
+list to the Nth name, then the (N-1)th. The list is short; the walk is a
+few bytes of code instead of a buffer.
+
+### The direct page said no, and it was right to
+
+The first version put all 30 bytes of new state in the direct page and
+**the C256 stopped assembling** — it still builds the monitor, so it
+never had the 54 bytes §19 freed for the X816.
+
+Under §23 the temptation was to guard the layer to the X816 and move on.
+That would have been the wrong lesson from the right decision: §23 says
+the C256 *binary* is not a deliverable, not that portable code may stop
+compiling. And the compiler was pointing at a real design flaw — only
+**one** of those variables, `PROCNAME`, is ever dereferenced. The rest
+are counters, token ids and a parked value, and belong in the
+`variables` section both targets already have. They are written `@l`
+because that section lands in bank `$01` on the X816 while the data bank
+is `$00`.
+
+The compile check earned its keep on its first day.
+
+### Two more instruction-set potholes
+
+`INC`, `DEC`, `CPY` and `STY` have no long addressing mode either, so
+moving the variables out of the direct page turned every one of those
+into a load, an operate and a store. The list is now `INC`, `DEC`, `STZ`,
+`LDX`, `CPX`, `CPY`, `STY` — assume any read-modify-write or index
+instruction lacks it.
+
+### A hazard worth naming, found by a probe
+
+A procedure called `LOOPY` **tokenizes as `LOOP` followed by `Y`**. This
+tokenizer matches keywords anywhere in a line, so no identifier may
+contain one — it has always been true of variables and it bites harder
+with procedures, whose names read like words. `help/LANGUAGE.TXT` says
+so with the example, because the symptom is a syntax error on a line
+that looks perfectly fine.
+
+### Tier B: labels, and AUTO
+
+**`LABEL name`, and `GOTO`, `GOSUB` and `THEN` all taking one.** The
+label statement does nothing when it is reached, which is all of it: a
+jump lands *on* the label's line and carries straight on. `NAME_FIND` —
+`PROC`'s header search with the token to match in a variable — serves
+both, because "find the line whose first token is X and whose name is Y"
+is one question asked twice.
+
+Labels also take most of the need for `RENUM` away, which is why they
+came first: the thing that makes renumbering hard is that references are
+numbers, and a program that jumps to names has fewer of them.
+
+**`AUTO [start[,step]]` needed no editor**, which is what made it
+possible before there is one. The REPL reads a line by letting the user
+type on the console and then **copying the whole console line** into the
+input buffer — so printing the number first is the entire mechanism. It
+arrives as though it had been typed and nothing downstream changes.
+
+Pressing RETURN on a line with nothing after the number stops it, and
+that is not a nicety: **an empty numbered line deletes the line it
+names**, so a beginner leaving `AUTO` the obvious way would otherwise
+silently remove the line they had just written.
+
+### RENUM: the design, and why it is being done on its own
+
+`RENUM` is what is left of tier B. Nothing blocks it and every piece it
+needs already exists — `ITOS` for the digits, `MVPROGUP`/`MVPROGDN` for
+shifting program text, `LASTLINE` for where the program ends. Written
+down so it starts from here rather than being worked out again:
+
+1. `RENUM [start[,step]]`, 10 and 10 by default.
+2. **No old-to-new map is needed.** A line's new number is
+   `start + index*step`, so resolving a reference is: walk to the line
+   whose number is K, counting as you go. That removes the storage
+   problem entirely — there is nothing to allocate and nothing to size.
+3. **Rewrite the references first**, while the line numbers are still
+   old. Scan each line for `GOTO`, `GOSUB` and `THEN` followed by
+   DIGITS, skipping string literals and everything after `REM`. A
+   reference beginning with a letter is a LABEL and is already immune,
+   which is one more reason labels came first.
+4. Where the digit count changes, shift the tail and fix **that line's**
+   `LINE_LINK` and `LASTLINE`. Links are per-line offsets, so no other
+   line's needs touching.
+5. Second pass: rewrite each `LINE_NUMBER` word in place — it is binary
+   and the same size, so this part is free.
+
+**It is being done as its own piece for one reason: blast radius.**
+Everything else in this layer prints a wrong answer when it is wrong.
+`RENUM` rewrites the user's program IN PLACE, so a pointer slip does not
+produce a bad number, it destroys the program they typed. Every feature
+today needed a fix round or two — branch ranges, widths, scratch that
+overlapped something else — and that is a poor thing to have happening
+on top of a pile of uncommitted work.
+
+### The `variables` section is not zeroed
+
+`AUTO` came up **switched on with a garbage step** the first time it
+ran, printing five-digit line numbers at the boot prompt. The section is
+declared `?` — uninitialised memory — and nothing had ever needed it
+cleared before, because everything else in it is written before it is
+read. Cleared in `CLRINTERP` now, which is boot, `NEW` and `RUN`.
+`PROCDEPTH` is cleared there for a better reason than tidiness: a run
+stopped inside a procedure would otherwise leave frames counted that the
+return stack no longer holds.
+
+### And the same self-inflicted wound twice
+
+**Editing `run-emu.sh` while it is running kills the run.** Bash reads a
+script incrementally by file offset, so inserting a line ahead of where
+it has reached moves everything under its feet — the run dies with a
+syntax error pointing at a line that is perfectly valid. Two runs of
+twenty minutes each went that way before it clicked. The header now says
+to copy it to `.run-frozen.sh` (gitignored) and run that; and it says
+*not* `/tmp`, because the script finds the emulator, the core and the
+runtime through `dirname $0`.
+
+Size: **43,573 bytes** X816. C256 assembles at 54,003 — it moved,
+because portable code moved, and under §23 that is now information
+rather than a failure.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

@@ -96,6 +96,15 @@ MADDR_MODE  .byte ?     ;1 Byte address mode found by the assembler
 MPARSEDNUM  .dword ?    ;4 Bytes to store a parsed number
 MMNEMONIC   .word ?     ;2 Byte address of mnemonic found by the assembler
 .endif
+PROCNAME    .dword ?    ;4 Bytes - the name at a call site, kept while the
+                        ; arguments are evaluated and the header is found.
+                        ; THE ONLY one of the new SuperBasic variables in
+                        ; the direct page, because it is the only one
+                        ; DEREFERENCED -- [PROCNAME],Y compares it against
+                        ; a header. The rest are in `variables` below: the
+                        ; C256 still builds the monitor and its direct page
+                        ; has no 25 bytes to spare, and this layer is
+                        ; portable, so it cannot want them.
 MTEMPPTR    .dword ?    ;4 Byte temporary pointer
 MJUMPINST   .byte ?     ;1 Byte JSL opcode
 MJUMPADDR   .long ?     ;3 Byte address for JSL
@@ -110,6 +119,41 @@ PCM_PTR     .dword ?    ;4 Bytes - the PCM feeder's next sample byte.
                         ; the tilemap. Costs 4 of the 54 bytes freed in
                         ; PORT.md section 19.
 .endif
+.send
+
+;
+; The SuperBasic layer's state (statements.s).
+;
+; NOT the direct page. None of it is dereferenced -- these are counters,
+; token ids and one parked value -- and the direct page is 256 bytes that
+; both targets are short of; the C256 still builds the monitor and had
+; nothing like 25 bytes free. Every access below is written @l, because
+; this section lands in bank $01 on the X816 and the data bank is $00.
+;
+.section variables
+IFTRUE      .byte ?     ;1 Byte - an IF condition, kept across the THEN check
+; What SKIPBLOCK is looking for. BLKALT is a SECOND token that also ends
+; the scan (ELSE, for an IF); with no second one it is set equal to
+; BLKCLOSE, which makes the test harmless rather than needing a "none"
+; value that a real token id might one day collide with.
+BLKOPEN     .word ?     ;2 Bytes - the token that goes one level deeper
+BLKCLOSE    .word ?     ;2 Bytes - the token that ends the block
+BLKALT      .word ?     ;2 Bytes - and the other one that ends it
+PROCLOCALS  .word ?     ;2 Bytes - locals saved by the frame now running
+PROCDEPTH   .word ?     ;2 Bytes - open PROC frames, so a stray ENDPROC shows
+PROCVAL     .dword ?    ;4 Bytes - one argument, held while the parameter it
+PROCVALT    .byte ?     ;1 Byte  - belongs to has its old value saved
+PROCHDR     .dword ?    ;4 Bytes - the header's parameter list, returned to
+                        ; once per parameter: they bind LAST FIRST, because
+                        ; that is the order the argument stack gives them up
+PROCARGN    .word ?     ;2 Bytes - how many arguments the call passed
+PROCIDX     .word ?     ;2 Bytes - which parameter is being bound, 1-based
+PROCCH      .byte ?     ;1 Byte  - one character, while two names compare
+NAMETOK     .word ?     ;2 Bytes - which header NAME_FIND is looking for:
+                        ; DEFPROC for a call, LABEL for a GOTO
+AUTO_ON     .byte ?     ;1 Byte  - AUTO is numbering the lines
+AUTO_NEXT   .word ?     ;2 Bytes - the number it will offer next
+AUTO_STEP   .word ?     ;2 Bytes - and by how much it goes up
 .send
 
 MANTISSA1 = ARGUMENT1

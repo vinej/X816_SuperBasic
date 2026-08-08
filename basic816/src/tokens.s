@@ -1152,12 +1152,15 @@ TOK_LET = $93
             DEFTOK "GOTO", TOK_TY_STMNT, 0, S_GOTO, 0
 TOK_END = $95
             DEFTOK "END", TOK_TY_STMNT, 0, S_END, 0
-; $96
+TOK_IF = $96
             DEFTOK "IF", TOK_TY_STMNT, 0, S_IF, 0
 TOK_THEN = $97
             DEFTOK "THEN", TOK_TY_BYWRD, 0, 0, 0
-; $98
-            DEFTOK "ELSE", TOK_TY_BYWRD, 0, 0, 0
+; ELSE was a BYWRD with no handler and nothing referenced it: the only
+; form of IF was "IF x THEN <line>". It is a statement now, and it can
+; be, because reaching it AT ALL means a branch ran to completion.
+TOK_ELSE = $98
+            DEFTOK "ELSE", TOK_TY_STMNT, 0, S_ELSE, 0
 ; $99
             DEFTOK "GOSUB", TOK_TY_STMNT, 0, S_GOSUB, 0
 ; $9A
@@ -1549,6 +1552,33 @@ TOKENS2
             DEFTOK "FMLOAD", TOK_TY_STMNT, 0, S_FMLOAD, 0
             DEFTOK "PLAY", TOK_TY_STMNT, 0, S_PLAY, 0
 .endif
+
+; ENDIF closes the block form of IF. Portable -- it is language, not
+; platform -- and in the extended table because the base one is full.
+; Its id is computed rather than written down, so it stays right whatever
+; is added above it, and the two-byte form costs nothing here: the block
+; scanner reads it through TOKAT, which handles the escape.
+TOK_ENDIF = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
+            DEFTOK "ENDIF", TOK_TY_STMNT, 0, S_ENDIF, 0
+
+; Named procedures. DEFPROC defines, PROC calls: a tokenizer that matches
+; keywords anywhere in a line cannot glue a keyword to a name, so BBC
+; BASIC's PROCname is not available and two keywords are.
+TOK_DEFPROC = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
+            DEFTOK "DEFPROC", TOK_TY_STMNT, 0, S_DEFPROC, 0
+TOK_ENDPROC = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
+            DEFTOK "ENDPROC", TOK_TY_STMNT, 0, S_ENDPROC, 0
+            DEFTOK "PROC", TOK_TY_STMNT, 0, S_PROC, 0
+            DEFTOK "LOCAL", TOK_TY_STMNT, 0, S_LOCAL, 0
+
+; A place to jump to that is not a number. GOTO, GOSUB and THEN all take
+; one, through the same search PROC uses for its DEFPROC.
+TOK_LABEL = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
+            DEFTOK "LABEL", TOK_TY_STMNT, 0, S_LABEL, 0
+
+; A COMMAND, not a statement: numbering lines as they are typed is only
+; meaningful at the prompt.
+            DEFTOK "AUTO", TOK_TY_CMD, 0, CMD_AUTO, 0
 
 ; The three string functions that would not fit before. Portable, like
 ; the rest of the SuperBasic string layer.
