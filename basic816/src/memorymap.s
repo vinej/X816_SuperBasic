@@ -151,6 +151,9 @@ PROCIDX     .word ?     ;2 Bytes - which parameter is being bound, 1-based
 PROCCH      .byte ?     ;1 Byte  - one character, while two names compare
 NAMETOK     .word ?     ;2 Bytes - which header NAME_FIND is looking for:
                         ; DEFPROC for a call, LABEL for a GOTO
+LOADNUM     .word ?     ;2 Bytes - the number LOAD will give the next line
+                        ; that has not got one of its own
+LOADTMP     .word ?     ;2 Bytes - working space while one is read back
 AUTO_ON     .byte ?     ;1 Byte  - AUTO is numbering the lines
 AUTO_NEXT   .word ?     ;2 Bytes - the number it will offer next
 AUTO_STEP   .word ?     ;2 Bytes - and by how much it goes up

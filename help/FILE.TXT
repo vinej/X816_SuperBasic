@@ -9,6 +9,15 @@ the kernel side is complete either way (K_FS_* and K_DIR_*, sixteen
 calls, KERNEL.md section 6), and what is still missing is the binding.
 
 [x] LOAD "name" - load a BASIC program, replacing the one in memory.
+
+    THE FILE NEED NOT HAVE LINE NUMBERS. A line without one is given the
+    next number going; a line with one keeps it and the numbering carries
+    on from there, so a file may mix the two and an older file loads
+    exactly as it always did. Blank lines are dropped rather than
+    numbered - a numbered empty line DELETES the line it names.
+
+    Either line ending works, CR or LF or both, so a program written in
+    an editor on a PC or a Mac loads as it was written. HELP LANGUAGE.
 [x] SAVE "name" - save the program. Creates the file, or TRUNCATES an
     existing one - there is no confirmation and no backup.
 [x] BLOAD "name",addr - load raw bytes to an address, no header.

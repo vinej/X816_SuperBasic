@@ -820,6 +820,158 @@ done            CALL SET_ERRERL             ; Set the ERR and ERL variables base
 .endif
                 .pend
 
+;;;
+;;; Source files do not need line numbers
+;;;
+;;; A line that does not start with one is given the next one going, so a
+;;; program written in an editor -- on this machine or on another --
+;;; never has to mention them:
+;;;
+;;;     LABEL start
+;;;     PRINT "hello"
+;;;     GOTO start
+;;;
+;;; A file may still have them, and may mix the two: a line that brings
+;;; its own number keeps it, and the numbering carries on from there.
+;;; That is what makes this safe to turn on for every LOAD rather than
+;;; hiding it behind an option -- every file that worked before works
+;;; unchanged, because every line in it already has a number.
+;;;
+;;; Numbers are the EDITOR'S addressing, not the language's. Nothing in a
+;;; SuperBasic program has needed one since LABEL arrived, and this is
+;;; the other half of that: nothing in a source FILE needs one either.
+;;;
+
+;
+; Give the line in INPUTBUF a number if it has not brought one.
+;
+; Inputs:
+;   X = the length of the line
+;
+; Outputs:
+;   X = its length now, and C CLEAR if the line is blank and should not
+;   be processed at all -- a blank line given a number would be an empty
+;   numbered line, and an empty numbered line DELETES the line it names.
+;
+LOAD_NUMBER     .proc
+                PHP
+                PHY
+                setaxl
+
+                LDY #0                      ; the first thing that is not a
+ln_skip         setas                       ;  space
+                LDA INPUTBUF,Y
+                BNE ln_notend
+                JMP ln_blank                ; the blank exit is at the far end
+ln_notend       CMP #CHAR_SP
+                BNE ln_first
+                setaxl
+                INY
+                BRA ln_skip
+
+ln_first        CALL ISNUMERAL
+                BCS ln_hasnum
+
+                ; ---- it needs one ----
+                setaxl
+                LDA @l LOADNUM
+                STA ARGUMENT1
+                LDA #0
+                STA ARGUMENT1+2
+                CALL ITOS                   ; STRPTR = the digits
+
+                setaxl                      ; keep the line while INPUTBUF is
+                LDY #0                      ;  rebuilt in front of it
+ln_save         setas
+                LDA INPUTBUF,Y
+                STA TEMPBUF,Y
+                BEQ ln_saved                ; STA leaves the flags alone, so
+                setaxl                      ;  this is testing the byte read
+                INY
+                BRA ln_save
+
+ln_saved        setaxl
+                LDX #0
+                LDY #0
+ln_dig          setas
+                LDA [STRPTR],Y
+                BEQ ln_space
+                STA INPUTBUF,X
+                setaxl
+                INX
+                INY
+                BRA ln_dig
+
+ln_space        setas
+                LDA #CHAR_SP
+                STA INPUTBUF,X
+                setaxl
+                INX
+
+                LDY #0
+ln_body         setas
+                LDA TEMPBUF,Y
+                STA INPUTBUF,X
+                BEQ ln_built
+                setaxl
+                INX
+                INY
+                BRA ln_body
+
+ln_built        setaxl                      ; and the next one follows it
+                CLC
+                LDA @l LOADNUM
+                ADC #10
+                STA @l LOADNUM
+                PLY
+                PLP
+                SEC
+                RETURN
+
+                ; ---- it brought its own: carry on from there ----
+ln_hasnum       setaxl
+                LDA #0
+                STA @l LOADNUM
+ln_pnum         setas
+                LDA INPUTBUF,Y
+                CALL ISNUMERAL
+                BCC ln_pdone
+                SEC
+                SBC #'0'
+                setaxl
+                AND #$00FF
+                PHA
+                LDA @l LOADNUM              ; n := n*10 + digit
+                STA @l LOADTMP
+                ASL A
+                ASL A
+                CLC
+                ADC @l LOADTMP
+                ASL A
+                STA @l LOADNUM
+                PLA
+                CLC
+                ADC @l LOADNUM
+                STA @l LOADNUM
+                INY
+                BRA ln_pnum
+
+ln_pdone        setaxl
+                CLC
+                LDA @l LOADNUM
+                ADC #10
+                STA @l LOADNUM
+                PLY
+                PLP
+                SEC
+                RETURN
+
+ln_blank        PLY
+                PLP
+                CLC
+                RETURN
+                .pend
+
 ;
 ; Load a BASIC file from the file system into memory
 ; LOAD <path>
@@ -841,6 +993,10 @@ CMD_LOAD        .proc
                 STA @l DOS_DST_PTR+2        ; Set the destination address
 
                 CALL CMD_NEW                ; Call NEW to clear the program area
+
+                setaxl                      ; where the numbering starts for
+                LDA #10                     ;  any line that has not brought
+                STA @l LOADNUM              ;  a number of its own
 
                 JSL FK_LOAD                 ; Attempt to load the file
                 BCS start_tokenize          ; If we got it: start tokenizing
@@ -876,10 +1032,21 @@ copy_line       LDX #0
 copy_char       setas
                 LDA [MCURSOR]
                 BEQ clean_up                ; If the character is 0, we're done
-                CMP #CHAR_CR                ; If it is new line...
-                BEQ do_process              ; ... we want to process the line
-                CMP #CHAR_LF                ; If it is a line feed...
-                BEQ next_char               ; ... we want to skip it
+                CMP #CHAR_CR                ; EITHER of them ends a line, and
+                BEQ do_process              ;  that matters as soon as source
+                CMP #CHAR_LF                ;  files stop needing line numbers:
+                BEQ do_process              ;  every editor on Linux and macOS
+                                            ;  writes LF alone, and this used
+                                            ;  to SKIP a lone LF -- so such a
+                                            ;  file arrived as ONE line with
+                                            ;  the whole program on it.
+                                            ;
+                                            ;  CRLF now ends a line at the CR
+                                            ;  and again at the LF, leaving an
+                                            ;  empty one between. That costs
+                                            ;  nothing: LOAD_NUMBER refuses to
+                                            ;  number a blank line, so it is
+                                            ;  dropped rather than stored.
 
                 STA INPUTBUF,X              ; Otherwise, copy the character to the input buffer
                 ; CALL PRINTC
@@ -895,10 +1062,11 @@ do_process      setas
                 LDA #0                      ; Put a 0 at the end of the input buffer
                 STA INPUTBUF,X
 
-                ; LDA #CHAR_CR
-                ; CALL PRINTC
-
+                CALL LOAD_NUMBER            ; give it one if it has not got one
+                BCC skip_blank              ; blank: numbering it would make an
+                                            ;  empty numbered line, which DELETES
                 CALL PROCESS                ; Process the line.
+skip_blank
                 
                 setal
                 INC MCURSOR                 ; Try again with the next line
@@ -912,6 +1080,8 @@ clean_up        CPX #0                      ; Is there data in the INPUTBUF?
                 setas
                 LDA #0                      ; Make sure there is a trailing NULL
                 STA INPUTBUF,X
+                CALL LOAD_NUMBER            ; the last line may have no newline
+                BCC done
                 CALL PROCESS                ; Process the line
 
 done            PLP

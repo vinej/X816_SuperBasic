@@ -1510,6 +1510,65 @@ Size: **43,573 bytes** X816. C256 assembles at 54,003 — it moved,
 because portable code moved, and under §23 that is now information
 rather than a failure.
 
+## 25. Source files without line numbers (2026-08-08)
+
+A line in a `LOAD`ed file that does not begin with a number is given the
+next one going. A line that brings its own keeps it, and the numbering
+carries on **from that number** — so a file may mix the two, and every
+file that worked before works unchanged. That is why it is simply on,
+rather than hidden behind an option nobody would find.
+
+Numbers are the editor's addressing, not the language's. `LABEL` (§24)
+meant nothing in a program needed to *mention* one; this means nothing in
+a source *file* needs to carry one either.
+
+**A blank line is dropped rather than numbered**, and that is not
+tidiness: an empty numbered line **deletes the line it names**, so a
+blank line in a source file would have silently removed whatever had
+just been given that number.
+
+### The bug this uncovered: LOAD only broke lines on CR
+
+`CMD_LOAD` split on `CHAR_CR` and **skipped** a lone `CHAR_LF`. Every
+editor on Linux and macOS writes LF alone, so a program written on a PC
+and copied to the card arrived as **one line with the whole program on
+it** — and the symptom was a single enormous line in `LIST`, which reads
+like the loader ignoring newlines rather than like a line-ending
+convention.
+
+It had never mattered, because until now every file came from `SAVE`,
+which writes CR. It matters the moment "write it in an editor" is the
+point of the feature.
+
+Both now end a line. CRLF ends one at the CR and again at the LF, which
+leaves an empty line between — and that costs nothing, because
+`LOAD_NUMBER` refuses to number a blank line and it is dropped. Probed
+with both endings, giving identical programs.
+
+### What is left of the line-number story
+
+Numbers do four jobs. Three are now answered:
+
+| job | answered by |
+|---|---|
+| somewhere to jump to | `LABEL` (§24) |
+| something to type | `AUTO` (§24) |
+| something a file has to carry | this section |
+| how you address a line to CHANGE it | an editor |
+| how the prompt tells "store" from "run" | an editor |
+
+The last two are one thing, and it is **a port of X16Edit** — decided
+2026-08-08: a real full-screen editor for the X816, callable from
+SuperBasic or durexForth and useful for any file, not a line editor
+built into the interpreter. Reference source is checked out at
+`X16Edit_ref`. The question to settle first is hand-off: `K_EXEC`
+replaces the running program, so either the editor returns through the
+shell or SuperBasic re-enters and re-`LOAD`s the file.
+
+`RENUM` is deliberately **not** being built. It tidies visible numbers,
+which is the thing this direction is removing; its design is in §24 if
+that changes.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

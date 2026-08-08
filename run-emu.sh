@@ -355,6 +355,20 @@ KEYS_F=$(keys_of \
 # the machine as a file. It returns $1234 in A, which lands in ERR.
 printf '\xA9\x34\x12\x8D\x10\x86\x6B' > "$OUT/t.bin"
 
+# A source file with NO LINE NUMBERS, and one line that brings its own.
+# LOAD gives the rest the next number going, so a program written in an
+# editor never has to mention them -- and a file that already had them
+# still loads exactly as it did.
+printf 'PRINT "NONUM"
+
+LABEL again
+
+100 PRINT "HUNDRED"
+
+PRINT "AFTER"
+
+' > "$OUT/n.bas" 
+
 # Reading VRAM back, and moving it to and from the card.
 #
 # Every check here is a ROUND TRIP through the card verified by a
@@ -516,7 +530,29 @@ KEYS_J=$(keys_of     '10 A=1'     '20 IF A=1 THEN'     '30 PRINT "TRUE1"'     '4
 # lines that were never given one. The whitespace line after them is the
 # exit -- and LIST proves it worked, because a line 410 would exist if
 # it had not.
-KEYS_K=$(keys_of     '10 GOTO start'     '20 PRINT "BADG"'     '30 LABEL start'     '40 GOSUB helper'     '50 A=1'     '60 IF A=1 THEN finish'     '70 PRINT "BADT"'     '80 LABEL finish'     '90 PRINT "ATFINISH"'     '100 END'     '200 LABEL helper'     '210 PRINT "INHELPER"'     '220 RETURN'     'RUN'     'NEW'     'AUTO 400,5'     'PRINT "AUTOONE"'     ' '     'LIST')
+KEYS_K=$(keys_of \
+    '10 GOTO start' \
+    '20 PRINT "BADG"' \
+    '30 LABEL start' \
+    '40 GOSUB helper' \
+    '50 A=1' \
+    '60 IF A=1 THEN finish' \
+    '70 PRINT "BADT"' \
+    '80 LABEL finish' \
+    '90 PRINT "ATFINISH"' \
+    '100 END' \
+    '200 LABEL helper' \
+    '210 PRINT "INHELPER"' \
+    '220 RETURN' \
+    'RUN' \
+    'NEW' \
+    'AUTO 400,5' \
+    'PRINT "AUTOONE"' \
+    ' ' \
+    'LIST' \
+    'NEW' \
+    'LOAD "N.BAS"' \
+    'LIST')
 
 # Eight kilobytes of square wave: more than the 4 KB FIFO, so the primer
 # fills it, and about a third of a second at rate 64, so it is over well
@@ -560,7 +596,7 @@ if [ "$NEG" = "0" ]; then
     run_session H "$KEYS_H" || { echo "session H produced no recording"; exit 1; }
     run_session I "$KEYS_I" "$OUT/w.raw" W.RAW || { echo "session I produced no recording"; exit 1; }
     run_session J "$KEYS_J" || { echo "session J produced no recording"; exit 1; }
-    run_session K "$KEYS_K" || { echo "session K produced no recording"; exit 1; }
+    run_session K "$KEYS_K" "$OUT/n.bas" N.BAS || { echo "session K produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -1105,6 +1141,16 @@ if not any(r.strip() == "400 PRINT \"AUTOONE\"" for r in rows_k):
     fail("AUTO did not put its number into the line that was typed")
 if any(r.strip().startswith("405 ") for r in rows_k):
     fail("the line left empty under AUTO became a program line")
+
+# A source file with no line numbers. The LIST afterwards is the whole
+# check: 10 and 20 were given to lines that had none, 100 is the one that
+# brought its own, and 110 shows the numbering carried on FROM IT rather
+# than from where it had got to.
+for want in ('10 PRINT "NONUM"', "20 LABEL again",
+             '100 PRINT "HUNDRED"', '110 PRINT "AFTER"'):
+    if not any(r.strip() == want for r in rows_k):
+        fail("LOAD did not number a numberless source file as expected: "
+             "%r missing" % want)
 
 # Sprites. SPRITEGET reads the attribute record back through the port;
 # 300 and 200 are ten-bit values, so they also check that the high two

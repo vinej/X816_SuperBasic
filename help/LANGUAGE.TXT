@@ -128,13 +128,30 @@ any future target gets it too.
     the DIGITS the user typed, so changing 100 to 1000 makes that line
     one byte longer and everything after it has to move. Labels take
     most of the need for this away, which is why they came first.
-[ ] A full-screen editor. The console is 80x60 and the arrow keys
-    already arrive as key events, so this is possible rather than
-    hypothetical. HELP KEYBOARD.
+[x] SOURCE FILES NEED NO LINE NUMBERS. A line in a LOADed file that
+    does not start with one is given the next number going, so a program
+    written in an editor never has to mention them:
 
-    DELIBERATELY NOT NEXT. It is the largest thing on this page and the
-    one that changes how everything else is used, so it waits until the
-    rest of the layer is settled.
+        LABEL again
+        PRINT "hello"
+        GOTO again
+
+    A file may still have them, and may mix the two: a line that brings
+    its own number keeps it and the numbering carries on from there. So
+    every file that worked before works unchanged.
+[ ] An editor. THE PLAN IS A PORT OF X16EDIT, not a line editor built
+    into BASIC: a real full-screen editor for the X816, callable from
+    SuperBasic or from durexForth, and useful for any kind of file
+    rather than only for programs. The reference source is in
+    X16Edit_ref.
+
+    That is a better shape than an editor inside the interpreter, and it
+    is what finishes the line-number story. Numbers do four jobs here:
+    somewhere to jump to (LABEL replaced it), something to type (AUTO
+    replaced it), how you address a line in order to CHANGE it, and how
+    the prompt tells "store this" from "run this now". The last two are
+    what an editor replaces - edit the text, save it, LOAD it back, and
+    no number is ever seen.
 
 --- a note on why the line numbers are still here ---
 
