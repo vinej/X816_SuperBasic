@@ -25,11 +25,20 @@ silently clear whatever else lived in it.
     is stored shifted right five, so 4bpp images are 32-byte aligned.
     Naming note: SPRITEIMG, not SPRITEIMAGE.
 [x] SPRITESIZE n,w,h - size codes 0-3 = 8, 16, 32, 64 pixels.
-[ ] SPRITEGET n,x,y - read a position back.
-[ ] SPRITELOAD n,file$ - load pixels straight into a sprite's image area.
-[ ] SPRITESAVE n,file$ - and back out again. Self-sizing: the two size
+[x] SPRITEGET(n,which) - read a position back. 0 is X, 1 is Y, so
+    X=SPRITEGET(0,0) and Y=SPRITEGET(0,1). A function with an index
+    rather than two functions without one, for the same reason MOUSE()
+    has one: a function taking no parentheses needs the tokenizer's
+    minus-sign rule to know about it, and one taking an argument does
+    not.
+[x] SPRITELOAD n,file$ - load pixels straight into a sprite's image area.
+    Where that is comes from the sprite, so SPRITEIMG must have said
+    where its image lives first. The file's own length is used, so an
+    image can be loaded a strip at a time.
+[x] SPRITESAVE n,file$ - and back out again. Self-sizing: the two size
     codes give the pixel count and the colour-depth bit halves it, so it
-    writes exactly the image and no more.
+    writes exactly the image and no more. SPRITESIZE therefore has to be
+    right before this is worth anything.
 
 Sprite collisions raise an interrupt, KIRQ_SPRCOL (slot 2 in the kernel's
 IRQ table). ONCOLLISION line runs a BASIC subroutine for it and IRQ 2,addr

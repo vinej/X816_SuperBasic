@@ -1497,6 +1497,57 @@ TOKENS2
             DEFTOK "ONRASTER", TOK_TY_STMNT, 0, S_ONRASTER, 0
             DEFTOK "ONCOLLISION", TOK_TY_STMNT, 0, S_ONCOLLISION, 0
             DEFTOK "RETIRQ", TOK_TY_STMNT, 0, S_RETIRQ, 0
+
+; Reading VRAM back, and moving it to and from the card. What the
+; palette, sprite and tile pages were all missing, and all missing for
+; the same two reasons -- see X816/vramio_x816.s.
+;
+; PALGET, SPRITEGET and TILEGET are FUNCTIONS and take parentheses, so
+; none of them needs anything from the no-argument rule. SPRITEGET takes
+; an index for which coordinate it means, exactly as MOUSE() does.
+            DEFTOK "PALGET", TOK_TY_FUNC, 0, FN_PALGET, 0
+            DEFTOK "PALLOAD", TOK_TY_STMNT, 0, S_PALLOAD, 0
+            DEFTOK "PALSAVE", TOK_TY_STMNT, 0, S_PALSAVE, 0
+            DEFTOK "SPRITEGET", TOK_TY_FUNC, 0, FN_SPRITEGET, 0
+            DEFTOK "SPRITELOAD", TOK_TY_STMNT, 0, S_SPRITELOAD, 0
+            DEFTOK "SPRITESAVE", TOK_TY_STMNT, 0, S_SPRITESAVE, 0
+            DEFTOK "TILEGET", TOK_TY_FUNC, 0, FN_TILEGET, 0
+            DEFTOK "TILEATTR", TOK_TY_STMNT, 0, S_TILEATTR, 0
+            DEFTOK "TMAPLOAD", TOK_TY_STMNT, 0, S_TMAPLOAD, 0
+            DEFTOK "TMAPSAVE", TOK_TY_STMNT, 0, S_TMAPSAVE, 0
+            DEFTOK "TILELOAD", TOK_TY_STMNT, 0, S_TILELOAD, 0
+            DEFTOK "TILESAVE", TOK_TY_STMNT, 0, S_TILESAVE, 0
+
+; Controllers and the mouse. MX, MY, MB and MWHEEL take NO PARENTHESES,
+; which is what help/MOUSE.TXT always wanted and could not have until
+; TKPREVFN started asking a token's TYPE instead of comparing ids -- see
+; the note beside CURSORX. MOUSE(n) stays: programs use it.
+;
+; MOUSEON, not "MOUSE on" as the page asks: a keyword is one token with
+; one type, and MOUSE is already a function.
+            DEFTOK "JOYSCAN", TOK_TY_STMNT, 0, S_JOYSCAN, 0
+            DEFTOK "JOYHIT", TOK_TY_FUNC, 0, FN_JOYHIT, 0
+            DEFTOK "JOYX", TOK_TY_FUNC, 0, FN_JOYX, 0
+            DEFTOK "JOYY", TOK_TY_FUNC, 0, FN_JOYY, 0
+            DEFTOK "JOYFIRE", TOK_TY_FUNC, 0, FN_JOYFIRE, 0
+            DEFTOK "I2CPOKE", TOK_TY_STMNT, 0, S_I2CPOKE, 0
+            DEFTOK "MOUSEON", TOK_TY_STMNT, 0, S_MOUSEON, 0
+            DEFTOK "MWHEEL", TOK_TY_FUNC, 0, FN_MWHEEL, 0
+            DEFTOK "MX", TOK_TY_FUNC, 0, FN_MX, 0
+            DEFTOK "MY", TOK_TY_FUNC, 0, FN_MY, 0
+            DEFTOK "MB", TOK_TY_FUNC, 0, FN_MB, 0
+
+; Audio. PCMFULL and PCMEMPTY take no parentheses, like PCMFREE beside
+; them. YMPEEK is a SHADOW of what YMPOKE wrote -- the chip answers no
+; reads at all -- so it needs one, and takes it.
+            DEFTOK "YMPEEK", TOK_TY_FUNC, 0, FN_YMPEEK, 0
+            DEFTOK "PCMCTRL", TOK_TY_STMNT, 0, S_PCMCTRL, 0
+            DEFTOK "PCMFULL", TOK_TY_FUNC, 0, FN_PCMFULL, 0
+            DEFTOK "PCMEMPTY", TOK_TY_FUNC, 0, FN_PCMEMPTY, 0
+            DEFTOK "PCMPLAY", TOK_TY_STMNT, 0, S_PCMPLAY, 0
+            DEFTOK "FMINST", TOK_TY_STMNT, 0, S_FMINST, 0
+            DEFTOK "FMLOAD", TOK_TY_STMNT, 0, S_FMLOAD, 0
+            DEFTOK "PLAY", TOK_TY_STMNT, 0, S_PLAY, 0
 .endif
 
 ; The three string functions that would not fit before. Portable, like

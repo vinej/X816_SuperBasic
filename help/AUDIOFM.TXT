@@ -1,7 +1,7 @@
 === AUDIOFM - FM notes and instruments ===
 
 The playable layer over the YM2151: eight FM channels, addressed by note
-and instrument rather than by register. None of THAT is written.
+and instrument rather than by register.
 
 What does work is SOUND, over VERA's PSG -- a different and much simpler
 sound chip, which happens to live in VRAM and so needed no register
@@ -32,18 +32,47 @@ voices below would make it a good one.
     volume, only a per-operator attenuation where 0 is loudest, so this
     inverts; and it writes only the carriers, because writing a
     modulator would change the timbre instead of the loudness.
-[ ] FMINST ch,n - select one of a built-in instrument set.
-[ ] FMLOAD file$ - load an instrument bank from the card.
+[x] FMINST ch,n - one of eight built-in instruments, 0 to 7.
+
+    THEY ARE SERVICEABLE, NOT CURATED, and it is better to say so.
+    Instrument 0 is exactly what FMINIT loads; the other seven were made
+    by moving one thing at a time away from it - brighter, duller, slower
+    to start, quicker to stop. Nothing here has been HEARD: this port has
+    no way to listen, and giving a sound a name nobody has checked would
+    be worse than admitting it. They differ from each other, which is the
+    least an instrument set has to do before anyone can improve it.
+[x] FMLOAD file$ - load an instrument bank from the card. Patches of 32
+    bytes, up to eight, in the order FMINST numbers them; the layout is
+    at the top of X816/audio_x816.s. A SHORTER FILE replaces only as many
+    as it holds, so one instrument can be changed without shipping the
+    other seven.
 [x] FMPAN ch,lr - 1 left, 2 right, 3 both.
-[ ] PLAY s$ - a music string, the classic BASIC way: notes, octaves,
-    lengths and rests in one argument.
+[x] PLAY s$ - a music string, the classic BASIC way:
 
-Two things to settle before writing any of it:
+        PLAY "T120 L4 O4 CDEFGAB > C"
 
-Timing. SOUND with a length has to end the note, and BASIC has no clock
-of its own here. Either it blocks for the duration - simple, and wrong
-for a game - or a VSYNC handler ages the voices. The kernel's KIRQ_VSYNC
-slot is the hook, but nothing in SuperBasic installs handlers yet.
+    A-G a note, with # or + for a sharp and - for a flat; a number after
+    it is its own length and a . makes it half again as long, so "C#8."
+    is a dotted quaver C sharp. O sets the octave 0-7 and > and < step
+    it. L sets the length notes take when they do not say - 1 whole, 4
+    quarter, 8 quaver, and any other number too, so L3 and L6 give
+    triplets. T is the tempo in quarter notes a minute, 32 to 255. R or
+    P is a rest. Spaces and commas are ignored, so a string can be laid
+    out to be read.
+
+    IT BLOCKS, which is the classic behaviour and the honest one here: a
+    note has to end, and the alternative is a VSYNC handler ageing the
+    voices, which would make PLAY the one statement that keeps running
+    after it has returned. Ctrl-C stops it between notes.
+
+    It plays on FM channel 0 with whatever instrument that channel has,
+    so FMINIT or FMINST 0,n has to have happened first. PLAY choosing an
+    instrument for itself would overwrite one the program had chosen.
+
+Timing was the thing to settle, and PLAY settles it by blocking - see
+above for why, and HELP SYSTEM for what ONVSYNC would and would not buy
+here. SOUND still has no length argument: a PSG voice sounds until it is
+silenced, and the statement that ends it is SOUND v,0,0.
 
 Volume shadowing. FMVOL's attenuation is applied when it is set, so a
 later raw YMPOKE straight at a total-level register ($60-$7F) overrides

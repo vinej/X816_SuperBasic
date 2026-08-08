@@ -1,8 +1,7 @@
 === AUDIOPCM - sampled sound through VERA's FIFO ===
 
 VERA has a 4 KB audio FIFO taking signed 8- or 16-bit PCM, at three
-registers inside its block at $9F20-$9F3F. Nothing in SuperBasic drives
-it yet.
+registers inside its block at $9F20-$9F3F.
 
 [x] PCMVOL v - output volume 0-15. Read-modify-write, because the same
     byte carries the sample format.
@@ -14,28 +13,50 @@ it yet.
 [x] PCMFREE - 1 while the FIFO has room, 0 when it is full. Takes no
     parentheses, which needed a tokenizer fix of its own (tokens.s,
     TKPREVFN). WHILE PCMFREE ... PCMOUT ... WEND is the feeding loop.
-[ ] PCMCTRL n - $9F3B. Volume 0-15, bit 4 stereo, bit 5 16-bit, bit 7
-    resets the FIFO. Reading it back gives two bits the write side has no
-    use for: bit 7 full, bit 6 empty.
+[x] PCMCTRL n - $9F3B, written whole. Volume 0-15, bit 4 stereo, bit 5
+    16-bit, bit 7 resets the FIFO. Reading it back gives two bits the
+    write side has no use for: bit 7 full, bit 6 empty.
+
+    Bits 7 and 6 TOGETHER are refused: that combination means LOOP on
+    this hardware, not "reset harder", and a program that meant to reset
+    would get a FIFO repeating forever.
 [x] PCMRATE n - $9F3C. 0 stops, 128 is about 48 kHz, and the step is
     25000000/(512*128), roughly 381.5 Hz. Anything above 128 is read by
     the hardware as 256-n, which is a wrap and not a clamp, so it is
     refused here instead.
-[ ] PCMPUT b - $9F3D. Push one sample byte; dropped if the FIFO is full.
-[ ] PCMFULL - true when it cannot take more.
-[ ] PCMEMPTY - true when it has run dry, which is the one a feeder
-    actually wants: by then the sound has already stopped.
-[ ] PCMPLAY file$ - the statement most people want. Stream a sample off
-    the card without the program having to feed it.
+[-] PCMPUT b - REMOVED, as a name. It was this page asking twice for
+    one thing: PCMOUT above is the same statement, and shipping both
+    spellings would cost a token to make the manual read as though there
+    were two ways to do it.
+[x] PCMFULL - true when it cannot take more.
+[x] PCMEMPTY - true when it has run dry - which despite what an earlier
+    draft of this page said is NOT the one a feeder wants: by the time it
+    is true the sound has already stopped. Wait for not-full instead.
+[x] PCMPLAY file$ - the statement most people want. Plays a raw sample
+    off the card while the program CARRIES ON.
 
-A paced feeder in BASIC, once the statements exist, is the loop you would
-expect - push while not full, top up when not empty. Doing that from
-interpreted BASIC will not keep up at 48 kHz for long, which is the
-honest reason PCMPLAY belongs on the list: the refill wants to be an
-AFLOW interrupt handler in assembly, and the kernel already reserves the
-slot for it (KIRQ_AFLOW, slot 3). IRQ 3,addr installs one and switches
-the source on for you - HELP SYSTEM. This is a case where the machine
-code is the point and the deferred BASIC handlers are no use: a FIFO
+    The refill runs off KIRQ_AFLOW, VERA's "the FIFO is running low"
+    interrupt, in machine code - not one of the deferred BASIC handlers,
+    for the reason below. PCMRATE and PCMMODE say how to play it, because
+    a raw sample has no header to say for itself.
+
+    "Streaming" is honest about one thing: the whole sample is read into
+    SDRAM first and the interrupt feeds from THERE. Reading the card at
+    interrupt time is not an option - the kernel's file calls are not
+    re-entrant, and an SD transfer freezes the CPU for its whole length,
+    which would stop the very interrupt doing the reading. A sample is
+    therefore limited by memory, which is 14 MB, and not by the FIFO.
+
+    PCMRESET stops it. So does another PCMPLAY.
+
+A paced feeder in BASIC is the loop you would expect - push while not
+full, top up when not empty - and it is worth writing once to see the
+FIFO work. It will not keep up at 48 kHz for long, which is why PCMPLAY
+exists and does the same job from an AFLOW interrupt handler in
+assembly (KIRQ_AFLOW, slot 3). IRQ 3,addr installs a handler of your own
+in the same slot, and switches the source on for you - HELP SYSTEM. Both
+are cases where the machine code is the point and the deferred BASIC
+handlers are no use: a FIFO
 that has to be refilled before it empties cannot wait for the
 interpreter to finish the statement it is on.
 

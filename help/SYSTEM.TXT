@@ -35,7 +35,7 @@
 [ ] REBOOT - restart the machine through the reset vector.
 [ ] RESET - hardware reset via the SMC, the same one Ctrl+Alt+Del raises.
 [ ] POWEROFF - power the machine off, also through the SMC.
-[ ] I2CPEEK(dev,reg) / I2CPOKE dev,reg,val - the I2C bus. The SMC is
+[x] I2CPEEK(dev,reg) / I2CPOKE dev,reg,val - the I2C bus. The SMC is
     device $42, so I2CPEEK($42,$22) asks it for the mouse device ID.
     This is the back door to anything hanging off that bus, including
     parts of the keyboard and mouse that have no keyword of their own.

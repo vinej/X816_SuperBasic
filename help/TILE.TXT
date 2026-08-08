@@ -28,16 +28,31 @@ TILEMAP can point a layer somewhere else.
     arithmetic is y*256 + x*2, because a row is 128 cells of two bytes.
     Codes are CP437 and the tile index IS the character code, so
     TILEAT 5,3,65,7 really does put a grey A at column 5 of row 3.
-[ ] TILEGET n,x,y - read a cell's tile code back.
-[ ] TILEATTR n,x,y,attr - write a cell's colour attribute.
+[x] TILEGET(n,x,y) - read a cell's tile code back. A function, so it
+    takes parentheses: C=TILEGET(0,5,3). Unlike TILEAT it DOES take a
+    layer number, because a layer whose map has been pointed elsewhere by
+    TILEMAP is the one worth reading. The row stride comes from the
+    layer's own config register rather than being assumed, so a 32-wide
+    map reads correctly too.
+[x] TILEATTR n,x,y,attr - write a cell's colour attribute, leaving the
+    character alone. Foreground low nibble, background high.
 [x] LAYERMODE n,cfg - the layer config byte. Colour depth 1:0 (0 is
     text), bitmap 2, 256-colour text 3, map width 5:4 and map height 7:6
     as 32, 64, 128 or 256 tiles. The console is mode 0.
-[ ] TMAPLOAD n,file$ / TMAPSAVE n,file$ - a whole map to and from a file.
+[x] TMAPLOAD n,file$ / TMAPSAVE n,file$ - a whole map to and from a file.
     Self-sizing on save: the config byte carries the map's width and
-    height codes and a cell is two bytes.
-[ ] TILELOAD n,file$ / TILESAVE n,file$,len - the tile graphics. Tile
-    data has no inherent length, so saving asks for one.
+    height codes and a cell is two bytes. A file bigger than the map is
+    refused rather than wrapped around onto the console.
+
+    TMAPLOAD 0 restores the WHOLE TEXT SCREEN to what it was when the
+    file was saved, because layer 0 is the console. That is occasionally
+    what you want and usually a surprise; a map of your own belongs on
+    layer 1.
+[x] TILELOAD n,file$ / TILESAVE n,file$,len - the tile graphics. Tile
+    data has no inherent length, so saving asks for one - where the
+    graphics stop is something only the program that drew them knows.
+    A load is bounded only by the end of VRAM, which it is refused for
+    running past.
 
 VERA has two layers, 0 and 1, and both can be tilemaps. The X16 put its
 text screen on layer 1; this machine uses layer 0, so code ported from

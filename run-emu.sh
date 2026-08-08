@@ -78,6 +78,50 @@
 #                                     every tick that fired INSIDE the FOR
 #                                     loop. D proves the handler body ran
 #
+#   session G -- reading VRAM back, and VRAM to and from the card
+#    14. PALGET/PALSAVE/PALLOAD    - a palette entry saved, destroyed and
+#                                    restored. Entry 200 and not 5: the
+#                                    TEXT colours are entries nothing ever
+#                                    wrote, and a faithful round trip of
+#                                    those puts junk back over the palette
+#                                    the console draws with. The screen
+#                                    went black on black and the decoder
+#                                    read an empty screen -- help/PAL.TXT
+#                                    warns about exactly this
+#    15. TILEGET/TILEATTR/TMAP*    - VPOKE writes the cell, TILEGET reads
+#                                    it, and the two share no code:
+#                                    TILEGET derives the row stride from
+#                                    the layer's config register. Layer 1,
+#                                    because TMAPLOAD 0 restores the whole
+#                                    text screen, assertions included
+#    16. SPRITEGET/SPRITE*         - the image round trip is checked with
+#                                    VPEEK, which is not how it was written
+#
+#   session H -- controllers and the mouse, with neither plugged in
+#    17. JOYHIT                    - must say NO four times. This is what
+#                                    the eight extra clocks are for
+#    18. I2CPOKE, MOUSEON          - read back out of the SMC, so the 3
+#                                    went to the hardware and returned
+#    19. MX/MY after MOUSEAT       - the pointer is SuperBasic's own, and
+#                                    MX-1 also proves the minus after a
+#                                    no-argument function is not a negation
+#
+#   session I -- the three audio pages
+#    20. FMINST through YMPEEK     - the shadow is a shadow of what was
+#                                    WRITTEN, so it reports the patch
+#                                    table arriving in the registers the
+#                                    chip indexes by operator*8 + channel
+#    21. PCMPLAY                   - VERA's AFLOW ENABLE, not the FIFO
+#                                    level: reading the control register
+#                                    calls audio_render(), and one typed
+#                                    line is longer in guest time than
+#                                    4 KB takes to drain. The enable is
+#                                    set while the feeder runs and clear
+#                                    after PCMRESET stops it
+#    22. PLAY                      - the last note of "CDE" left in the
+#                                    key-code register, so the string was
+#                                    parsed and played and not just taken
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -295,6 +339,160 @@ KEYS_F=$(keys_of \
 # the machine as a file. It returns $1234 in A, which lands in ERR.
 printf '\xA9\x34\x12\x8D\x10\x86\x6B' > "$OUT/t.bin"
 
+# Reading VRAM back, and moving it to and from the card.
+#
+# Every check here is a ROUND TRIP through the card verified by a
+# different path from the one that wrote it: VPOKE puts a byte in, the
+# save takes it out to a file, VPOKE destroys it, the load brings it
+# back, and VPEEK or a GET function reads it. A statement that quietly
+# did nothing fails at the step after the destroy, which is the point of
+# destroying it.
+#
+# ENTRY 200, not entry 5, and the range saved is one this program WROTE.
+# The first version saved entries 0-7 and loaded them back, and the whole
+# screen went black -- not a crash, and not a bug in PALSAVE. Those are
+# the TEXT colours, the program never wrote them, and help/PAL.TXT says
+# in as many words that an entry nobody wrote does not read back as the
+# colour in use. So the round trip faithfully restored junk over the
+# palette the console was drawing with, the glyphs became black on black,
+# and the decoder read an empty screen. The page's own warning, arrived
+# at the hard way. Entry 1 is the one exception here: session C already
+# proves it can be changed with the text still readable.
+#
+# LAYER 1, not the console. TMAPLOAD 0 would restore the whole text
+# screen to what it was when saved -- wiping everything printed in
+# between, including the assertions still to be read. Layer 1 has a map
+# of its own at $12000 and is not being displayed.
+#
+# LAYERMODE 1,0 makes that map 32x32, which is 2 KB. The first version
+# used 128x32 and the 8 KB transfer was long enough that -autokeys DROPPED
+# the first two characters of the line after it: "VPOKE" arrived as
+# "oKE" and the step that destroys the cell never ran, which would have
+# left the reload proving nothing. A smaller map is the fix; the code
+# path is identical.
+KEYS_G=$(keys_of \
+    'PAL 200,&h0F00' \
+    'PRINT PALGET(200)' \
+    'SETCOLOR 1,&h000F' \
+    'PRINT PALGET(1)' \
+    'SETCOLOR 200,0' \
+    'PALSAVE "P.BIN",200,4' \
+    'PAL 200,0' \
+    'PRINT PALGET(200)' \
+    'PALLOAD "P.BIN",200' \
+    'PRINT PALGET(200)' \
+    'TILEMAP 1,&h12000' \
+    'LAYERMODE 1,0' \
+    'VPOKE &h12114,66' \
+    'PRINT TILEGET(1,10,4)' \
+    'TILEATTR 1,10,4,5' \
+    'PRINT VPEEK(&h12115)' \
+    'TMAPSAVE 1,"M.BIN"' \
+    'VPOKE &h12114,88' \
+    'PRINT TILEGET(1,10,4)' \
+    'TMAPLOAD 1,"M.BIN"' \
+    'PRINT TILEGET(1,10,4)' \
+    'TILESET 1,&h16000' \
+    'VPOKE &h16000,77' \
+    'TILESAVE 1,"G.BIN",16' \
+    'VPOKE &h16000,0' \
+    'TILELOAD 1,"G.BIN"' \
+    'PRINT VPEEK(&h16000)' \
+    'SPRITEAT 2,300,200' \
+    'PRINT SPRITEGET(2,0)' \
+    'PRINT SPRITEGET(2,1)' \
+    'SPRITEIMG 2,&h14000' \
+    'SPRITESIZE 2,0,0' \
+    'VPOKE &h14000,90' \
+    'SPRITESAVE 2,"S.BIN"' \
+    'VPOKE &h14000,0' \
+    'SPRITELOAD 2,"S.BIN"' \
+    'PRINT VPEEK(&h14000)')
+
+# Controllers and the mouse, with neither plugged in -- which sounds
+# useless and is where the two best checks on this page live.
+#
+# JOYHIT is the whole point of the eight extra clocks: with no pad in
+# the socket every one of the four must answer 0. If the presence read
+# were wrong in the obvious way -- clocking zeros out of a register that
+# has run dry and calling that "present" -- this is what would catch it.
+#
+# I2CPOKE and MOUSEON are checked by asking the SYSTEM CONTROLLER what
+# it now thinks it is. Writing 3 to register $20 makes it an
+# Intellimouse and $22 reports that back, so the 3 has been out to the
+# hardware and returned; nothing in BASIC computed it. MOUSEON 1 does
+# the same write for itself, which is why it is asserted the same way.
+KEYS_H=$(keys_of \
+    'PRINT JOY(0)' \
+    'JOYSCAN' \
+    'PRINT JOYHIT(0)' \
+    'PRINT JOYHIT(3)' \
+    'PRINT JOYX(0)' \
+    'PRINT JOYY(0)' \
+    'PRINT JOYFIRE(0)' \
+    'I2CPOKE &h42,&h20,3' \
+    'PRINT I2CPEEK(&h42,&h22)' \
+    'MOUSEON 0' \
+    'PRINT I2CPEEK(&h42,&h22)' \
+    'MOUSEON 1' \
+    'PRINT I2CPEEK(&h42,&h22)' \
+    'MOUSEAT 321,50' \
+    'PRINT MX' \
+    'PRINT MY' \
+    'PRINT MB' \
+    'PRINT MWHEEL' \
+    'PRINT MX-1' \
+    'PRINT "JMOK"')
+
+# Audio. The YM2151 answers no reads whatever, so YMPEEK is a shadow of
+# what was written -- which makes it exactly the right instrument for
+# checking FMINST, because the numbers it hands back came out of the
+# patch table by way of FM_APPLY's register arithmetic. $C7, 4 and 32
+# are patch 5's bytes landing in registers $20, $40 and $60, and FMINIT
+# wrote $01 at $40 first, so a 4 there is FMINST having changed it.
+#
+# PCMPLAY is checked through VERA's AFLOW ENABLE BIT rather than through
+# the FIFO level, and the first version got that wrong: reading the
+# control register calls audio_render(), which drains the FIFO by
+# however much guest time has passed -- and one typed line, padded to
+# forty characters, is longer in guest time than 4 KB takes to drain at
+# 24 kHz. The level is simply not observable a statement later.
+#
+# The enable bit is. It is SET while the feeder is running and the
+# handler clears it itself when the sample runs out, so 8 after PCMPLAY
+# says the interrupt-driven feeder started, and 0 after PCMRESET says it
+# can be stopped. Rate 1 is about 381 Hz, which makes eight kilobytes
+# twenty seconds long -- comfortably longer than the session.
+KEYS_I=$(keys_of \
+    'FMINIT' \
+    'FMINST 0,5' \
+    'PRINT YMPEEK(&h20)' \
+    'PRINT YMPEEK(&h40)' \
+    'PRINT YMPEEK(&h60)' \
+    'PCMCTRL 10' \
+    'PRINT PEEK(&h9F3B) AND 15' \
+    'PRINT PCMEMPTY' \
+    'PRINT PCMFULL' \
+    'PCMRATE 64' \
+    'PCMPLAY "W.RAW"' \
+    'PRINT PCMFULL' \
+    'WAIT 1000' \
+    'PRINT PEEK(&h9F26) AND 8' \
+    'PLAY "T240 L16 CDE"' \
+    'PRINT YMPEEK(&h28)' \
+    'PRINT "AUDOK"')
+
+# Eight kilobytes of square wave: more than the 4 KB FIFO, so the primer
+# fills it, and about a third of a second at rate 64, so it is over well
+# inside the WAIT that follows.
+python - "$OUT/w.raw" <<'PYWAV'
+import sys
+d = bytearray()
+for i in range(8192):
+    d.append(0x60 if (i // 24) % 2 else 0xA0)
+open(sys.argv[1], "wb").write(bytes(d))
+PYWAV
+
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
 # be fooled by what the other left behind.
@@ -322,24 +520,30 @@ if [ "$NEG" = "0" ]; then
     run_session D "$KEYS_D" || { echo "session D produced no recording"; exit 1; }
     run_session E "$KEYS_E" || { echo "session E produced no recording"; exit 1; }
     run_session F "$KEYS_F" "$OUT/t.bin" T.BIN || { echo "session F produced no recording"; exit 1; }
+    run_session G "$KEYS_G" || { echo "session G produced no recording"; exit 1; }
+    run_session H "$KEYS_H" || { echo "session H produced no recording"; exit 1; }
+    run_session I "$KEYS_I" "$OUT/w.raw" W.RAW || { echo "session I produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
     cp "$OUT/outA.gif" "$OUT/outD.gif"
     cp "$OUT/outA.gif" "$OUT/outE.gif"
     cp "$OUT/outA.gif" "$OUT/outF.gif"
+    cp "$OUT/outA.gif" "$OUT/outG.gif"
+    cp "$OUT/outA.gif" "$OUT/outH.gif"
+    cp "$OUT/outA.gif" "$OUT/outI.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-(gif_a, gif_b, gif_c, gif_d, gif_e, gif_f,
- fontinc) = (sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
-             sys.argv[5], sys.argv[6], sys.argv[7])
-negative = sys.argv[8] == "1"
+(gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i,
+ fontinc) = (sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5],
+             sys.argv[6], sys.argv[7], sys.argv[8], sys.argv[9], sys.argv[10])
+negative = sys.argv[11] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -388,7 +592,11 @@ rows_c = [] if negative else last_screen(gif_c)
 rows_d = [] if negative else last_screen(gif_d)
 rows_e = [] if negative else last_screen(gif_e)
 rows_f = [] if negative else last_screen(gif_f)
-rows = rows_a + rows_b + rows_c + rows_d + rows_e + rows_f
+rows_g = [] if negative else last_screen(gif_g)
+rows_h = [] if negative else last_screen(gif_h)
+rows_i = [] if negative else last_screen(gif_i)
+rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
+        rows_h + rows_i)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -702,6 +910,116 @@ if not any(r.strip() in ("1500", "1.50000E03") for r in rows_f):
 if not any(r.strip() in ("42", "4.20000E01") for r in rows_f):
     fail("the ONVSYNC handler never ran, or never reached its second "
          "statement -- D was not 42")
+
+# ---- session G: reading VRAM back, and VRAM to and from the card --------
+# 3840 is $0F00, pure red. It has to appear TWICE: once read straight back
+# after PAL wrote it, and once AFTER the entry was overwritten with black
+# and restored from a file -- so the second one can only have come off the
+# card. The 0 between them is what proves the overwrite happened.
+if len([r for r in rows_g if r.strip() == "3840"]) != 2:
+    fail("PALGET did not read $0F00 back, or PALSAVE/PALLOAD did not "
+         "round-trip a palette entry through the card")
+if not any(r.strip() == "15" for r in rows_g):
+    fail("SETCOLOR did not write a text palette entry PALGET can read")
+if not any("Out of range" in r for r in rows_g):
+    fail("SETCOLOR 200 was accepted -- its whole point is that 0-15 are "
+         "the text palette and 200 is a mistake")
+
+# The tilemap, on layer 1 so the console is not disturbed. VPOKE writes
+# the cell and TILEGET reads it, which share no code: TILEGET derives the
+# row stride from the layer's own config register, VPOKE is told the
+# address outright. 66 twice and 88 once between them is the round trip.
+if len([r for r in rows_g if r.strip() == "66"]) != 2:
+    fail("TILEGET did not read a cell VPOKE wrote, or TMAPSAVE/TMAPLOAD "
+         "did not round-trip the map through the card")
+if not any(r.strip() == "88" for r in rows_g):
+    fail("the cell was not overwritten before the reload, so the reload "
+         "proves nothing")
+if not any(r.strip() == "5" for r in rows_g):
+    fail("TILEATTR did not write the attribute byte of the cell")
+# And the tile graphics, whose length nothing can infer -- which is why
+# TILESAVE is the one statement here that asks for one.
+if not any(r.strip() == "77" for r in rows_g):
+    fail("TILESAVE/TILELOAD did not round-trip tile graphics through the "
+         "card")
+
+# ---- session H: controllers and the mouse, with neither plugged in ------
+# JOYHIT has to say NO for every pad. This is the check the eight extra
+# clocks exist for, and the one that fails if presence is read the
+# obvious wrong way -- an empty socket and an idle pad both shift out
+# "no buttons", and only the clocks after the sixteenth tell them apart.
+if len([r for r in rows_h if r.strip() == "0"]) < 6:
+    fail("with no pad and no mouse attached, JOY, JOYHIT, JOYX, JOYY, "
+         "JOYFIRE, MB and MWHEEL should all be 0")
+# 3 twice: once because I2CPOKE wrote it to the system controller, once
+# because MOUSEON 1 made the same request for itself. Both are read back
+# out of the SMC, so neither number was computed in BASIC.
+if len([r for r in rows_h if r.strip() == "3"]) != 2:
+    fail("I2CPOKE and MOUSEON did not both set the SMC's mouse device ID "
+         "to 3 -- the I2C WRITE path is what this proves")
+# MX and MY read back what MOUSEAT set, which is the whole of what a
+# position means here: the controller reports movement and never a
+# position, so the pointer is SuperBasic's own.
+if not any(r.strip() == "321" for r in rows_h):
+    fail("MX did not report the column MOUSEAT set")
+if not any(r.strip() == "50" for r in rows_h):
+    fail("MY did not report the row MOUSEAT set")
+# MX-1 rather than another MX: MX takes no parentheses, and a minus after
+# a token is a NEGATION unless the tokenizer asks what kind of token it
+# was. This is the same trap TIMER-A fell into, on a new keyword.
+if not any(r.strip() == "320" for r in rows_h):
+    fail("MX-1 did not answer 320 -- the minus after a no-argument "
+         "function was tokenized as a negation")
+if not any(r.strip() == "JMOK" for r in rows_h):
+    fail("session H did not reach the end")
+
+# ---- session I: the three audio pages -----------------------------------
+# 199 is $C7, 4 and 32 are patch 5's operator bytes. All three come back
+# through YMPEEK, which is a shadow of what was WRITTEN -- so they say
+# FM_APPLY put the patch table into the registers the chip indexes by
+# operator*8 + channel, which is the only hard part of an instrument.
+if not any(r.strip() == "199" for r in rows_i):
+    fail("FMINST did not write the patch connection byte to $20")
+if not any(r.strip() == "4" for r in rows_i):
+    fail("FMINST did not write patch 5 operator 0 to $40 -- FMINIT left "
+         "1 there, so a 4 is the instrument having changed it")
+if not any(r.strip() == "32" for r in rows_i):
+    fail("FMINST did not write the total level to $60")
+if not any(r.strip() == "10" for r in rows_i):
+    fail("PCMCTRL did not write the control byte")
+# The FIFO is empty before PCMPLAY, and PCMEMPTY+1 is 1 after it: the
+# statement primed it before enabling the interrupt, which it has to --
+# AFLOW fires on a FIFO that has DRAINED, and an empty one never drains.
+if not any(r.strip() == "-1" for r in rows_i):
+    fail("PCMEMPTY did not report an empty FIFO before anything played")
+if not any(r.strip() == "1" for r in rows_i):
+    fail("the FIFO was still empty after PCMPLAY -- it did not prime it, "
+         "so AFLOW would never have fired")
+# 8 is VERA's AFLOW enable, set by PCMPLAY and cleared by PCMRESET. It is
+# the feeder starting and stopping, seen from outside.
+if not any(r.strip() == "8" for r in rows_i):
+    fail("PCMPLAY did not arm AFLOW -- the interrupt feeder never started")
+# 68 is $44: octave 4, and $04 is E in the key-code table that skips 3,
+# 7, 11 and 15. It is the last note of "CDE", so it says the whole
+# string was parsed and played rather than merely accepted.
+if not any(r.strip() == "68" for r in rows_i):
+    fail("PLAY did not leave E of octave 4 in the key-code register")
+if not any(r.strip() == "AUDOK" for r in rows_i):
+    fail("session I did not reach the end")
+
+# Sprites. SPRITEGET reads the attribute record back through the port;
+# 300 and 200 are ten-bit values, so they also check that the high two
+# bits are being masked rather than dropped.
+if not any(r.strip() == "300" for r in rows_g):
+    fail("SPRITEGET(n,0) did not read the sprite X position back")
+if not any(r.strip() == "200" for r in rows_g):
+    fail("SPRITEGET(n,1) did not read the sprite Y position back")
+# 90 comes back only if SPRITESAVE worked out the image address and its
+# size from the sprite's own attributes, wrote that file, and SPRITELOAD
+# put it back where it came from.
+if not any(r.strip() == "90" for r in rows_g):
+    fail("SPRITESAVE/SPRITELOAD did not round-trip sprite pixels through "
+         "the card")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

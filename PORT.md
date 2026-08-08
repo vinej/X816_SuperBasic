@@ -1065,6 +1065,206 @@ way it found it.
 
 Size: **36,259 bytes**, against the 65,280-byte exec cap.
 
+## 21. Finishing the palette, sprite and tile pages (2026-08-08)
+
+Twelve keywords, and all twelve were missing for the same two reasons —
+which is why they went in together rather than one page at a time.
+
+**Reading back needed nothing but a function.** `PALGET`, `SPRITEGET`
+and `TILEGET` are functions and take parentheses, so none of them needs
+anything from the no-argument rule that `TIMER` and `CHARSETAT` cost a
+tokenizer change for. `SPRITEGET(n,which)` takes an index for X or Y
+rather than being two keywords, the same trade `MOUSE()` made.
+
+`TILEGET` takes a **layer number** where `TILEAT` does not, and derives
+the row stride from that layer's own config register instead of assuming
+the console's 128. A layer whose map has been repointed by `TILEMAP` is
+exactly the one worth reading, and it need not be 128 wide. That also
+makes the test a real cross-check: `TILEAT` writes with hard-coded
+arithmetic, `TILEGET` reads with register-derived arithmetic, and they
+agree.
+
+**The eight file words needed one decision: VRAM is not in the CPU
+address space.** `FK_LOAD` reads a file into memory the CPU can address
+and VRAM is not that — it is a byte at a time through a port at `$9F20`.
+So every transfer stages through SDRAM at `$08:0000`: load the file
+there and stream it into the port, or stream it out and save that. One
+buffer, one pair of loops, and the eight statements are then thin.
+
+The staging pointer is **`MTEMP`**. `[ptr]` addressing only exists in the
+direct page, that page is 256 bytes and was down to two free (§19), and
+`MTEMP` is the shared scratch pointer `CMD_LOAD` already streams a loaded
+file through — so this cost no direct page at all.
+
+**Sizes are checked against the object, not against VRAM.** A file of 700
+bytes loaded at palette entry 200 runs off the end of the palette and
+into the sprite attributes at `$1FC00`, which looks like sprites going
+mad rather than like a bad `PALLOAD`. Every load here refuses instead,
+and `VIO_FITS` catches the general case, because the VERA address port
+**wraps**: a file too big for where it is going does not fail, it quietly
+overwrites the beginning of VRAM, which on this machine is the console.
+
+Three notes for the next person:
+
+- **`SETFILEDESC` records a POINTER, so it must be called while
+  `ARGUMENT1` still holds the filename.** The shared `VIO_SAVE` called it
+  itself, which works only when the filename is the LAST argument —
+  `SPRITESAVE` and `TMAPSAVE` passed, and `PALSAVE`, whose filename comes
+  first with two expressions after it, handed the kernel a pointer to the
+  COUNT and answered *Unable to save file*. `TILESAVE` had the same bug
+  and no test. The fix is that neither helper calls it: every statement
+  names the file and calls `SETFILEDESC` on the next line, where the
+  ordering constraint is visible. This is `S_OPEN`'s bug from §15 wearing
+  different clothes — state captured at the wrong moment relative to the
+  call that consumes it.
+- **`INC` and `STZ` have no long addressing mode**, and neither does
+  `LDX`. All three are silent at the source level and loud at assembly
+  time; `TILEATTR` and `S_RETIRQ` both hit it. The fix is always to go
+  through A.
+- **`TMAPLOAD 0` restores the whole text screen**, because layer 0 is the
+  console. It cost a rewrite of the test session: the first version saved
+  and reloaded the console map and wiped the assertions printed in
+  between. The tests use layer 1, and `help/TILE.TXT` warns about it.
+
+Verified by a seventh emulator session, every check a **round trip
+through the card read back by a different path than wrote it**: `VPOKE`
+puts a byte in, the save takes it to a file, `VPOKE` destroys it, the
+load brings it back, and `VPEEK` or a `GET` function reads it. Destroying
+the value in between is what makes the reload prove anything.
+
+Size: **38,531 bytes**, against the 65,280-byte cap. C256 still 53,959.
+
+## 22. Controllers, the mouse, and the audio pages (2026-08-08)
+
+Three more pages closed, and the pattern in all of them is that the
+remaining items were the ones needing something that did not exist
+yet — a way to write to I2C, a way to read a chip that answers no
+reads, an interrupt.
+
+### The pads: one scan, and eight clocks nobody would guess at
+
+All four controllers shift out **together** on their own data lines, so
+reading one costs exactly what reading four does. The scan was rewritten
+to take all four, which is what makes `JOYSCAN` worth having.
+
+`JOYHIT` is the interesting one. A present pad with nothing pressed and
+an empty socket both read as *no buttons*, so the sixteen data bits
+cannot tell them apart. The eight clocks **after** them can: the SNES
+register keeps shifting out zeros once it is empty, while an absent line
+floats high. That was read out of the emulator's `joystick.c`
+(`do_shift`) rather than assumed, and it is the check the headless test
+can actually make — with nothing plugged in, all four must say no.
+
+`JOYX`/`JOYY`/`JOYFIRE` are the beginner's layer the page argued for.
+Each takes its own scan rather than reading a cache: a cached value that
+silently stops changing is a worse failure than three passes of a shift
+register.
+
+### The mouse: an I2C **write** was the missing piece
+
+`MOUSEON` has to ask the controller to be a wheel-capable device, which
+is a write to register `$20` — and there was no write path, only
+`I2C_GETREG`. Adding one gave `I2CPOKE` for free, which was an open item
+on `help/SYSTEM.TXT`.
+
+**The packet is three bytes or four and the controller is counting, not
+us.** A wheel mouse serves four. Reading three of a four-byte packet
+leaves a byte behind and every packet after it is read one byte out of
+step — a mouse that has gone mad rather than an off-by-one. So the poll
+asks the controller what it is (register `$22`) once per pass rather than
+remembering what `MOUSEON` requested: `I2CPOKE` can change it too.
+
+`MX`, `MY`, `MB` and `MWHEEL` take no parentheses, which is what the page
+always wanted and could not have until `TKPREVFN` started asking a
+token's *type*. `MOUSE(n)` stays — programs use it. The page asked for
+`MOUSE on` as a statement and did not get it: a keyword is one token with
+one type, and `MOUSE` is already a function. `MOUSEON` instead, with the
+page's spelling available any time `MOUSE(n)` is retired.
+
+### Audio: a shadow, and a handler that switches itself off
+
+**`YMPEEK` can only be a shadow.** The YM2151 answers writes only — its
+status register is the busy flag and two timer flags and nothing else.
+So every write goes through `YM_POKE` to record it, which is what makes
+the shadow worth reading: `FMINIT`, `FMNOTE`, `FMINST`, `FMVOL` and
+`PLAY` all appear in it. It also makes `YMPEEK` the right instrument for
+testing `FMINST`, because the numbers it hands back came out of the patch
+table by way of the register arithmetic being tested.
+
+**`PCMPLAY` is the first thing built on `IRQ`.** The refill runs from
+`KIRQ_AFLOW` in machine code, because a FIFO that must be refilled before
+it empties cannot wait for the interpreter to finish its statement — the
+exact case §20 said the deferred handlers were no use for. Two details
+that are load-bearing:
+
+- **The FIFO is primed before the source is enabled.** AFLOW fires on a
+  FIFO that has *drained*, and an empty one never drains, so switching
+  the interrupt on without filling it first starts nothing.
+- **The handler switches its own source off** when the sample runs out.
+  AFLOW cannot be acknowledged — refilling *is* the acknowledgement — so
+  a handler that returns having done neither is called again immediately,
+  forever.
+
+The sample is read into SDRAM first and fed from there. "Streaming" off
+the card at interrupt time is not available: the kernel's file calls are
+not re-entrant and an SD transfer freezes the CPU for its whole length,
+which would stop the very interrupt doing the reading.
+
+`PLAY` is a blocking MML parser, which is the classic behaviour and the
+honest one — the alternative is a VSYNC handler ageing the voices, and
+that would make `PLAY` the one statement that keeps running after it
+returns.
+
+**The instruments are serviceable, not curated, and the help page says
+so.** Patch 0 is byte for byte what `FMINIT` writes and the other seven
+were made by moving one parameter at a time away from it. Nothing has
+been heard — this port has no way to listen — and naming a sound nobody
+has checked would be worse than admitting that.
+
+### The bug the test was for
+
+`I2CPOKE` wrote **zeros**, and nothing said so.
+
+`I2C_TXBYTE` shifts the byte it is sending through `I2C_B` — that is its
+shift register, and it leaves it at zero. `I2C_SETREG` parked the value
+to be written in `I2C_B` before sending the address and the register, so
+by the time the third byte went out the value had been shifted away.
+Every write put out a 0.
+
+It is worth naming what made it invisible: the one thing available to
+test it against is the SMC's mouse device ID, and **0 is a legal value
+for that register**. So the readback said 0, which reads as *the write
+never happened* rather than *the write happened and carried the wrong
+byte* — and the first three hypotheses chased were all about whether the
+transaction was reaching the bus at all. What settled it was reading
+`I2C_TXBYTE` instead of the emulator.
+
+The fix is a byte of its own, `I2C_V`. The general shape is the one from
+§15 and §21: **state parked in a location the routine you are about to
+call also uses.** That is now three times — `S_OPEN`'s `PHY` after the
+kernel call, `VIO_SAVE`'s `SETFILEDESC`, and this.
+
+And the check earned its place. `I2CPOKE $42,$20,4` answering **3** is
+the emulator's `mouse_set_device_id` folding 4 onto 3, which is a number
+neither the BASIC nor the test computed.
+
+### Three traps, all the same shape
+
+- **`VID_A` is EIGHT bytes** and `VID_A+8` is the record I/O channel
+  table. The first draft of `FM_APPLY` and the `PLAY` parser used
+  `VID_A+9` through `VID_A+14` as scratch, which would have broken `OPEN`
+  from a statement about instruments. The note in `mmap_x816.s` saying
+  the region is exactly eight bytes was already there.
+- **`CPX` and `CPY` have no long addressing mode**, joining `INC`, `STZ`
+  and `LDX` on that list. Every one of them is silent in the source and
+  loud at assembly time.
+- **Relative branches ran out** in three separate places once the loops
+  grew — the mouse packet loop, the `PLAY` dispatch chain, and its
+  returns to the parser loop. Trampolines (`JMP` through a nearby label)
+  where the target has to stay put; plain `JMP` where it does not.
+
+Size: **41,829 bytes**, against the 65,280-byte cap. C256 still 53,959.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

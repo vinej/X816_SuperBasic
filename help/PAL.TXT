@@ -3,16 +3,26 @@
 VERA's palette is not a register block: it is VRAM, at $1FA00, two
 bytes an entry and little-endian. PAL is therefore a VPOKE in disguise,
 and the reason it earns a keyword is that working the address out by
-hand is exactly the arithmetic a beginner's BASIC should absorb. The
-rest of this page is still a plan; SETCOLOR, the BASIC816 spelling for
-the sixteen text colours, is reserved and still refuses.
+hand is exactly the arithmetic a beginner's BASIC should absorb.
+
+The file words go through a staging buffer in SDRAM, because VRAM is not
+in the CPU address space and the kernel can only load a file into memory
+that is. That is invisible from BASIC; it is worth knowing only because
+it is why these arrived later than PAL itself.
 
 [x] PAL index,rgb - set palette entry 0-255 to a 12-bit $RGB colour.
     PAL 1,&h0F00 makes colour 1 pure red.
-[ ] PALGET index - read an entry back. See the warning below.
-[ ] PALLOAD file$,start - load entries from a file, starting at an index.
-[ ] PALSAVE file$,start,count - save a RANGE, not all 256. See below.
-[ ] SETCOLOR index,rgb - the BASIC816 spelling, for the 16 text colours.
+[x] PALGET(index) - read an entry back. A FUNCTION, so it takes
+    parentheses: A=PALGET(1). See the warning below - it is about what
+    the answer means, not about whether the read works.
+[x] PALLOAD file$,start - load entries from a file, starting at an index.
+    Refused if the file would run past entry 255: the bytes after the
+    palette are the sprite attributes, and overwriting those looks like
+    sprites going mad rather than like a bad PALLOAD.
+[x] PALSAVE file$,start,count - save a RANGE, not all 256. See below.
+[x] SETCOLOR index,rgb - the BASIC816 spelling, for the 16 text colours.
+    The same store as PAL with the index held to 0-15, which is the
+    point of it: 200 is out of range here and says so.
 
 VERA has 256 entries, each 12-bit ($0RGB: four bits per channel). Entry 0
 is the background/transparent colour, and entries 0-15 default to the

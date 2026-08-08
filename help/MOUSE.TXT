@@ -6,7 +6,7 @@ SMC serves mouse packets and the CPU reads them over the I2C bus on VIA
 involved, and durexForth already drives it - so nothing below is
 speculative about the hardware, only about SuperBasic.
 
-None of it is bound yet.
+All of it is bound now.
 
 [x] MOUSE(n) - 0 the column, 1 the row, 2 the buttons (bit 0 left, bit 1
     right, bit 2 middle). One function with an index rather than three
@@ -35,16 +35,28 @@ None of it is bound yet.
     for a data bit and everything after it is nonsense. A full stop in
     the middle does work, and the device keeps the register number
     across it.
-[ ] MOUSE on - switch the mouse on, zero the position, and ask the SMC
-    for a wheel-capable device. MOUSE 0 switches it off.
-[ ] MX - pointer column, clamped to 0-639.
-[ ] MY - pointer row, clamped to 0-479. Y counts DOWN the screen, which
+[x] MOUSEON n - switch the mouse on (any non-zero) or off (0). Zeroes the
+    position and the wheel, and asks the SMC for a wheel-capable device.
+
+    MOUSEON and not "MOUSE on", which is what this page asked for: a
+    keyword is one token with one type, and MOUSE is already the
+    FUNCTION MOUSE(n). The page's spelling is available any time
+    MOUSE(n) is retired in favour of MX/MY/MB, which is a decision about
+    breaking a keyword programs already use, not one about tokens.
+[x] MX - pointer column, clamped to 0-639.
+[x] MY - pointer row, clamped to 0-479. Y counts DOWN the screen, which
     is the PS/2 delta negated - a mouse pushed forward gives a smaller
     MY, not a larger one.
-[ ] MB - buttons. Bit 0 left, bit 1 right, bit 2 middle.
-[ ] MWHEEL - signed wheel movement since the last read. Reading CLEARS
+[x] MB - buttons. Bit 0 left, bit 1 right, bit 2 middle.
+[x] MWHEEL - signed wheel movement since the last read. Reading CLEARS
     the accumulator, so two reads in a row give the second one nothing.
     Read it once per pass and keep the value.
+
+    It stays 0 until MOUSEON has asked for a wheel-capable device: a
+    plain mouse serves three-byte packets with no wheel byte in them.
+[x] I2CPOKE dev,reg,val - write any register of any device on the bus,
+    the other half of I2CPEEK. MOUSEON is one line of it: asking the
+    controller to be an Intellimouse is a write of 3 to register $20.
 
 There is no pointer on screen. The X16's KERNAL drew one with a hardware
 sprite; nothing here does, so the arrow is yours to draw and move - which
@@ -52,7 +64,21 @@ is better than a pointer you cannot get out of your own way. A sprite is
 the cheap way, HELP SPRITE, and it also means the pointer can be anything
 you like.
 
-What the SMC actually offers, for whoever writes this: command $21 reads
+Each of MX, MY, MB and MWHEEL polls the controller for itself, so reading
+all four is four passes over the bus, and a packet can arrive between two
+of them - MX and MY can come from different instants. MOUSE(0) and
+MOUSE(1) have exactly the same property and always have. If it ever
+matters, one MOUSEPOLL updating all four at once is the shape to add.
+
+THE PACKET IS THREE BYTES OR FOUR, and the controller is counting them,
+not us: a wheel mouse serves four. Reading three of a four-byte packet
+leaves a byte behind and every packet after it comes back one byte out of
+step, which looks like a mouse that has gone mad rather than like an
+off-by-one. So the poll asks the controller what kind of device it is
+(register $22) once per pass rather than remembering what MOUSEON asked
+for - I2CPOKE can change it too, and so can plugging a mouse in.
+
+What the SMC actually offers: command $21 reads
 a four-byte movement packet (status, DX, DY, wheel) or zero when nothing
 is pending; $22 reports the device ID, $03 for an Intellimouse with a
 wheel; $20 requests a device ID; $42 is the same read as $21 but NACKs

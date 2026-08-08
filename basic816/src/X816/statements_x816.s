@@ -98,9 +98,9 @@ S_SETBORDER     .proc
                 THROW ERR_ARGUMENT
                 .pend
 
-S_SETCOLOR      .proc
-                THROW ERR_ARGUMENT
-                .pend
+; SETCOLOR is real now -- X816/vramio_x816.s, beside the rest of the
+; palette. It stayed a stub here for as long as PAL was the only way to
+; write an entry.
 
 S_BITMAP        .proc
                 THROW ERR_ARGUMENT

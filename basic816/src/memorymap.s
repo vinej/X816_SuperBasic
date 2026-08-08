@@ -98,7 +98,18 @@ MMNEMONIC   .word ?     ;2 Byte address of mnemonic found by the assembler
 .endif
 MTEMPPTR    .dword ?    ;4 Byte temporary pointer
 MJUMPINST   .byte ?     ;1 Byte JSL opcode
-MJUMPADDR   .long ?     ;3 Byte address for JSL 
+MJUMPADDR   .long ?     ;3 Byte address for JSL
+.if SYSTEM == SYSTEM_X816
+PCM_PTR     .dword ?    ;4 Bytes - the PCM feeder's next sample byte.
+                        ; Here and not in bank 0 with the rest of the audio
+                        ; state because an INTERRUPT HANDLER dereferences
+                        ; it, and [ptr] addressing exists only in the
+                        ; direct page. It cannot be MTEMP: that is shared
+                        ; scratch, and a TILELOAD streaming through it
+                        ; while a sample plays would send the feeder into
+                        ; the tilemap. Costs 4 of the 54 bytes freed in
+                        ; PORT.md section 19.
+.endif
 .send
 
 MANTISSA1 = ARGUMENT1

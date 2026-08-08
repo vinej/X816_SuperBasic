@@ -21,15 +21,25 @@ durexForth reads it today. SuperBasic has no keyword for it yet.
     Nothing here can be checked without a pad plugged in. The headless
     test shows the sixteen-bit shift completes and the inversion
     happens; it cannot show the bit order is right.
-[ ] JOY(n) - read pad n, 1 to 4, as a button bitmap. Pad 0 on the X16 was
-    the keyboard pretending to be a joystick; there is nothing behind it
-    here, so it reads 0.
-[ ] JOYHIT(n) - true when a pad actually answered the scan. An absent pad
+    (The pads are numbered 0 to 3. An earlier draft of this page said 1
+    to 4, with pad 0 being the keyboard pretending to be a joystick as
+    it is on the X16. There is nothing behind that here, so the four
+    real pads got the four real numbers.)
+[x] JOYHIT(n) - true when a pad actually answered the scan. An absent pad
     reads the same as a present pad with nothing pressed, so this is the
     only way to tell them apart. It works because an absent line floats
-    high and the pad's third byte comes back $FF instead of $00.
-[ ] JOYSCAN - sample all four pads in one pass, for when you want a
-    consistent snapshot rather than four separate reads.
+    high while a real pad keeps shifting out ZEROS once its sixteen bits
+    have gone by - so eight more clocks say which happened.
+
+    Unlike everything else here it does NOT scan. It reports the last
+    scan, because "was that pad there" is a question about a reading
+    already taken - and it is what JOYSCAN is for.
+[x] JOYSCAN - sample all four pads in one pass. One scan reads all four
+    whatever you asked for, since they shift out together, so this
+    followed by four JOYHITs describes one instant rather than four.
+[x] JOYX(n) / JOYY(n) - -1, 0 or 1. Down is positive, because the screen
+    counts down.
+[x] JOYFIRE(n) - true while A or B is held.
 
 Buttons want to come back ACTIVE HIGH - a pressed button is a 1 - which
 is the other way up from the wire. The layout durexForth settled on, and
@@ -40,11 +50,17 @@ the one to match:
     bit 2 DOWN      bit 6 Y         bit 10 X
     bit 3 UP        bit 7 B         bit 11 A
 
-For a beginner's BASIC, that bitmap is the wrong first thing to offer.
-Something like JOYX(n) and JOYY(n) returning -1, 0 or 1, and JOYFIRE(n)
-for the main button, is one line in a game loop where AND-ing bit masks
-is three. Both layers are worth having; the bitmap should not be the only
-one.
+For a beginner's BASIC, that bitmap is the wrong first thing to offer,
+which is why JOYX, JOYY and JOYFIRE exist above: "IF JOYX(0)=1" is one
+line in a game loop where AND-ing a bit mask is three. Both layers are
+here and the bitmap did not go away - a game that wants the shoulder
+buttons still needs it.
+
+Each of JOY, JOYX, JOYY and JOYFIRE takes its own scan, so reading all
+three of a pad's axes costs three passes of the shift register. That is
+nothing at human speed and it is honest at any speed - the alternative,
+returning whatever the last scan saw, is a value that silently stops
+changing.
 
 THE PADS AND THE MOUSE SHARE ONE PORT, and this is the trap on this page.
 The keyboard's I2C to the SMC runs on PA0/PA1 of the same VIA #1 port A

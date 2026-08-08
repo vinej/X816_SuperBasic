@@ -189,6 +189,80 @@ IRQ_VLINE = $008462         ; word - ONVSYNC's line number, 0 = disarmed
 IRQ_RLINE = $008464         ; word - ONRASTER's
 IRQ_CLINE = $008466         ; word - ONCOLLISION's
 IRQ_FRAME = $008468         ; word - frame count at the last VSYNC tick
+; Bulk transfers between VRAM and the card (X816/vramio_x816.s).
+; The staging buffer is SDRAM and deliberately far above LOADBLOCK
+; ($05:0000), which CMD_LOAD fills with program text: a TILELOAD in a
+; running program must not land on the buffer its own source came
+; through. 128 KB of room, which is a 256x256 tilemap, the largest
+; single object any of these statements can move.
+; The four slots have ONE meaning each and keep it. An earlier draft let
+; VIO_T mean "the offset", "the byte count" and "the sprite number" in
+; the same routine, and the unshifted address then read its own result.
+VIO_VA    = $008480         ; 4 bytes - VRAM address of the transfer
+VIO_N     = $008484         ; 4 bytes - bytes STILL to move; counts to zero
+VIO_T     = $008488         ; 4 bytes - the transfer's LENGTH, for a save
+VIO_U     = $00848C         ; 4 bytes - per-statement scratch
+VIO_V     = $008490         ; 4 bytes - per-statement scratch
+VIO_STAGE = $080000         ; the staging buffer itself
+
+; Controllers. One pass of the shift register fills all of this, because
+; all four pads shift out together on their own data lines -- reading
+; one pad and reading four cost the same.
+JOY_P     = $008494         ; 8 bytes - the four pads, buttons active HIGH
+JOY_H     = $00849C         ; byte - the eight clocks AFTER the sixteen,
+                            ;  ORed together. A present pad keeps shifting
+                            ;  ZEROS; an absent line floats HIGH. Bit 7-n
+                            ;  set means pad n did not answer.
+JOY_C     = $00849E         ; byte - which bit the scan is on
+; JOYX/JOYY need somewhere to park two masks and a value ACROSS a scan,
+; so these cannot be JOY_W -- the scan uses that for the port byte on
+; every one of its twenty-four passes. (JOY_W+2 would also have been
+; I2C_W: the older block is packed two bytes apart.)
+JOY_MN    = $0084A4         ; word - the mask for the negative direction
+JOY_MP    = $0084A6         ; word - and for the positive one
+JOY_V     = $0084A8         ; word - the pad reading being tested
+; The byte an I2C WRITE is carrying. It cannot be I2C_B: that is
+; I2C_TXBYTE's shift register, and it is left at zero by every byte that
+; goes out -- so a value parked there before the address and register
+; were sent arrived as 0. I2CPOKE wrote zeros and nothing said so.
+I2C_V     = $0084AA         ; byte
+
+; Audio. The YM2151 answers no reads at all -- its status register is
+; timer and busy flags and nothing else -- so YMPEEK can only be a
+; SHADOW of what was written, and every write goes through YM_POKE to
+; keep it.
+YM_SHADOW = $008600         ; 256 bytes - the last value written to each
+FM_BANK   = $008700         ; 256 bytes - eight instrument patches of 32
+FM_BANKED = $008800         ; byte - non-zero once FMLOAD replaced them
+
+; The PCM feeder. PCM_PTR itself is a DIRECT PAGE variable (memorymap.s)
+; because the interrupt handler dereferences it, and [ptr] addressing
+; exists nowhere else.
+PCM_LEN   = $008802         ; dword - sample bytes still to be fed
+PCM_ON    = $008806         ; byte - the AFLOW handler is installed
+
+; Scratch for the audio code. NOT VID_A: that region is exactly EIGHT
+; bytes and the note beside it says so -- VID_A+8 is the record I/O
+; channel table, and a patch loop that ran off the end of it would break
+; OPEN rather than FMINST.
+AUD_T     = $008830         ; 16 bytes
+
+; PLAY's parser state.
+PLY_P     = $008810         ; dword - where it is in the string
+PLY_N     = $008814         ; word - characters left
+PLY_OCT   = $008816         ; byte - current octave, 0-7
+PLY_LEN   = $008818         ; byte - default note length: 1, 2, 4 ... 32
+PLY_TEMPO = $00881A         ; word - quarter notes a minute
+PLY_WHOLE = $00881C         ; dword - milliseconds in a whole note
+PLY_MS    = $008820         ; dword - and in the note being played
+PLY_NOTE  = $008824         ; word - the note number being assembled
+PLY_CH    = $008826         ; byte - which FM channel it plays on
+
+; Mouse extras.
+MOUSE_WH  = $0084A0         ; word - wheel movement, signed, cleared by a read
+MOUSE_PK  = $0084A2         ; byte - bytes in one movement packet: 3, or 4
+                            ;  once the SMC has been asked for a wheel mouse
+
 IRQ_TMP   = $00846A         ; 4 bytes - scratch across an EVALEXPR. NOT
                             ;  VID_A, which an expression can reach: the
                             ;  scanline in "ONRASTER VPEEK(A),100" would
