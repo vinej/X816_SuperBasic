@@ -184,7 +184,10 @@ KEYS_D=$(keys_of \
     'PRINT #9,1' \
     'PRINT "UNWEDGED"' \
     '-5' \
-    'PRINT "AFTERMINUS"')
+    'PRINT "AFTERMINUS"' \
+    'MONITOR' \
+    'TEXTCOLOR 15,0' \
+    'PRINT "AFTERCOLOR"')
 
 # The font gets a session to itself for an unusual reason: changing it
 # changes EVERY glyph on the screen, including the ones other checks
@@ -530,6 +533,19 @@ if not any(r.strip() == "Syntax error" for r in rows_d):
     fail("a line beginning with a minus sign was not refused")
 if not any(r.strip() == "AFTERMINUS" for r in rows_d):
     fail("the machine did not survive a line beginning with a minus sign")
+
+# The monitor and the inline assembler are not built here. The keyword
+# stays reserved and refuses -- deleting the token would renumber every
+# one after it, and a zero-length record in its place would TERMINATE
+# the table walk and quietly unmake every keyword that follows. So this
+# also checks that GET, INPUT and TEXTCOLOR, which come after MONITOR in
+# the table, still exist.
+#
+# TEXTCOLOR is the proof of that AND a fix of its own: it pushed the
+# foreground colour 8 bits wide and pulled it back 16, taking the return
+# address with it, so it hung the machine every time it was used.
+if not any(r.strip() == "AFTERCOLOR" for r in rows_d):
+    fail("TEXTCOLOR hung, or a keyword after MONITOR in the table is gone")
 
 # ---- session E: the redefinable character set ----------------------------
 # 16384 is $4000, where the kernel leaves its font. CHARSETAT reads the

@@ -36,8 +36,13 @@ S_TEXTCOLOR     .proc
                 LDA ARGUMENT1       ; X = background
                 AND #$000F
                 TAX
-                PLA                 ; C = foreground (8-bit push above)
-                AND #$00FF
+
+                setas               ; The PHA above ran in 8-bit mode and
+                PLA                 ;  pushed ONE byte. Pulling it back with
+                setal               ;  a 16-bit accumulator took TWO, and the
+                AND #$00FF          ;  return address went with it -- so
+                                    ;  TEXTCOLOR hung the machine every time
+                                    ;  it was used.
                 JSL KERN_CON_COLOR
 
                 PLP

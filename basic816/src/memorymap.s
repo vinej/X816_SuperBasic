@@ -54,30 +54,48 @@ DATALINE    .dword ?    ; Pointer to the current line for a DATA statement
 SAVEBIP     .dword ?    ; Spot to save BIP temporarily
 SAVELINE    .dword ?    ; Spot to save CURLINE temporarily
 
+; What is left of this block on the X816 is NOT the monitor's -- the
+; monitor is not built there (basic816.s). These are the general scratch
+; that commands.s, dos.s, floats.s, listing.s, repl.s and statements.s
+; borrowed from it over the years, and they keep their names because
+; renaming 700 access sites would be a much larger change than the one
+; that removed the monitor.
 MONITOR_VARS = *
+.if SYSTEM != SYSTEM_X816
 MCMDADDR    .long ?     ;3 Bytes Address of the current line of text being processed by the command parser. Can be in display memory or a variable in memory. MONITOR will parse up to MTEXTLEN characters or to a null character.
 MCMP_TEXT   .long ?     ;3 Bytes Address of symbol being evaluated for COMPARE routine
 MCMP_LEN    .word ?     ;2 Bytes Length of symbol being evaluated for COMPARE routine
 MCMD        .long ?     ;3 Bytes Address of the current command/function string
 MCMD_LEN    .word ?     ;2 Bytes Length of the current command/function string
+.endif
 MARG1       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command
 MARG2       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command. Data is 32-bit number. Address is 24-bit address and 8-bit length.
 MARG3       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command. Data is 32-bit number. Address is 24-bit address and 8-bit length.
 MARG4       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command. Data is 32-bit number. Address is 24-bit address and 8-bit length.
 MARG5       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command. Data is 32-bit number. Address is 24-bit address and 8-bit length.
 MARG6       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command. Data is 32-bit number. Address is 24-bit address and 8-bit length.
+.if SYSTEM != SYSTEM_X816
 MARG7       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command. Data is 32-bit number. Address is 24-bit address and 8-bit length.
 MARG8       .dword ?    ;4 Bytes First command argument. May be data or address, depending on command. Data is 32-bit number. Address is 24-bit address and 8-bit length.
 MARG9       .dword ?    ;4 Bytes First command argument.
 MARG_LEN    .byte ?     ;1 Byte count of the number of arguments passed
+.endif
 MCURSOR     .dword ?    ;4 Bytes Pointer to the current memory location for disassembly, memory dump, etc.
-MLINEBUF    .fill 17    ;17 Byte buffer for dumping memory (TODO: could be moved to a general string scratch area)
+.if SYSTEM != SYSTEM_X816
+MLINEBUF    .fill 17    ;17 Byte buffer for dumping memory
+.endif                  ; on the X816 it is out of the direct page entirely
+                        ;  (X816/mmap_x816.s): 17 bytes is a BUFFER, and a
+                        ;  buffer has no business in a 256-byte page. Only
+                        ;  the assembler ever dereferenced it, and that is
+                        ;  gone.
 MCOUNT      .long ?     ;2 Byte counter
 MTEMP       .dword ?    ;4 Bytes of temporary space
+.if SYSTEM != SYSTEM_X816
 MCPUSTAT    .byte ?     ;1 Byte to represent what the disassembler thinks the processor MX bits are
 MADDR_MODE  .byte ?     ;1 Byte address mode found by the assembler
 MPARSEDNUM  .dword ?    ;4 Bytes to store a parsed number
 MMNEMONIC   .word ?     ;2 Byte address of mnemonic found by the assembler
+.endif
 MTEMPPTR    .dword ?    ;4 Byte temporary pointer
 MJUMPINST   .byte ?     ;1 Byte JSL opcode
 MJUMPADDR   .long ?     ;3 Byte address for JSL 

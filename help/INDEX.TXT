@@ -28,7 +28,7 @@ works today, which the upstream documentation cannot.
  MEMORY      peek, poke, where things live
  FILE        the SD card              LOAD SAVE DIR BLOAD BSAVE
  TIME        clocks and waiting       TIMER FRAMES WAIT VSYNC
- SYSTEM      the machine itself       CALL MONITOR TURBO IRQ QUIT
+ SYSTEM      the machine itself       CALL CLR NEW TURBO IRQ QUIT
  MATH        arithmetic, and why it is software
  STRING      text handling            LEN LEFT$ MID$ INSTR
  ADVANCED    game math, images, IRQ   SIN8 ATAN2 BMXLOAD ONVSYNC

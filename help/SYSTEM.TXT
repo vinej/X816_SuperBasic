@@ -13,10 +13,18 @@
     and preserve nothing but D and DBR if you also call the kernel.
 [x] CLR - clear variables.
 [x] NEW - erase the program.
-[ ] MONITOR - the built-in machine-language monitor. It assembles into
-    the build and its commands work, but the BRK entry is not wired to
-    an interrupt handler, so a BRK in your own code does not land in it.
-    KIRQ_BRK (slot 9) is the hook that would fix that.
+[-] MONITOR - REMOVED. The machine-language monitor and the inline
+    assembler are not built for SuperBasic. The keyword is still
+    reserved and refuses, so nothing silently becomes a variable.
+
+    They were inherited from BASIC816 and cost more than they were
+    worth here: about 6.8 KB of the binary, and a fifth of the DIRECT
+    PAGE - which is a single 256-byte page, was down to two free bytes,
+    and is what every new feature needs a few of. Removing them took it
+    back to 54. A BASIC for this machine does not need a 65816 monitor;
+    the emulator has a debugger and X816_Calypsi has an assembler.
+
+    The C256 build still has it, so that build still reproduces stock.
 [ ] QUIT / SYSTEM - exit to the shell (K_EXIT). Today the only way out
     is to reset the machine.
 [ ] TURBO on|off - SYSCTL at $9F80 bit 2 switches 8 MHz / 14 MHz. One
@@ -35,7 +43,7 @@
     slots: VSYNC, raster line, sprite collision, audio FIFO low, the two
     VIAs, the YM, spurious, NMI, BRK and COP. This one statement is what
     several other pages are waiting on - animation timing, sprite
-    collision, PCM refill and a working monitor all want a handler.
+    collision and PCM refill all want a handler.
 
 The machine boots to a shell; SuperBasic is an ordinary program the shell
 runs, not the ROM. That is deliberate - it keeps BASIC replaceable and

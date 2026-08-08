@@ -1269,6 +1269,14 @@ TOK_NEGATIVE = $AF
 ; $CC
             DEFTOK "COPY", TOK_TY_STMNT, 0, S_COPY, 0
 ; $CD
+            ; The monitor is not built on the X816, but the keyword stays
+            ; and CMD_MONITOR is a stub there that refuses -- see
+            ; X816/statements_x816.s.
+            ;
+            ; An EMPTY name here would have been a disaster. TKNEXTBIG
+            ; walks the table until it reads a length of zero, so a
+            ; zero-length entry is a TERMINATOR: every keyword after
+            ; MONITOR would have quietly stopped existing.
             DEFTOK "MONITOR", TOK_TY_CMD, 0, CMD_MONITOR, 0
 
 ; $CE

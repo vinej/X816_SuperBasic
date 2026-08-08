@@ -5,9 +5,22 @@
 ;
 ; Enter the monitor
 ;
+; Not on the X816: the monitor and the inline assembler are not built
+; there (basic816.s), and BRK would drop into the kernel's handler with
+; nothing waiting to catch it. The keyword stays reserved and refuses --
+; deleting the token would renumber every one after it, and a
+; zero-length record in its place would TERMINATE the table walk
+; (TKNEXTBIG), quietly unmaking every keyword that follows.
+;
+.if SYSTEM == SYSTEM_X816
+CMD_MONITOR     .proc
+                THROW ERR_SYNTAX
+                .pend
+.else
 CMD_MONITOR     BRK
                 NOP
                 RETURN
+.endif
 
 ;
 ; Clear the program area and all variables

@@ -14,7 +14,9 @@
 ;; Jump table 
 
 COLDBOOT        JML START               ; Entry point to boot up BASIC from scratch
+.if SYSTEM != SYSTEM_X816
 MONITOR         JML IMONITOR            ; Entry point to the machine language monitor
+.endif
 
 ;;
 ;; I/O hooks... these could be replaced by an external system
@@ -68,7 +70,16 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "arrays.s"
 .include "dos.s"
 
+.if SYSTEM != SYSTEM_X816
+; The machine-language monitor and the inline assembler. NOT built for
+; SuperBasic: a BASIC for this machine does not need a 65816 monitor,
+; and between them they held about a fifth of the direct page -- which
+; is a single 256-byte page, was full, and is what every new feature
+; needs a few bytes of. See PORT.md section 19.
+;
+; Kept for the other targets so the C256 build still reproduces stock.
 .include "monitor.s"
+.endif
 
 .if UNITTEST
 .include "tests/basictests.s"

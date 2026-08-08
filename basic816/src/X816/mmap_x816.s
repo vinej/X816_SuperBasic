@@ -174,6 +174,10 @@ GT        = $008446         ; word - y*5, on the way to y*640
 GOFF      = $008448         ; word - the pixel's offset within its bank
 GBANK     = $00844A         ; word - and which bank that is, $E0 to $E4
 
+; dos.s dumps a line of memory through this. It was 17 bytes of direct
+; page, which is a page of 256 that everything else is short of.
+MLINEBUF  = $008450         ; 17 bytes
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

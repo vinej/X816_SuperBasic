@@ -897,6 +897,70 @@ than stopping at the first. And `POINT(639,479)` exercises the bank
 arithmetic at the far corner, which is the value most likely to be
 wrong and the least likely to be tried by hand.
 
+## 19. Removing the monitor, and what the direct page cost (2026-08-08)
+
+The build had **two free bytes of direct page** out of 256, and the
+graphics work had already had to be written around that: `[ptr]`
+addressing lives in the direct page, so a pixel address goes through the
+data bank instead (section 18).
+
+Measuring where the page had gone was the whole of the decision:
+
+| | bytes | |
+|---|---:|---|
+| genuinely need it | 121 | dereferenced as `[ptr]` -- `BIP`, `CURLINE`, `ARGUMENT1/2`, `CHN_P`, heap pointers |
+| shared scratch | 107 | `MARG1`-`MARG6`, `MCOUNT`, `MTEMP` -- plain variables |
+| monitor/assembler only | 29 | `MCMDADDR`, `MARG7`-`MARG9`, `MCPUSTAT`, `MPARSEDNUM` |
+
+The monitor and the inline assembler came from BASIC816 and are not
+something a BASIC for this machine needs: the emulator has a debugger
+and X816_Calypsi has an assembler. **Decided: not built for SuperBasic.**
+The C256 build keeps them, so it still reproduces stock.
+
+It cost **6.8 KB of binary** -- 42,049 down to 35,257 -- and took the
+direct page from 2 free bytes to **54**.
+
+### Moving something out is cheaper than it looks
+
+Worth knowing for the next time. 64tass silently re-emits an access as
+ABSOLUTE when the symbol leaves the assumed direct page, so most of a
+move needs no source edits at all. `MLINEBUF` was tried first as an
+experiment: 17 bytes, used by `dos.s` and `assembler.s`, and only
+**three** sites failed to build -- all of them genuine `LDA [MLINEBUF],Y`
+in the assembler, where that "buffer" was doubling as a pointer.
+
+There is one hazard in that, and it is silent: absolute addressing goes
+through DBR, and some code runs with DBR pointing elsewhere. If more
+space is ever needed, the trick is to relocate to a bank OTHER than 0,
+which makes every access a build error until it is made explicit.
+
+### The keyword had to stay
+
+`MONITOR` still tokenizes, and refuses. Two reasons, and the second was
+nearly a disaster.
+
+Token ids are positional, so deleting the entry would renumber every
+keyword after it. The obvious fix -- a zero-length placeholder -- was
+written, and it would have been much worse: `TKNEXTBIG` walks the table
+until it reads a length of **zero**, so a zero-length record is a
+TERMINATOR. Every keyword after `MONITOR` -- `GET`, `INPUT`,
+`TEXTCOLOR`, and everything beyond -- would have quietly stopped
+existing, with no error anywhere. It was caught by reading the walk
+before trusting the placeholder.
+
+### And a hang found next door
+
+`S_TEXTCOLOR` pushed the foreground colour with `PHA` in 8-bit mode and
+pulled it back with `PLA` in 16-bit mode. One byte in, two bytes out,
+and the return address went with it: **`TEXTCOLOR` hung the machine every
+time it was used.** It is two lines from the code being edited, and it
+had been there since phase 1.
+
+That is the third bug of exactly this shape (section 15, section 14),
+and they are all the same sentence: *the width at the push must be the
+width at the pull.* The assembler cannot see it, because it cannot see
+through a `JSR` or round a branch.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public
