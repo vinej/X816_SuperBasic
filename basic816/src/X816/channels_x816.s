@@ -457,6 +457,27 @@ cnd_bad         PLY
                 .pend
 
 ;
+; The same, but any mode will do: SEEK and LOC work on both.
+;
+CHN_NEEDANY     .proc
+                PHP
+                PHY
+                setaxl
+
+                LDY #CHN_HANDLE
+                LDA [CHN_P],Y
+                BEQ cna_bad
+
+                PLY
+                PLP
+                RETURN
+
+cna_bad         PLY
+                PLP
+                THROW ERR_ARGUMENT
+                .pend
+
+;
 ; OPEN #n, "path", "R" | "W"
 ;
 ; The mode is a string rather than a bare R or W because a bare R would
@@ -733,6 +754,268 @@ S_INPUTCH       .proc
                 LDA @l CHN_SAVE
                 STA @l BCONSOLE
 
+                PLP
+                RETURN
+                .pend
+
+;
+; LINPUT #n, var$ -- a whole line, commas and all.
+;
+; LINPUT and not "LINE INPUT", which is what every other BASIC calls it
+; and what help/FILE.TXT asked for: LINE is already the graphics
+; statement here, and a tokenizer that matches keywords anywhere in a
+; line would read "LINE INPUT" as a call to draw one.
+;
+; What it is FOR is the comma. INPUT #1 splits on them because that is
+; what INPUT does, so a line of text containing a comma comes back cut
+; in half. This reads to the end of the line and stops.
+;
+S_LINPUTCH      .proc
+                PHP
+                TRACE "S_LINPUTCH"
+                setaxl
+
+                CALL CHN_ARGNUM
+                setas
+                LDA #KFS_READ
+                CALL CHN_NEED
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+
+                CALL SKIPWS                 ; where it goes
+                setas
+                LDA [BIP]
+                CALL ISALPHA
+                BCC lin_syntax
+                CALL VAR_FINDNAME
+                BCC lin_syntax
+                setas
+                LDA TOFINDTYPE
+                CMP #TYPE_STRING
+                BNE lin_type                ; a line of text is a string
+
+                setas                       ; read it from the channel rather
+                LDA @l BCONSOLE             ;  than the keyboard, the same
+                STA @l CHN_SAVE             ;  redirection INPUT # uses
+                LDA #DEV_CHANNEL
+                STA @l BCONSOLE
+
+                setal
+                CALL INPUTLINE              ; fills IOBUF, stops at the newline
+
+                setas
+                LDA @l CHN_SAVE
+                STA @l BCONSOLE
+
+                setal                       ; and assign it whole
+                LDA #<>IOBUF
+                STA ARGUMENT1
+                LDA #`IOBUF
+                STA ARGUMENT1+2
+                setas
+                LDA #TYPE_STRING
+                STA ARGTYPE1
+                setal
+                CALL VAR_SET
+
+                PLP
+                RETURN
+
+lin_syntax      THROW ERR_SYNTAX
+lin_type        THROW ERR_TYPE
+                .pend
+
+;;;
+;;; SEEK and LOC
+;;;
+;;; The kernel is seekable and this is the layer that has to reconcile a
+;;; seek with the BUFFER. A read channel holds up to 256 bytes the file
+;;; has already given up, so the kernel's idea of where it is and BASIC's
+;;; are not the same number -- BASIC is BEHIND by whatever is still
+;;; sitting unread in the buffer.
+;;;
+;;; Neither of these keeps a position of its own. K_FS_SEEK from KFS_CUR
+;;; with an offset of zero RETURNS the current offset without moving
+;;; anything, so LOC asks the kernel rather than shadowing it -- and a
+;;; shadow that can drift is exactly the sort of thing that goes wrong
+;;; once and is never noticed.
+;;;
+
+;
+; Seek channel CHN_P to the 32-bit offset in ARGUMENT1, whence in A.
+; Returns the resulting offset in ARGUMENT1.
+;
+CHN_SEEK        .proc
+                PHP
+                setaxl
+                PHX
+                PHY
+
+                setas
+                STA @l CHN_W            ; the whence, parked
+
+                LDY #CHN_HANDLE
+                setal
+                LDA [CHN_P],Y
+                STA @l FS_BLK_H
+
+                setas                   ; the block is handle, whence, offset
+                LDA @l CHN_W            ;  -- not the read and write one, and
+                STA @l FS_BLK+2         ;  it fits inside the same ten bytes
+                setal
+                LDA ARGUMENT1
+                STA @l FS_BLK+4
+                LDA ARGUMENT1+2
+                STA @l FS_BLK+6
+
+                LDA #<>FS_BLK
+                LDX #`FS_BLK
+                JSL KERN_FS_SEEK
+                BCS csk_bad
+
+                STA ARGUMENT1           ; the new offset, low 16
+                LDA #0
+                STA ARGUMENT1+2
+
+                PLY
+                PLX
+                PLP
+                CLC
+                RETURN
+
+csk_bad         PLY
+                PLX
+                PLP
+                SEC
+                RETURN
+                .pend
+
+;
+; SEEK #n, position -- move a channel.
+;
+; A write channel is FLUSHED first: the bytes waiting in the buffer
+; belong where they were written, not where the file is about to go. A
+; read channel simply throws its buffer away, and the next read refills
+; it from the new position.
+;
+S_SEEKCH        .proc
+                PHP
+                TRACE "S_SEEKCH"
+                setaxl
+
+                CALL CHN_ARGNUM         ; #n
+                setas
+                LDA #0                  ; either mode may be seeked
+                CALL CHN_NEEDANY
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR           ; where to
+                CALL ASS_ARG1_INT
+
+                setal                   ; keep it across the flush
+                LDA ARGUMENT1
+                STA @l CHN_SEEKTO
+                LDA ARGUMENT1+2
+                STA @l CHN_SEEKTO+2
+
+                CALL CHN_FLUSH          ; write channels only; a read one has
+                                        ;  nothing waiting to go out
+
+                setal
+                LDA @l CHN_SEEKTO
+                STA ARGUMENT1
+                LDA @l CHN_SEEKTO+2
+                STA ARGUMENT1+2
+                setas
+                LDA #KFS_SET
+                CALL CHN_SEEK
+                BCS ssk_bad
+
+                setal                   ; the buffer is about somewhere else
+                LDA #0                  ;  now, so it is not about anywhere
+                LDY #CHN_CNT
+                STA [CHN_P],Y
+                LDY #CHN_POS
+                STA [CHN_P],Y
+                LDY #CHN_EOF
+                STA [CHN_P],Y
+
+                PLP
+                RETURN
+ssk_bad         THROW ERR_ARGUMENT
+                .pend
+
+;
+; LOC(n) -- where a channel is, counted in bytes from the start.
+;
+; The kernel's position minus whatever is still unread in the buffer, or
+; PLUS whatever is waiting to be written -- which is the difference
+; between where the FILE is and where the PROGRAM is.
+;
+FN_LOC          .proc
+                FN_START "FN_LOC"
+                PHP
+                PHY
+                setaxl
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_INT
+                CALL CHN_REC
+
+                LDY #CHN_HANDLE
+                LDA [CHN_P],Y
+                BEQ floc_zero           ; a closed channel is nowhere
+
+                setal                   ; ask, do not remember
+                LDA #0
+                STA ARGUMENT1
+                STA ARGUMENT1+2
+                setas
+                LDA #KFS_CUR
+                CALL CHN_SEEK
+                BCS floc_zero
+
+                setal
+                LDY #CHN_MODE
+                LDA [CHN_P],Y
+                CMP #KFS_WRITE
+                BEQ floc_write
+
+                LDY #CHN_CNT            ; reading: behind by what is unread
+                LDA [CHN_P],Y
+                STA @l CHN_W
+                LDY #CHN_POS
+                LDA [CHN_P],Y
+                SEC
+                SBC @l CHN_W            ; POS - CNT, so a negative amount
+                CLC
+                ADC ARGUMENT1
+                STA ARGUMENT1
+                BRA floc_type
+
+floc_write      LDY #CHN_CNT            ; writing: ahead by what is waiting
+                LDA [CHN_P],Y
+                CLC
+                ADC ARGUMENT1
+                STA ARGUMENT1
+                BRA floc_type
+
+floc_zero       setal
+                LDA #0
+                STA ARGUMENT1
+                STA ARGUMENT1+2
+
+floc_type       setas
+                LDA #TYPE_INTEGER
+                STA ARGTYPE1
+
+                PLY
+                FN_END
                 PLP
                 RETURN
                 .pend

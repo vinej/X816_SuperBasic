@@ -152,6 +152,8 @@ TKPF_W    = $00841C         ; word - the token id being asked about
 TKPF_R    = $00841E         ; byte - the answer, on its way to the carry
 CHN_W     = $008420         ; word - a byte in transit through a channel
 CHN_SAVE  = $008422         ; word - BCONSOLE across a redirected PRINT
+CHN_SEEKTO = $0084AC        ; dword - where SEEK is going, kept across the
+                            ;  flush that has to happen first
 FNT_CODE  = $008424         ; word - the glyph GLYPH is redefining
 FNT_ROWS  = $008426         ; 8 bytes - its scanlines, collected before the
                             ;  VRAM port is pointed anywhere

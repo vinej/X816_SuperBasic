@@ -41,12 +41,33 @@ pieces. Keep the palette in an array and save that.
 
 --- sound ---
 
-[ ] Envelopes - attack/sustain/release ticked once a frame across the
-    voices, so a note can fade instead of stopping dead. Needs the frame
-    interrupt, HELP SYSTEM.
-[ ] ADPCM decode - about four times smaller than raw PCM. Decode whole
-    buffers up front and play the result; nothing interpreted can feed a
-    DAC live (HELP AUDIOPCM).
+[ ] ENV v,a,d,s,r and ENVOFF v - attack, decay, sustain, release ticked
+    once a frame across the PSG voices, so a note can fade instead of
+    stopping dead.
+
+    The frame tick it needed now exists. It does NOT want a handler in
+    KIRQ_VSYNC -- that slot belongs to the kernel's cursor, and taking it
+    loses the cursor. It wants the tick SuperBasic already has: IRQ_POLL
+    runs between statements and notices when the kernel's frame counter
+    has moved (HELP SYSTEM). A volume envelope arriving a statement late
+    is inaudible.
+
+    The shape: per voice a phase (attack, decay, sustain, release, off),
+    a level 0-63, and the four rates as steps per frame. SOUND sets the
+    peak; the tick walks the level towards the next target and writes the
+    PSG volume byte, keeping the two channel bits above it. Sixteen
+    voices of about eight bytes is all the state there is.
+[ ] ADPCM decode - about four times smaller than raw PCM. Decode a whole
+    file up front and play the result with PCMPLAY; nothing interpreted
+    can feed a DAC live (HELP AUDIOPCM).
+
+    IMA ADPCM: a 4-bit nibble a sample, an 89-entry step table and a
+    16-entry index table, and about 150 lines around them. It fits the
+    machinery that is already here -- load the file to the staging
+    buffer, decode it into memory, hand the result to the AFLOW feeder --
+    so it is a decoder and nothing else. The one decision is where the
+    decoded audio goes, since it is four times the size of what was
+    loaded.
 
 --- interrupts, which most of the above depends on ---
 

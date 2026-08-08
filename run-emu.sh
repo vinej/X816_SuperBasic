@@ -271,6 +271,10 @@ KEYS_D=$(keys_of \
     'PRINT A' \
     'PRINT B$' \
     'PRINT EOF(1)' \
+    'SEEK #1,3' \
+    'PRINT LOC(1)' \
+    'LINPUT #1,C$' \
+    'PRINT C$' \
     'CLOSE #1' \
     'PRINT #9,1' \
     'PRINT "UNWEDGED"' \
@@ -884,6 +888,14 @@ if not any(r.strip().startswith("-9") for r in rows_c):
 # any screen so a stray match cannot pass for a read.
 if not any(r.strip() == "1.23400E03" for r in rows_d):
     fail("INPUT #1 did not read back the number PRINT #1 wrote")
+# SEEK moved the channel to byte 3 of the file, whose first line is
+# " 1234" -- so LOC says 3, and the line read from there is what is left
+# of it. Both numbers come from the kernel's own position minus what the
+# buffer still holds, which is the only part of this that can be wrong.
+if not any(r.strip() == "3" for r in rows_d):
+    fail("LOC did not report the position SEEK moved the channel to")
+if not any(r.strip() == "34" for r in rows_d):
+    fail("LINPUT did not read the rest of the line from where SEEK left it")
 if not any(r.strip() == "REC-OK" for r in rows_d):
     fail("INPUT #1 did not read back the string PRINT #1 wrote")
 if not any(r.strip() == "-1" for r in rows_d):

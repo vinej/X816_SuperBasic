@@ -1580,6 +1580,16 @@ TOK_LABEL = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
 ; meaningful at the prompt.
             DEFTOK "AUTO", TOK_TY_CMD, 0, CMD_AUTO, 0
 
+.if SYSTEM == SYSTEM_X816
+; Record I/O: where a channel is, and moving it. Guarded, because the
+; channel layer is -- OPEN, CLOSE and EOF are X816-only for the same
+; reason, and an unguarded token here pointed the C256 build at handlers
+; that do not exist in it.
+            DEFTOK "SEEK", TOK_TY_STMNT, 0, S_SEEKCH, 0
+            DEFTOK "LOC", TOK_TY_FUNC, 0, FN_LOC, 0
+            DEFTOK "LINPUT", TOK_TY_STMNT, 0, S_LINPUTCH, 0
+.endif
+
 ; The three string functions that would not fit before. Portable, like
 ; the rest of the SuperBasic string layer.
             DEFTOK "LCASE$", TOK_TY_FUNC, 0, FN_LCASE, 0

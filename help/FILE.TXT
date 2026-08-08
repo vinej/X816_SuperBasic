@@ -4,9 +4,8 @@ Real FAT32 on a real card. Paths are ASCII with "/" separators, and there
 are no device numbers, no secondary addresses and no CBM DOS command
 channel - none of that survived the move off the C64.
 
-Reading and writing whole files works. Directories and the rest do not:
-the kernel side is complete either way (K_FS_* and K_DIR_*, sixteen
-calls, KERNEL.md section 6), and what is still missing is the binding.
+Everything on this page works. The kernel side is sixteen calls (K_FS_*
+and K_DIR_*, KERNEL.md section 6) and all of them are bound.
 
 [x] LOAD "name" - load a BASIC program, replacing the one in memory.
 
@@ -78,9 +77,29 @@ calls, KERNEL.md section 6), and what is still missing is the binding.
 [x] EOF(n) - true once a read channel has run out. True BEFORE the
     failing read, so WHILE NOT EOF(1) ... INPUT #1 ... WEND reads every
     line and stops, instead of processing one phantom empty line.
-[ ] SEEK #n,pos and LOC(n) - the kernel is seekable and nothing here
-    uses it. Fixed-length records would follow from this.
-[ ] LINE INPUT #n - a whole line, commas and all.
+[x] SEEK #n,pos and LOC(n) - move a channel, and ask where it is.
+
+    LOC is the position the PROGRAM is at, which is not the position the
+    FILE is at: a read channel holds up to 256 bytes it has already been
+    given, so the program is BEHIND by whatever is still unread, and a
+    write channel is AHEAD by whatever is still waiting to go out. Both
+    are accounted for. Neither keeps a counter of its own - seeking by 0
+    from the current position returns it, so LOC asks rather than
+    shadows, and a shadow that drifts is the kind of thing that goes
+    wrong once and is never noticed.
+
+    SEEK flushes a write channel first and throws a read channel's
+    buffer away. Seeking past the end of a file is refused rather than
+    growing it. Fixed-length records follow from this.
+[x] LINPUT #n,var$ - a whole line, commas and all.
+
+    LINPUT and not "LINE INPUT" as this page used to ask: LINE is
+    already the graphics statement, and a tokenizer that matches
+    keywords anywhere would read "LINE INPUT" as a call to draw one.
+
+    The comma is the whole point. INPUT #1,A$,B$ splits on commas
+    because that is what INPUT does, so a line of prose comes back cut
+    into pieces. This reads to the end of the line and stops.
 
 Channels are buffered a page at a time, so PRINT #1,X in a loop is not
 one card transaction per character.
@@ -102,8 +121,9 @@ Two things about how this is wired, for whoever writes the rest.
 
 The seam is narrow. dos.s reaches the card only through the Foenix
 FK_LOAD/FK_SAVE/FK_DIROPEN/FK_DIRNEXT/FK_DELETE/FK_COPY/FK_RUN entry
-points, so binding those in X816/kernel_x816.s lights up the statements
-above without touching portable code. FK_RUN is the last stub.
+points, so binding those in X816/kernel_x816.s lit up the statements
+above without touching portable code. FK_RUN is the one that stayed a
+stub: there is no PGX here, so BRUN does the work itself.
 
 COPY has no kernel call behind it and rightly so -- a copy is a read
 loop and a write loop with a buffer, and the kernel cannot know which

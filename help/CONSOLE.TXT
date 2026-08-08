@@ -11,8 +11,9 @@ than by poking VERA. See X816_core/doc/KERNEL.md section 4.
 [x] TEXTCOLOR fg,bg - set the colour of everything printed from now on.
     Both 0-15. Text already on screen keeps the colour it was drawn with.
 [x] TAB(n) / SPC(n) - column and spacing control inside PRINT.
-[ ] SETCOLOR index,rgb - reprogram one of the 16 text colours. Needs the
-    palette, HELP PAL. The statement exists and refuses.
+[x] SETCOLOR index,rgb - reprogram one of the 16 text colours. It is the
+    same store PAL makes with the index held to 0-15, which is the point
+    of it: 0-15 ARE the text palette, so 200 is a mistake here. HELP PAL.
 [ ] SETBGCOLOR c - set the background colour. Refuses today; TEXTCOLOR's
     bg argument is the way to do it.
 [ ] SETBORDER c - set the border colour. Refuses today.

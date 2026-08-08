@@ -34,6 +34,13 @@ KERN_CON_COLOR  = KERN_TABLE + 9*4  ; C = fg, X = bg (0-15)
 KFS_READ        = 0
 KFS_WRITE       = 1
 
+; K_FS_SEEK takes a parameter block: handle, then a WHENCE byte, then a
+; 32-bit offset. It returns the new offset, and refuses a target past the
+; end of the file rather than growing it.
+KFS_SET         = 0         ; from the beginning
+KFS_CUR         = 1         ; from where the file is now
+KFS_END         = 2         ; from the end, so a negative offset backs up
+
 KERN_FS_OPEN    = KERN_TABLE + 16*4
 KERN_FS_CLOSE   = KERN_TABLE + 17*4
 KERN_FS_READ    = KERN_TABLE + 18*4
