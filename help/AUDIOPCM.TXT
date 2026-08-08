@@ -11,8 +11,9 @@ it yet.
     together mean LOOP on this hardware, not "reset harder", so the two
     must never be set at once.
 [x] PCMOUT b - push one sample byte.
-[ ] PCMFREE - written, but not tokenized: it takes no parentheses. See
-    the note beside CURSORX in tokens.s.
+[x] PCMFREE - 1 while the FIFO has room, 0 when it is full. Takes no
+    parentheses, which needed a tokenizer fix of its own (tokens.s,
+    TKPREVFN). WHILE PCMFREE ... PCMOUT ... WEND is the feeding loop.
 [ ] PCMCTRL n - $9F3B. Volume 0-15, bit 4 stereo, bit 5 16-bit, bit 7
     resets the FIFO. Reading it back gives two bits the write side has no
     use for: bit 7 full, bit 6 empty.

@@ -121,14 +121,6 @@ S_FILL          .proc
                 THROW ERR_ARGUMENT
                 .pend
 
-S_TILESET       .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_TILEMAP       .proc
-                THROW ERR_ARGUMENT
-                .pend
-
 S_MEMCOPY       .proc
                 THROW ERR_ARGUMENT
                 .pend

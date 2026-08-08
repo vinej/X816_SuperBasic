@@ -162,6 +162,8 @@ KEYS_C=$(keys_of \
     'PRINT JOY(0)' \
     'MOUSEAT 321,50' \
     'PRINT MOUSE(0)' \
+    'A=10' \
+    'PRINT PCMFREE-A' \
     'PRINT "FMOK"')
 
 # Record I/O gets a session of its own because B was already 22 lines
@@ -181,6 +183,26 @@ KEYS_D=$(keys_of \
     'CLOSE #1' \
     'PRINT #9,1' \
     'PRINT "UNWEDGED"')
+
+# The font gets a session to itself for an unusual reason: changing it
+# changes EVERY glyph on the screen, including the ones other checks
+# read. That is also what makes the check convincing.
+#
+# Lines are kept short. The console is 80 columns and the key script
+# pads each line by 40, so a long GLYPH wraps and is TRUNCATED -- which
+# looked exactly like a statement that silently did nothing, and cost
+# an hour of looking at correct code.
+KEYS_E=$(keys_of \
+    'TILESET 1,&h18000' \
+    'PRINT PEEK(&h9F36)' \
+    'TILEMAP 1,&h11000' \
+    'PRINT PEEK(&h9F35)' \
+    'PRINT CHARSETAT' \
+    'FONTCOPY &h4000,&h4800' \
+    'A=&h4800' \
+    'GLYPH A,65,254,198,140,24,50,102,254,0' \
+    'CHARSET A' \
+    'PRINT "AAA"')
 
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
@@ -203,21 +225,24 @@ if [ "$NEG" = "0" ]; then
     run_session B "$KEYS_B" || { echo "session B produced no recording"; exit 1; }
     run_session C "$KEYS_C" || { echo "session C produced no recording"; exit 1; }
     run_session D "$KEYS_D" || { echo "session D produced no recording"; exit 1; }
+    run_session E "$KEYS_E" || { echo "session E produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
     cp "$OUT/outA.gif" "$OUT/outD.gif"
+    cp "$OUT/outA.gif" "$OUT/outE.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-gif_a, gif_b, gif_c, gif_d, fontinc = (sys.argv[1], sys.argv[2], sys.argv[3],
-                                       sys.argv[4], sys.argv[5])
-negative = sys.argv[6] == "1"
+gif_a, gif_b, gif_c, gif_d, gif_e, fontinc = (sys.argv[1], sys.argv[2],
+                                              sys.argv[3], sys.argv[4],
+                                              sys.argv[5], sys.argv[6])
+negative = sys.argv[7] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -264,7 +289,8 @@ rows_a = last_screen(gif_a)
 rows_b = [] if negative else last_screen(gif_b)
 rows_c = [] if negative else last_screen(gif_c)
 rows_d = [] if negative else last_screen(gif_d)
-rows = rows_a + rows_b + rows_c + rows_d
+rows_e = [] if negative else last_screen(gif_e)
+rows = rows_a + rows_b + rows_c + rows_d + rows_e
 
 def fail(msg):
     print("FAIL:", msg)
@@ -458,6 +484,14 @@ if not any(r.strip() == "0" for r in rows_c):
 if not any(r.strip() == "321" for r in rows_c):
     fail("MOUSE did not read back the position MOUSEAT set")
 
+# A no-argument function followed by a minus. PCMFREE is 1 and A is 10,
+# so a BINARY minus gives -9 and a NEGATION would give -10 -- the two
+# readings differ, which is the whole point of choosing these numbers.
+# PCMFREE is an EXTENDED token, so this also covers the half of the rule
+# the old list of base ids could never have reached.
+if not any(r.strip().startswith("-9") for r in rows_c):
+    fail("a minus after a no-argument function was read as a negation")
+
 # ---- session D: record I/O ------------------------------------------------
 # The whole round trip: PRINT # writes through the buffer layer, CLOSE
 # flushes it, INPUT # reads it back through the same layer, and EOF says
@@ -474,6 +508,34 @@ if not any(r.strip() == "-1" for r in rows_d):
 # would go into a file and the console would look dead.
 if not any(r.strip() == "UNWEDGED" for r in rows_d):
     fail("the console did not recover from an error inside PRINT #")
+
+# ---- session E: the redefinable character set ----------------------------
+# 16384 is $4000, where the kernel leaves its font. CHARSETAT reads the
+# tilebase register back and undoes the >>11 the hardware stores it as.
+if not any(r.strip() == "16384" for r in rows_e):
+    fail("CHARSETAT did not report the kernel font address")
+
+# The layer bases are stored shifted, and the addresses here are chosen
+# ABOVE $10000 on purpose: bit 16 has to be brought down and merged with
+# the shifted low word, and getting that wrong is invisible below $10000.
+# CHARSET had exactly that bug and passed its test, because both fonts
+# in play live at $4000 and $4800.
+#   $18000 >> 11 << 2 = 192      $11000 >> 9 = 136
+if not any(r.strip() == "192" for r in rows_e):
+    fail("TILESET mis-stored a tile base above $10000")
+if not any(r.strip() == "136" for r in rows_e):
+    fail("TILEMAP mis-stored a map base above $10000")
+
+# Character 65 was given the bitmap of a Z in a COPY of the font, and the
+# console pointed at the copy. The whole screen re-renders through it, so
+# every A anywhere becomes a Z -- which is why the banner is checked as
+# well as the printed string. This asserts on PIXELS, decoded from the
+# recording against the CP437 table: it is not SuperBasic reporting on
+# itself, and it fails if FONTCOPY, GLYPH or CHARSET is wrong.
+if not any(r.strip() == "ZZZ" for r in rows_e):
+    fail("GLYPH did not replace character 65 in the font being displayed")
+if not any("BZSIC816" in r for r in rows_e):
+    fail("the redefined glyph did not reach text drawn before CHARSET")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

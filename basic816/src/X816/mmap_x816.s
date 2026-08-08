@@ -111,8 +111,11 @@ FP_ASGN   = $004BAC         ; word  - sign of the argument, $8000 negative
 WAIT_T    = $004BB0         ; dword - the millisecond count to wait for
 WAIT_N    = $004BB4         ; dword - scratch: the interval, or the frame
 
-; VRAM access and the layer registers.
-VID_A     = $004BB8         ; dword - a VRAM address, or a scratch byte
+; VRAM access and the layer registers. EIGHT bytes, not four: sprites,
+; tiles and the FM code all use VID_A+4 through VID_A+7 as working
+; space, so $4BB8-$4BBF is one region and nothing else may live in it.
+; The channel scratch was briefly put at $4BBC and aliased all of it.
+VID_A     = $004BB8         ; 8 bytes - a VRAM address, then scratch
 
 ; Record I/O channels (X816/channels_x816.s). The table is four 16-byte
 ; records; the buffers are a page each and live up at $8000, in the part
@@ -121,11 +124,10 @@ VID_A     = $004BB8         ; dword - a VRAM address, or a scratch byte
 ; rather than fixed addresses here, because the records and buffers are
 ; reached as [CHN_P],Y and [CHN_B],Y and only the direct page has that
 ; addressing mode.
-; The scratch pair sits BELOW the table, not above it: four 16-byte
-; records fill $4BC0-$4BFF exactly, and putting them at $4BF8 overlaid
-; channel 4's own fields.
-CHN_W     = $004BBC         ; word  - a byte in transit
-CHN_SAVE  = $004BBE         ; word  - BCONSOLE across a redirected PRINT
+; Four 16-byte records fill $4BC0-$4BFF exactly, so the scratch pair
+; cannot go above the table (it landed on channel 4) and cannot go below
+; it either (that is VID_A's tail, see above). It lives up at $8400 with
+; the rest of the newer state.
 CHN_TAB   = $004BC0         ; 64 bytes - 4 records of 16, ending at $4BFF
 CHN_BUF   = $008000         ; 4 pages, one a channel
 
@@ -143,6 +145,16 @@ MOUSE_Y   = $008412         ;  ever reports movement
 MOUSE_B   = $008414         ; byte - button flags from the last packet
 MOUSE_D   = $008416         ; 2 bytes - the X and Y steps of one packet
 MOUSE_N   = $008418         ; word - which of the three MOUSE() wants
+
+; Working storage for the no-argument-function rule in tokens.s.
+PREVEXT   = $00841A         ; byte - PREVCHAR returned an extended sub-id
+TKPF_W    = $00841C         ; word - the token id being asked about
+TKPF_R    = $00841E         ; byte - the answer, on its way to the carry
+CHN_W     = $008420         ; word - a byte in transit through a channel
+CHN_SAVE  = $008422         ; word - BCONSOLE across a redirected PRINT
+FNT_CODE  = $008424         ; word - the glyph GLYPH is redefining
+FNT_ROWS  = $008426         ; 8 bytes - its scanlines, collected before the
+                            ;  VRAM port is pointed anywhere
 
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references

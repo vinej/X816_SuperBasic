@@ -477,3 +477,173 @@ tsh_off         LDA @l VID_A
                 PLP
                 RETURN
                 .pend
+
+;;;
+;;; Where a layer keeps its map and its tiles.
+;;;
+;;; Layer 0's registers are $9F2D-$9F33 and layer 1's are $9F34-$9F3A,
+;;; so a layer's block is seven bytes and X holds n*7. Within a block:
+;;;
+;;;   +0  config    colour depth 1:0, bitmap 2, 256-colour text 3,
+;;;                 map width 5:4, map height 7:6
+;;;   +1  map base  the address >> 9, so a 512-byte boundary
+;;;   +2  tile base the address >> 11 in bits 7:2, so a 2 KB boundary;
+;;;                 bits 1:0 are the tile width and height and are not
+;;;                 ours to touch
+;;;
+;;; Careful with layer 0 while the console is live: its map at $00000 and
+;;; its font at $04000 ARE the text screen. Repointing them is how you
+;;; get your own screen; typing TILEMAP 0,0 blind is how you get it back.
+;;;
+
+LAYER_STRIDE    = 7
+
+;
+; X := the register offset of layer ARGUMENT1. Only two layers exist.
+;
+LYR_SEL         .proc
+                PHP
+                setaxl
+                LDA ARGUMENT1
+                AND #$0001
+                BEQ lsel_0
+                LDX #LAYER_STRIDE
+                PLP
+                RETURN
+lsel_0          LDX #0
+                PLP
+                RETURN
+                .pend
+
+;
+; TILEMAP n, addr -- point a layer at its map.
+;
+S_TILEMAP       .proc
+                PHP
+                TRACE "S_TILEMAP"
+                setaxl
+                PHX
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+                CALL LYR_SEL
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR
+                CALL ASS_ARG1_INT
+
+                LDA ARGUMENT1           ; stored as addr >> 9, so a finer
+                AND #$01FF              ;  address would be rounded down in
+                BNE tm_bad              ;  silence. Refused instead.
+
+                LDA ARGUMENT1+2         ; bit 16 belongs at bit 7
+                AND #$0001
+                .rept 7
+                ASL A
+                .next
+                STA @l VID_A
+                LDA ARGUMENT1
+                .rept 9
+                LSR A
+                .next
+                ORA @l VID_A
+
+                setas
+                STA @l VERA_L0_MAPBASE,X
+
+                PLX
+                PLP
+                RETURN
+
+tm_bad          PLX
+                PLP
+                THROW ERR_ARGUMENT
+                .pend
+
+;
+; TILESET n, addr -- point a layer at its tile graphics.
+;
+S_TILESET       .proc
+                PHP
+                TRACE "S_TILESET"
+                setaxl
+                PHX
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+                CALL LYR_SEL
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR
+                CALL ASS_ARG1_INT
+
+                LDA ARGUMENT1           ; 2 KB boundary
+                AND #$07FF
+                BNE ts_bad
+
+                LDA ARGUMENT1+2
+                AND #$0001
+                .rept 7
+                ASL A
+                .next
+                STA @l VID_A
+                LDA ARGUMENT1
+                .rept 9
+                LSR A
+                .next
+                ORA @l VID_A
+
+                setas
+                AND #$FC
+                STA @l VID_A+4
+                LDA @l VERA_L0_TILEBASE,X
+                AND #$03                ; the tile width and height share the
+                ORA @l VID_A+4          ;  byte and belong to LAYERMODE
+                STA @l VERA_L0_TILEBASE,X
+
+                PLX
+                PLP
+                RETURN
+
+ts_bad          PLX
+                PLP
+                THROW ERR_ARGUMENT
+                .pend
+
+;
+; LAYERMODE n, cfg -- the layer configuration byte.
+;
+; Depth 1:0 (0 is text), bitmap 2, 256-colour text 3, map width 5:4 and
+; height 7:6 as 32, 64, 128 or 256 tiles. The console is mode 0.
+;
+S_LAYERMODE     .proc
+                PHP
+                TRACE "S_LAYERMODE"
+                setaxl
+                PHX
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+                CALL LYR_SEL
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+
+                setas
+                LDA ARGUMENT1
+                STA @l VERA_L0_CONFIG,X
+
+                PLX
+                PLP
+                RETURN
+                .pend

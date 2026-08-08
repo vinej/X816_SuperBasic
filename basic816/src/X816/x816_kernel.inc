@@ -104,6 +104,11 @@ VERA_ADDR_L     = $009F20
 VERA_ADDR_M     = $009F21
 VERA_ADDR_H     = $009F22
 VERA_DATA0      = $009F23
+VERA_DATA1      = $009F24       ; the SECOND data port. CTRL bit 0 selects
+                                ;  which pointer the ADDRESS registers refer
+                                ;  to, but DATA0 always steps pointer 0 and
+                                ;  DATA1 always steps pointer 1 -- so a VRAM
+                                ;  to VRAM copy is a load and a store.
 VERA_CTRL       = $009F25       ; bit 0 = data port, bits 1-6 = DCSEL
 
 ; Composer and layer registers, verified against the emulator's video.c
@@ -112,6 +117,9 @@ VERA_CTRL       = $009F25       ; bit 0 = data port, bits 1-6 = DCSEL
 ; of the high byte belongs to the scroll.
 VERA_DC_VIDEO   = $009F29       ; DCSEL 0: bit 4 layer0, 5 layer1, 6 sprites
 VERA_DC_BORDER  = $009F2C       ; needs DCSEL = 0
+VERA_L0_CONFIG  = $009F2D       ; depth 1:0, bitmap 2, 256c text 3, size 7:4
+VERA_L0_MAPBASE = $009F2E       ; map address >> 9
+VERA_L0_TILEBASE = $009F2F      ; font address >> 11 in 7:2, tile size in 1:0
 VERA_L0_HSCR_L  = $009F30
 VERA_L0_HSCR_H  = $009F31       ; low nibble only
 VERA_L0_VSCR_L  = $009F32

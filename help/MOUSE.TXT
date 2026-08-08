@@ -10,8 +10,9 @@ None of it is bound yet.
 
 [x] MOUSE(n) - 0 the column, 1 the row, 2 the buttons (bit 0 left, bit 1
     right, bit 2 middle). One function with an index rather than three
-    without, because a function taking no parentheses cannot be
-    tokenized yet - see the note beside CURSORX in tokens.s.
+    without. That was forced when it was written, because a function
+    taking no parentheses could not be tokenized; it can now, so MX, MY
+    and MB below could be spelled the way this page always wanted.
 [x] MOUSEAT x,y - put the pointer somewhere. There is nothing to tell
     the hardware: the controller only ever reports MOVEMENT, so the
     position is SuperBasic's own, accumulated here and clamped to the

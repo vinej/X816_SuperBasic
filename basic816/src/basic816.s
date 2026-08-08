@@ -53,6 +53,7 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "X816/channels_x816.s"  ; record I/O: OPEN, CLOSE, PRINT #, INPUT #
 .include "X816/audio_x816.s"     ; VERA PCM and the YM2151
 .include "X816/input_x816.s"     ; joystick, I2C, mouse
+.include "X816/font_x816.s"      ; the redefinable character set
 .endif
 .include "commands.s"
 .include "variables.s"

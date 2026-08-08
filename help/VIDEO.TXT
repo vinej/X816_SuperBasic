@@ -20,9 +20,9 @@ sprite pixels, the palette, the font - lives behind that port.
     other text modes (80x30, 40x60, 40x30) are scale settings and could
     follow. HELP GRAPHIC for the VERA2 alternative at 640x480.
 [x] BORDER c - the border colour.
-[ ] CURSORX / CURSORY - read the cursor position back. The kernel has
-    CON_GETXY and SuperBasic already calls it internally; there is no
-    keyword for it.
+[x] CURSORX / CURSORY - read the cursor position back. Written since
+    phase 5 and unreachable until the tokenizer learned to tell a
+    no-argument function from a negation; see tokens.s, TKPREVFN.
 [x] SCROLLX n / SCROLLY n - HARDWARE scroll of the console layer,
     0-4095. Free smooth scrolling with no redraw at all, which is the
     difference between a playable game and a slideshow on a machine this
@@ -45,12 +45,24 @@ the tile index IS the character code - no $20 bias, so 65 really is "A".
 The kernel's font sits at VRAM $4000, with the tilemap below it at
 $00000-$03FFF; $4800 is the next free slot.
 
-[ ] CHARSET addr - point the console at a font.
-[ ] GLYPH addr,n,d0,d1,d2,d3,d4,d5,d6,d7 - redefine character n. Eight
-    bytes is awkward as arguments; reading them from DATA is probably the
-    friendlier form.
-[ ] GLYPHGET addr,n - read a glyph back.
-[ ] FONTCOPY src,dst - duplicate 2 KB of font.
+[x] CHARSET addr - point the console at a font. The address is stored
+    shifted right eleven, so it must be on a 2 KB boundary; anything
+    finer would be silently rounded down by the hardware, which is a
+    baffling way to find out, so it is refused instead.
+[x] CHARSETAT - where the console is reading its font from now. Takes no
+    parentheses, which needed the tokenizer fix in tokens.s (TKPREVFN).
+    This is what makes CHARSET safe from a program: save it, point
+    somewhere else, put it back.
+[x] GLYPH addr,n,d0,d1,d2,d3,d4,d5,d6,d7 - redefine character n. Eight
+    bytes is awkward as arguments, and READing them from DATA in a loop
+    is the friendlier form; but this spelling needs nothing else to
+    exist, so it is the one that got written.
+[ ] GLYPHGET addr,n - read a glyph back. Needs somewhere to put eight
+    bytes, so it wants an array argument.
+[x] FONTCOPY src,dst - duplicate 2 KB of font. VERA has TWO address
+    pointers with a data port each, and DATA0 always steps pointer 0
+    while DATA1 always steps pointer 1 - so this needs no buffer in main
+    memory and the inner loop is a load and a store.
 
 Copy before you edit. Editing the font at $4000 edits the one being drawn
 with, including the message telling you what went wrong, and there is no

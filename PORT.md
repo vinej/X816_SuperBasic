@@ -691,6 +691,142 @@ blanks first on the X816 now. The fix is guarded so the C256 build still
 reproduces stock byte for byte; the audit is worth more than the tidy
 diff.
 
+## 15. No-argument functions, and a crash upstream (2026-08-07)
+
+`CURSORX`, `CURSORY` and `PCMFREE` were all written and none of them
+reachable, because the tokenizer could not tell
+
+    PRINT PCMFREE-A          (one minus, binary)
+
+from
+
+    PRINT PCMFREE  -A        (two operands, no operator)
+
+A minus is binary if what precedes it is a value. `TKFINDTOKEN` decided
+that by asking whether the previous token was `)` -- plus a hand-written
+list of the two exceptions that existed, `TIMER` and `FRAMES`.
+
+The list could never have been extended. Base ids and extended sub-ids
+both start at `$80` and can be the same number meaning different
+keywords, so `CMP #TOK_PCMFREE` would have matched some unrelated base
+token as well.
+
+The general rule was hiding in plain sight: **a function token sitting
+immediately before a minus can only be a no-argument function**, because
+anything that takes parentheses would have ended in `)` and been caught
+by the test above. So the question is just "is the previous token a
+function", which the token record already answers. `TKPREVFN` asks
+`TOKTYPE`; the two special cases are gone, and it works for both tables.
+
+What it needed first was for `PREVCHAR` to report whether the byte it
+returned was a sub-id -- whether a `$FF` escape sits in front of it.
+That is `PREVEXT`, and it is four instructions.
+
+The check is `PCMFREE-A` with `A=10`: binary gives -9, a negation would
+give -10, and `PCMFREE` is an extended token, so one assertion covers
+the part of the rule the old list could not reach.
+
+### A crash found on the way
+
+`PREVCHAR`'s "no previous character" path returned WITHOUT its `PLP`.
+`PHP` pushes one byte and `RTS` pops two for a return address, so taking
+that path jumped into hyperspace -- and the caller *expects* to take it,
+since it tests for the 0. **Typing a line that begins with a minus sign
+was enough**: the screen filled with garbage.
+
+`BIPPREV` is zeroed at the start of every line, so this is not an exotic
+input. The `PLP` is there now, guarded like the `INPUT` fix in section
+14 so the C256 build still reproduces stock -- it has the same bug.
+
+That is an improvement and not yet a cure. The line no longer corrupts
+memory; it throws `ERR_SYNTAX`, and a throw from inside `TOKENIZE` does
+not come back the way one from the evaluator does -- the machine stops
+instead of printing "Syntax error". Errors raised during tokenizing are
+evidently not something the REPL was built for. Worth chasing, and it is
+a different bug from the one that was fixed.
+
+## 16. The font, and a test that lied (2026-08-07)
+
+Layer 0's registers are `$9F2D`-`$9F31`, read out of the emulator's
+`video.c` like the rest: `$9F2E` is the map base as `addr >> 9`, and
+`$9F2F` is the tile base as `addr >> 11` in bits 7:2 with the tile size
+in bits 1:0. So `CHARSET` is a read-modify-write, and a font must start
+on a 2 KB boundary.
+
+`FONTCOPY` turned out to be two instructions in its inner loop. VERA has
+two address pointers, and `CTRL` bit 0 selects only which of them the
+ADDRESS registers refer to -- `DATA0` always steps pointer 0 and `DATA1`
+always steps pointer 1. Point one at the source and the other at the
+destination and the copy needs no buffer and no second pass. The first
+draft toggled `CTRL` around every byte, which would have worked and been
+three times the size.
+
+### The hour that went into a test artefact
+
+`GLYPH` appeared to do nothing. The screen showed the statement, no
+error was raised, and `VPEEK` showed the font byte unchanged. The code
+was read several times and restructured once.
+
+The statement was being TRUNCATED. The console is 80 columns and the key
+script pads every line by 40, so
+
+    GLYPH &h4800,65,254,198,140,24,50,102,254,0
+
+is 82 characters, wrapped, and arrived as a fragment. Assigning the
+address to a variable first made it fit and it worked immediately.
+
+Two things worth keeping from that. The obvious one: when a statement
+silently does nothing, check that the machine was given the statement.
+The scratch variables read back as zero, which said the code had never
+run -- that was the signal, and it was there an hour before it was
+believed.
+
+The less obvious one: the restructure made on the wrong hypothesis was
+kept anyway, because it is right for a different reason. `GLYPH` now
+collects all eight bytes BEFORE pointing the VRAM port, rather than
+evaluating and storing one at a time. The port is three registers of
+global state and `EVALEXPR` is a whole interpreter; holding an address
+latched across eight of them, plus whatever the cursor interrupt does,
+is asking for trouble. The comment says so, and no longer claims to have
+fixed a bug that was never there.
+
+### What the check asserts
+
+Character 65 is given the bitmap of a `Z` in a COPY of the font, and the
+console is pointed at the copy. Every glyph on the screen re-renders, so
+the banner turns into `BZSIC816` and `CHARSET` echoes as `CHZRSET`. The
+assertion runs against PIXELS decoded from the recording and matched to
+the CP437 table -- not against anything SuperBasic says about itself --
+and it fails if `FONTCOPY`, `GLYPH` or `CHARSET` is wrong.
+
+## 17. Tile layers, and an arithmetic bug the tests could not see
+
+`TILESET`, `TILEMAP` and `LAYERMODE` fall straight out of the register
+block found for the font: layer 0 is `$9F2D`-`$9F33`, layer 1 is
+`$9F34`-`$9F3A`, so a layer is seven bytes and the code indexes by n*7.
+Two more keywords that had thrown since phase 1.
+
+Writing them turned up a bug in `CHARSET`, which had passed its test.
+
+Both map base and tile base are stored shifted -- `>> 9` and `>> 11` --
+and the address is 17 bits, so bit 16 has to be brought down and merged
+with the shifted low word. `CHARSET` did that with `XBA`, which moves it
+to bit 8. For the tile base it belongs at bit 7, and the `$FC` mask
+applied straight afterwards then threw it away.
+
+So every font address at or above `$10000` -- the whole upper half of
+VRAM -- was silently wrong. The check did not catch it because the only
+two fonts in play are the kernel's at `$4000` and the copy at `$4800`,
+and below `$10000` the bit never participates.
+
+Nothing about the test was lax. It asserted on decoded pixels and it
+would have caught almost anything else. It simply never exercised the
+one input that mattered, which is what makes this class of bug worth
+writing down: **a passing test says the cases it runs are right, and
+nothing whatever about the cases it does not.** The arithmetic was
+checked against a table of five addresses afterwards, on paper, which
+took a minute and found it immediately.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

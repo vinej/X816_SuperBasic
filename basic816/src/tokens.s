@@ -159,6 +159,10 @@ PREVCHAR    .proc
             SBC CURLINE
             TAY
             setas
+.if SYSTEM == SYSTEM_X816
+            LDA #0                  ; assume a base id until proved otherwise
+            STA @l PREVEXT
+.endif
 
 loop        LDA [CURLINE],Y
             BEQ ret_false
@@ -167,6 +171,23 @@ loop        LDA [CURLINE],Y
             CMP #CHAR_TAB
             BEQ go_back
 
+.if SYSTEM == SYSTEM_X816
+            ; Say whether this byte is an extended token's SUB-id, which
+            ; is to say whether a $FF escape sits in front of it. The
+            ; minus rule below has to know, because a sub-id and a base
+            ; id can be the same number and mean different keywords.
+            PHA
+            CPY #0
+            BEQ pc_notext
+            DEY
+            LDA [CURLINE],Y
+            INY
+            CMP #TOK_EXTEND
+            BNE pc_notext
+            LDA #1
+            STA @l PREVEXT
+pc_notext   PLA
+.endif
             TRACE_A "/PREVCHAR"
             PLP
             RETURN
@@ -176,8 +197,17 @@ go_back     DEY
             BNE loop
 
 
+            ; The PLP here was missing. PHP at the top pushes one byte,
+            ; RTS pops two for a return address, so taking this path --
+            ; which the CALLER expects to take, it tests for the 0 --
+            ; jumped into hyperspace. Typing a line that begins with a
+            ; minus sign was enough to do it. Guarded so that the C256
+            ; build still reproduces stock; it has the same bug.
 ret_false   TRACE "/PREVCHAR"
             LDA #0
+.if SYSTEM == SYSTEM_X816
+            PLP
+.endif
             RETURN
             .pend
 
@@ -444,15 +474,8 @@ found_base  PLA
             CMP #TOK_RPAREN         ; Is the token a right parenthesis?
             BEQ binaryminus         ; Yes: then this should be a binary minus operator
 .if SYSTEM == SYSTEM_X816
-            ; A function normally ends in ")", which is what the test
-            ; above is really asking about. TIMER and FRAMES take no
-            ; argument and so end in themselves, and without this
-            ; "PRINT TIMER-A" tokenizes as TIMER followed by a NEGATED
-            ; A -- two operands, no operator, and the answer is -A.
-            CMP #TOK_TIMER
-            BEQ binaryminus
-            CMP #TOK_FRAMES
-            BEQ binaryminus
+            CALL TKPREVFN           ; a no-argument function ends in itself
+            BCS binaryminus
 .endif
 
             TRACE "make negative"
@@ -468,6 +491,64 @@ done        TRACE "/TKFINDTOKEN"
 
 syntax      THROW ERR_SYNTAX        ; Throw a syntax error
             .pend
+
+.if SYSTEM == SYSTEM_X816
+;
+; Carry set when the token byte in A (8 bits) is a FUNCTION token.
+;
+; A function token sitting immediately in front of a minus can only be a
+; NO-ARGUMENT one: anything that takes parentheses would have ended in
+; ")" and been dealt with before this is reached. So "is this a
+; no-argument function" is just "is this a function", which the token
+; record already says.
+;
+; That replaces a list of special cases -- TIMER and FRAMES -- which
+; could never have been extended to the second token table, because
+; there the comparison would have been against a sub-id that may well
+; be the same number as some unrelated base one. PREVEXT is what tells
+; the two apart.
+;
+; A is not preserved, and the caller does not want it back.
+;
+; No PHP. The answer is in the carry, and a PLP would put the caller's
+; carry back over it -- the same mistake that cost an afternoon in
+; X816/input_x816.s, where it made every I2C transfer look acknowledged.
+;
+TKPREVFN    .proc
+            PHX
+            PHY
+
+            setal
+            AND #$00FF
+            STA @l TKPF_W
+            setas
+            LDA @l PREVEXT
+            BEQ tpf_base
+            setal                   ; an extended sub-id: $FFxx
+            LDA @l TKPF_W
+            ORA #$FF00
+            STA @l TKPF_W
+
+tpf_base    setal
+            LDA @l TKPF_W
+            CALL TOKTYPE            ; restores its own width, bank and page
+            CMP #TOK_TY_FUNC
+            BNE tpf_no
+
+            setas
+            LDA #1
+            BRA tpf_out
+tpf_no      setas
+            LDA #0
+tpf_out     STA @l TKPF_R
+
+            PLY
+            PLX
+            LDA @l TKPF_R
+            LSR A                   ; bit 0 into the carry
+            RETURN
+            .pend
+.endif
 
 ;
 ; Look for the window's keyword in the base table and then, failing
@@ -1353,23 +1434,23 @@ TOKENS2
             DEFTOK "I2CPEEK", TOK_TY_FUNC, 0, FN_I2CPEEK, 0
             DEFTOK "MOUSE", TOK_TY_FUNC, 0, FN_MOUSE, 0
             DEFTOK "MOUSEAT", TOK_TY_STMNT, 0, S_MOUSEAT, 0
-; CURSORX, CURSORY (functions_x816.s) and PCMFREE (audio_x816.s) are
-; written but NOT tokenized. All three take no parentheses, and the
-; minus-sign exception in TKFINDTOKEN compares against BASE ids: an
-; extended token's sub-id could collide with an unrelated base one, so
-; "LOCATE CURSORX-1,CURSORY" would misparse depending on which ids
-; happen to line up.
-;
-; The general fix is now clear, and it removes the TOK_TIMER/TOK_FRAMES
-; special cases as well: a function token sitting immediately before a
-; minus can ONLY be a no-argument function, because anything taking
-; parentheses would have ended in ")" and been caught by the test above
-; it. So the rule is "previous token is of type TOK_TY_FUNC" -- one
-; GETTOKREC call, no list to maintain, base and extended alike.
-;
-; What it needs first is for PREVCHAR to say whether the byte it
-; returned was an extended token's sub-id, i.e. whether a $FF sits in
-; front of it. That is the whole of the remaining work.
+; Three functions that take no parentheses. They were blocked until the
+; minus rule stopped comparing against a list of base ids and started
+; asking the token's TYPE instead -- see TKPREVFN above. Without that,
+; "LOCATE CURSORX-1,CURSORY" tokenized the minus as a NEGATION and the
+; line came out as two operands with no operator between them.
+            DEFTOK "CURSORX", TOK_TY_FUNC, 0, FN_CURSORX, 0
+            DEFTOK "CURSORY", TOK_TY_FUNC, 0, FN_CURSORY, 0
+            DEFTOK "PCMFREE", TOK_TY_FUNC, 0, FN_PCMFREE, 0
+
+; The font. CHARSETAT takes no parentheses either, and is what makes
+; CHARSET safe to use from a program: save it, point elsewhere, put it
+; back.
+            DEFTOK "CHARSET", TOK_TY_STMNT, 0, S_CHARSET, 0
+            DEFTOK "CHARSETAT", TOK_TY_FUNC, 0, FN_CHARSETAT, 0
+            DEFTOK "GLYPH", TOK_TY_STMNT, 0, S_GLYPH, 0
+            DEFTOK "FONTCOPY", TOK_TY_STMNT, 0, S_FONTCOPY, 0
+            DEFTOK "LAYERMODE", TOK_TY_STMNT, 0, S_LAYERMODE, 0
 .endif
 
 ; The three string functions that would not fit before. Portable, like
