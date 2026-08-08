@@ -99,6 +99,20 @@ KEY_SPECIAL     = $0100
 KEY_LCTRL       = KEY_SPECIAL | 58
 KEY_RCTRL       = KEY_SPECIAL | 64
 
+; VERA's interrupt registers. Read back, IEN's bit 7 is IRQLINE's ninth
+; bit and bit 6 is the CURRENT scanline's ninth bit -- a status bit that
+; is not writable -- so a read/modify/write of IEN must mask to $8F or it
+; will move the compare line by 256 whenever the beam is past 255.
+; ISR is write-1-to-clear, and its bits 7:4 are the sprite collision
+; groups rather than more enables.
+VERA_IEN        = $009F26
+VERA_ISR        = $009F27
+VERA_IRQLINE    = $009F28       ; low 8 bits; bit 8 rides in IEN bit 7
+VERA_IRQ_VSYNC  = $01
+VERA_IRQ_LINE   = $02
+VERA_IRQ_SPRCOL = $04
+VERA_IRQ_AFLOW  = $08
+
 ; VERA registers (bank 0 I/O page), for direct text-matrix reads
 VERA_ADDR_L     = $009F20
 VERA_ADDR_M     = $009F21

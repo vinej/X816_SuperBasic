@@ -33,7 +33,11 @@ expect - push while not full, top up when not empty. Doing that from
 interpreted BASIC will not keep up at 48 kHz for long, which is the
 honest reason PCMPLAY belongs on the list: the refill wants to be an
 AFLOW interrupt handler in assembly, and the kernel already reserves the
-slot for it (KIRQ_AFLOW, slot 3).
+slot for it (KIRQ_AFLOW, slot 3). IRQ 3,addr installs one and switches
+the source on for you - HELP SYSTEM. This is a case where the machine
+code is the point and the deferred BASIC handlers are no use: a FIFO
+that has to be refilled before it empties cannot wait for the
+interpreter to finish the statement it is on.
 
 Where the samples come from matters more here than anywhere else on
 these pages. A second of 8-bit mono at 22 kHz is 22 KB - larger than the

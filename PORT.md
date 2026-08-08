@@ -370,7 +370,8 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
   read loop, a write loop and a buffer the kernel cannot choose. It is
   implemented in `kernel_x816.s`, two handles open at once, streaming
   through `CLUSTER_BUFF`.
-  Still to do: `BRUN`, and `OPEN`/`CLOSE`/`INPUT#`/`PRINT#`.
+  `BRUN` landed 2026-08-08 and is the one place the syntax departs from
+  upstream — see §20.
 - **Phase 4 — hardware.** First as `boot1.rom`, then shell-run `.bin` once
   the size cap question is settled. One change per round trip.
 - **Phase 5 — the machine.** The `help/` pages are the specification for
@@ -386,11 +387,10 @@ future target; Tier C lives in `statements_x816.s`/`functions_x816.s`.
      `TIMER` and `FRAMES` take no parentheses, which cost one line in
      the tokenizer — a minus after a token is a negation unless the
      token is `)`, so `TIMER-A` was quietly answering `-A`.
-  2. `help/SYSTEM.TXT` — the three interrupt hooks (`ONVSYNC`,
-     `ONRASTER`, `ONCOLLISION`) over `K_IRQ_SET`, plus `QUIT`. Still the
-     keystone for what follows: sound envelopes, PCM refill and
-     collision detection all want "run this every frame". The open
-     problem is re-entering the interpreter from an interrupt safely.
+  2. `help/SYSTEM.TXT` — **`IRQ` and the three hooks (`ONVSYNC`,
+     `ONRASTER`, `ONCOLLISION`) plus `RETIRQ` done 2026-08-08**, see
+     §20. The open problem — re-entering the interpreter from an
+     interrupt — was answered by not doing it. `QUIT` is still to do.
   3. `help/VIDEO.TXT` — **`VPOKE`/`VPEEK`, `BORDER`, `SCROLLX`/`SCROLLY`
      done 2026-08-06**, the first group written after the token escape
      existed. `VPOKE`/`VPEEK` matter out of proportion to their size:
@@ -960,6 +960,110 @@ That is the third bug of exactly this shape (section 15, section 14),
 and they are all the same sentence: *the width at the push must be the
 width at the pull.* The assembler cannot see it, because it cannot see
 through a `JSR` or round a branch.
+
+## 20. Interrupts, and BRUN (2026-08-08)
+
+Two decisions were owed on this pass, and both turned on the same thing:
+what this machine does *not* have that the C256 did.
+
+### BRUN takes an address
+
+Upstream `BRUN "name"` needs none because the C256 loads **PGX**, and a
+PGX header carries its own load address and entry point — `FK_RUN` reads
+them out of the file. There is no PGX here, `FK_RUN` is bound to
+`FK_STUB`, and the one executable convention this machine has is the
+8-byte `"X816"` header, whose load address is implicitly `$01:0000` —
+which is where the interpreter itself is running from. Honouring it
+would have `BRUN` overwrite SuperBasic in the middle of the statement.
+
+**Decided: `BRUN "name",addr`.** The caller says where, exactly as
+`BLOAD` does. Nothing is invented: it is `BLOAD` and `CALL` in one
+statement, loading verbatim (no header expected, none skipped) and
+calling the first byte with the `JML`-into-RAM trick `S_CALL` already
+uses, since the 65816 has no indirect `JSL`. Whatever the code leaves in
+A becomes `ERR`, as upstream. It also becomes a `TOK_TY_STMNT` rather
+than a command — with an address and a return, a program can use it.
+
+**And `ERR` is spelled `ERR%` when you read it.** Found while verifying
+this and worth writing down, because it looks exactly like a broken
+`BRUN`: `PRINT ERR` answers *Variable not found*. `SET_ERRERL` creates
+it with `TYPE_INTEGER`, `VAR_FINDNAME` types a suffix-less name as
+`TYPE_FLOAT`, and `VAR_FIND` compares **the type before the name** — so
+the two never meet. `PRINT ERR%` answers 4660 after a `BRUN` that
+returned `$1234`. The same goes for `ERL%`, `DOSSTAT%` and `BIOSSTAT%`.
+Stock upstream behaviour, reproduced by `XYZZY` at the prompt, and left
+alone: changing it means changing how every bare name is typed.
+
+The C256 branch is untouched and guarded, so that build still assembles
+to **53,959 bytes**.
+
+### The interpreter is not re-entered — the tick is polled instead
+
+`IRQ slot,addr` needed no decision: the kernel dispatches by source,
+gives a handler a normative environment (native, M=0/X=0, D=$0000,
+DBR=$00, `JSL` in and `RTL` out), and SuperBasic is uninvolved.
+`ONVSYNC`/`ONRASTER`/`ONCOLLISION` did, because they run a BASIC line
+and an interrupt lands mid-statement with the evaluation stacks
+half-built.
+
+**Decided: deferred dispatch.** `IRQ_POLL` runs at the statement
+boundary in `EXECSTMT`, right after the break check and for the same
+reason, and enters the handler exactly the way `GOSUB` does. Nothing is
+re-entered, and no code of ours runs in interrupt context at all — which
+matters more here than anywhere, because the alternative was saving and
+restoring every scratch global at an **asynchronous** boundary, the
+exact shape of the bug in §14, §15 and §19.
+
+**And then nothing had to be installed for the three.** The first
+version put a stub in each slot to set a flag; the second realised that
+detection can be a poll too, because everything needed is already
+latched:
+
+| | what is polled | why it survives to be polled |
+|---|---|---|
+| VSYNC | `K_IRQ_FRAMES` | the kernel counts frames whether or not anyone has a handler |
+| LINE | VERA `ISR` bit 1 | the dispatcher only acknowledges `ISR & IEN`, so with the source **disabled** the bit stays set |
+| SPRCOL | `ISR` bit 2 | the same |
+
+That is strictly better than a stub in three ways, and the second is the
+one that would have bitten: the kernel's blinking cursor lives in
+`KIRQ_VSYNC`, so a stub there takes the slot off it — and the next
+`K_CON_CURSOR` call takes it straight back, silently unhooking us. There
+is no chaining to write, and no interrupt-context widths to get wrong.
+
+Three details that are policy rather than mechanism:
+
+- **A tick arriving while a handler runs is dropped, not queued.**
+  Queueing guarantees a spiral the moment the handler is slower than the
+  source.
+- **`RETIRQ`, not `RETURN`.** A handler can fire while the program's own
+  `GOSUB`s are pending. The dispatch saves `GOSUBDEPTH` and zeroes it, so
+  a stray `RETURN` inside a handler underflows instead of unwinding
+  through this frame into a line the program was not at.
+- **`CLRINTERP` disarms everything**, which is `RUN`, `NEW` and (through
+  `NEW`) `LOAD`. A handler outliving any of those points at a line number
+  that now means something else. The line is also checked to EXIST when
+  it is armed — `FINDLINE` overwrites `CURLINE` on success, so it is
+  saved and put back around the check.
+
+`ONRASTER` is shipped and honestly documented rather than quietly
+useful: a deferred handler cannot change a register while the beam is at
+the line, so a split screen needs `IRQ 1,addr` and machine code. The
+BASIC form is for pacing to a point in the frame. `help/SYSTEM.TXT` says
+so in those words, because the keyword invites exactly the use it cannot
+serve.
+
+**Verified** by a sixth emulator session: the same seven bytes of machine
+code (`LDA #$1234 / STA $8610 / RTL`) reach the machine twice, once
+POKEd in and installed with `IRQ 1,addr` and once as a file loaded by
+`BRUN` — a constant BASIC never computes, read back as 4660, with both
+words proven to be 0 first. The deferred handler is checked by arming
+`ONVSYNC` around a `FOR` loop and asserting `I-J = 1500`: that value is
+1500 whatever `NEXT`'s off-by-one convention is, so it says one thing
+only — every tick that fired inside the loop left the return stack the
+way it found it.
+
+Size: **36,259 bytes**, against the 65,280-byte exec cap.
 
 ## 13. Open decisions (carried from the feasibility study)
 

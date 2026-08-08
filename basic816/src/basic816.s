@@ -57,6 +57,7 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "X816/input_x816.s"     ; joystick, I2C, mouse
 .include "X816/font_x816.s"      ; the redefinable character set
 .include "X816/graphics_x816.s"  ; bitmap drawing on VERA2
+.include "X816/irq_x816.s"       ; IRQ, and the deferred ONVSYNC handlers
 .endif
 .include "commands.s"
 .include "variables.s"

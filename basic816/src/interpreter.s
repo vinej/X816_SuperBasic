@@ -292,6 +292,13 @@ CLRINTERP   .proc
             CALL S_CLR                  ; Erase all variables
             CALL S_RESTORE              ; Reset DATAPTR to the beginning
             STZ GOSUBDEPTH              ; Clear the depth of the GOSUB stack
+.if SYSTEM == SYSTEM_X816
+            CALL IRQ_DISARM             ; RUN, NEW and LOAD all come through
+                                        ;  here, and a handler that outlived
+                                        ;  any of them points at a line
+                                        ;  number that now means something
+                                        ;  else, or nothing.
+.endif
 
             PLP
             PLD
@@ -614,6 +621,23 @@ EXECSTMT    .proc
             
 check_break JSL FK_TESTBREAK
             BCS throw_break     ; If C: user pressed an interrupt key, stop the program
+
+.if SYSTEM == SYSTEM_X816
+            ; The statement boundary is where a deferred interrupt handler
+            ; gets in -- after the break check, so that Ctrl-C always wins.
+            ; IRQ_POLL returns EXEC_GOTO when it entered one, and its whole
+            ; cost when nothing is armed is one 16-bit read and a branch.
+            CALL IRQ_POLL
+            setas               ; IRQ_POLL brackets itself in PHP/PLP, but
+                                ;  the assembler cannot see through a JSR
+                                ;  and everything below reads single-byte
+                                ;  globals.
+            LDA EXECACTION
+            CMP #EXEC_CONT
+            BEQ no_irq
+            JMP done            ; A handler was entered: CURLINE is its line
+no_irq
+.endif
 
             LDA [BIP]           ; If we happen to have a colon, just skip over it.
             CMP #':'            ; This can happen with FOR/NEXT

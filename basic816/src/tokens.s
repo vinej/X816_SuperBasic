@@ -1257,7 +1257,14 @@ TOK_NEGATIVE = $AF
 ; $C6
             DEFTOK "BLOAD", TOK_TY_STMNT, 0, S_BLOAD, 0
 ; $C7
+.if SYSTEM == SYSTEM_X816
+; A STATEMENT here, not a command: with an explicit load address BRUN is
+; a load and a JSL that comes back, so there is no reason a program
+; cannot use it. One DEFTOK either way, so the ids below do not move.
+            DEFTOK "BRUN", TOK_TY_STMNT, 0, CMD_BRUN, 0
+.else
             DEFTOK "BRUN", TOK_TY_CMD, 0, CMD_BRUN, 0
+.endif
 ; $C8
             DEFTOK "BSAVE", TOK_TY_STMNT, 0, S_BSAVE, 0
 ; $C9
@@ -1479,6 +1486,17 @@ TOKENS2
             DEFTOK "GRAPHICSAT", TOK_TY_FUNC, 0, FN_GRAPHICSAT, 0
             DEFTOK "POINT", TOK_TY_FUNC, 0, FN_POINT, 0
             DEFTOK "PAL2", TOK_TY_STMNT, 0, S_PAL2, 0
+.endif
+
+.if SYSTEM == SYSTEM_X816
+; Interrupts. IRQ is the machine-code hook; the three ON* keywords run a
+; BASIC line and are DEFERRED to the statement boundary -- see the header
+; of X816/irq_x816.s for why that is the design and what it costs.
+            DEFTOK "IRQ", TOK_TY_STMNT, 0, S_IRQ, 0
+            DEFTOK "ONVSYNC", TOK_TY_STMNT, 0, S_ONVSYNC, 0
+            DEFTOK "ONRASTER", TOK_TY_STMNT, 0, S_ONRASTER, 0
+            DEFTOK "ONCOLLISION", TOK_TY_STMNT, 0, S_ONCOLLISION, 0
+            DEFTOK "RETIRQ", TOK_TY_STMNT, 0, S_RETIRQ, 0
 .endif
 
 ; The three string functions that would not fit before. Portable, like

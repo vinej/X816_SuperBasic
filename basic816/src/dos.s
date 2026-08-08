@@ -723,7 +723,23 @@ biosstat_name   .null "BIOSSTAT"
 
 ;
 ; Load a binary file from the file system into memory and try to execute it
-; BRUN <path>
+; BRUN <path>                    (C256: the file says where it goes)
+; BRUN <path>, <address>         (X816: the caller does)
+;
+; WHY THE TWO ARE DIFFERENT. Upstream BRUN needs no address because PGX
+; carries its own, and FK_RUN reads it out of the file. There is no PGX
+; on the X816 and no FK_RUN behind it (kernel_x816.s binds it to
+; FK_STUB); the one executable convention this machine has is the 8-byte
+; "X816" header, whose load address is implicitly $01:0000 -- which is
+; where this interpreter is running from. Honouring it would have BRUN
+; overwrite SuperBasic in the middle of the statement.
+;
+; So the address is an argument, and BLOAD + CALL are exactly what this
+; then is: nothing is invented, and the person who assembled the binary
+; already knows where they built it for. The file is loaded verbatim --
+; no header is expected and none is skipped -- and called at its first
+; byte with a JSL, so it returns with RTL and BASIC carries on. The
+; 16-bit A it returns lands in ERR, as it does upstream.
 ;
 CMD_BRUN        .proc
                 PHP
@@ -735,6 +751,53 @@ CMD_BRUN        .proc
                 CALL EVALEXPR               ; Try to evaluate the file path
                 CALL ASS_ARG1_STR           ; Make sure it is a string
 
+.if SYSTEM == SYSTEM_X816
+                CALL SETFILEDESC            ; Point FD_IN at the path
+
+                setas
+                LDA #','                    ; The address is NOT optional: a
+                CALL EXPECT_TOK             ;  default would be a guess about
+                                            ;  somebody else's binary.
+
+                CALL EVALEXPR               ; Where it is to be loaded
+                CALL ASS_ARG1_INT
+
+                setal
+                LDA ARGUMENT1
+                STA @l DOS_DST_PTR
+                STA MJUMPADDR               ; ...and where it is called
+                LDA ARGUMENT1+2
+                STA @l DOS_DST_PTR+2
+                setas
+                LDA ARGUMENT1+2
+                STA MJUMPADDR+2
+                LDA #$5C                    ; JML: S_CALL's trick, and for the
+                STA MJUMPINST               ;  same reason -- there is no
+                                            ;  indirect JSL on this CPU.
+
+                JSL FK_LOAD                 ; Carry SET is success on this side
+                BCS brun_call
+
+                CALL SET_DOSSTAT            ; Set DOSSTAT and BIOSSTAT
+                THROW ERR_LOAD
+
+brun_call       CALL SET_DOSSTAT
+
+                setaxl
+                PHD                         ; The called code owes us nothing
+                PHB                         ;  but an RTL, so its bank, page
+                PHP                         ;  and register widths are all
+                JSL MJUMPINST               ;  restored here rather than
+                PLP                         ;  trusted.
+                PLB
+                PLD
+
+                setal
+                CALL SET_ERRERL             ; Whatever it returned becomes ERR
+
+                PLP
+                RETURN
+.else
                 LDA ARGUMENT1
                 STA @l DOS_RUN_PARAM
                 LDA ARGUMENT1+2
@@ -754,8 +817,9 @@ CMD_BRUN        .proc
 done            CALL SET_ERRERL             ; Set the ERR and ERL variables based on the return result
                 PLP
                 RETURN
+.endif
                 .pend
-    
+
 ;
 ; Load a BASIC file from the file system into memory
 ; LOAD <path>

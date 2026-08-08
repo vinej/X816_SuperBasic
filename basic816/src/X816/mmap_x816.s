@@ -178,6 +178,23 @@ GBANK     = $00844A         ; word - and which bank that is, $E0 to $E4
 ; page, which is a page of 256 that everything else is short of.
 MLINEBUF  = $008450         ; 17 bytes
 
+; Deferred interrupt handlers (X816/irq_x816.s). ARMED and BUSY are
+; adjacent and in that order ON PURPOSE: IRQ_POLL runs before EVERY
+; statement, and its fast path -- nothing armed, nothing running -- is
+; then a single 16-bit read of IRQ_STATE and a branch.
+IRQ_STATE = $008460         ; word - both bytes below, read at once
+IRQ_ARMED = $008460         ; byte - non-zero if any handler is armed
+IRQ_BUSY  = $008461         ; byte - a handler is running: the re-entry guard
+IRQ_VLINE = $008462         ; word - ONVSYNC's line number, 0 = disarmed
+IRQ_RLINE = $008464         ; word - ONRASTER's
+IRQ_CLINE = $008466         ; word - ONCOLLISION's
+IRQ_FRAME = $008468         ; word - frame count at the last VSYNC tick
+IRQ_TMP   = $00846A         ; 4 bytes - scratch across an EVALEXPR. NOT
+                            ;  VID_A, which an expression can reach: the
+                            ;  scanline in "ONRASTER VPEEK(A),100" would
+                            ;  be overwritten by the function that
+                            ;  produced it.
+
 IOBUF = $004C00             ; A buffer for I/O operations
 ARRIDXBUF = $004D00         ; The array index buffer used for array references
 TEMPBUF = $004E00           ; Temporary buffer for string processing, etc.

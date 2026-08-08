@@ -23,7 +23,29 @@ calls, KERNEL.md section 6), and what is still missing is the binding.
     somewhere else, which the kernel treats as a different operation.
 [x] COPY "src","dst" - copy one. Streams through a 512-byte buffer; the
     destination is created, or truncated if it already exists.
-[ ] BRUN "name" - load a machine-code file and call it.
+[x] BRUN "name",addr - load a machine-code file and call it.
+
+    The address is NOT optional here, and that is the one place this
+    machine departs from BASIC816. Upstream BRUN takes no address because
+    the C256 loads PGX files, which carry their own; there is no PGX on
+    the X816, and the one executable convention this machine has - the
+    8-byte "X816" header - means $01:0000, which is where SuperBasic
+    itself is running. Honouring it would have BRUN overwrite the
+    interpreter mid-statement. So the caller says where, exactly as
+    BLOAD does, and the person who assembled the binary already knows.
+
+    The file is loaded verbatim: no header is expected and none is
+    skipped. It is then called at its first byte with a JSL, so it must
+    return with RTL and BASIC carries on afterwards - this is BLOAD and
+    CALL in one statement, not a chain to another program. Whatever it
+    leaves in A lands in ERR%.
+
+    ERR% with the percent, and this catches everyone once: ERR, ERL,
+    DOSSTAT and BIOSSTAT are created as INTEGER variables, and a bare
+    name in an expression is looked up as a FLOAT. The lookup matches on
+    type before name, so PRINT ERR answers "Variable not found" while
+    PRINT ERR% answers the number. Stock BASIC816 behaviour, not this
+    port's.
 [x] CD "path" - change the working directory.
 [x] PWD - print it.
 [x] MKDIR "path" - create a directory.

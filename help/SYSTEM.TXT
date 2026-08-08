@@ -39,11 +39,58 @@
     device $42, so I2CPEEK($42,$22) asks it for the mouse device ID.
     This is the back door to anything hanging off that bus, including
     parts of the keyboard and mouse that have no keyword of their own.
-[ ] IRQ slot,addr - install an interrupt handler (K_IRQ_SET). Eleven
-    slots: VSYNC, raster line, sprite collision, audio FIFO low, the two
-    VIAs, the YM, spurious, NMI, BRK and COP. This one statement is what
-    several other pages are waiting on - animation timing, sprite
-    collision and PCM refill all want a handler.
+[x] IRQ slot,addr - install a MACHINE-CODE interrupt handler (K_IRQ_SET).
+    Eleven slots, one per source, numbered:
+
+        0 VSYNC     3 audio FIFO low   6 YM2151     9 BRK
+        1 raster    4 VIA #1           7 spurious  10 COP
+        2 collision 5 VIA #2           8 NMI
+
+    Address 0 clears a slot. The handler is entered by JSL in native mode
+    with 16-bit registers, D=0 and DBR=0, and must leave with RTL. It
+    must NOT enable interrupts: the kernel's dispatcher has one scratch
+    pointer and cannot be re-entered.
+
+    Slots 1, 2 and 3 have their VERA enable bit set for you, after the
+    install and never before - a source that asserts with no handler
+    behind it is switched off by the kernel's stuck-source defence, so
+    arming the hardware first works right up until it doesn't.
+
+    Slot 0 is the one to think about: the kernel's blinking cursor lives
+    there, and installing your own takes it away until something calls
+    the cursor back. Its ENABLE is never touched by this statement -
+    clearing it would stop FRAMES, WAIT and VSYNC dead.
+[x] ONVSYNC line - run a BASIC subroutine once a frame. 0 disarms it.
+[x] ONRASTER scanline,line - run one when the beam passes a scanline.
+[x] ONCOLLISION line - run one when sprites collide.
+[x] RETIRQ - return from any of the three. Not RETURN: a handler can fire
+    while your own GOSUBs are pending, and a RETURN reaching that frame
+    would unwind to the wrong place silently. With this as the only way
+    out, each mistake reports itself as a stack underflow.
+
+    THE THREE ABOVE ARE DEFERRED, and it is worth knowing exactly what
+    that means before building on them. The interrupt does not run your
+    BASIC line. It sets nothing and calls nothing: the interpreter looks,
+    BETWEEN STATEMENTS, at whether a frame went by - and if one did, it
+    calls the handler then. So:
+
+      - the handler runs at the next statement boundary, and a statement
+        can be long. WAIT 5000, INPUT and a long PRINT all hold it off
+      - a program slower than 60 statements a second DROPS ticks. They
+        are never queued; queueing guarantees a spiral once the handler
+        is slower than the source
+      - a handler already running is never re-entered
+      - RUN, NEW and LOAD all disarm every handler
+
+    For a raster split - changing a register WHILE the beam is at that
+    line - this is not good enough and never will be. Use IRQ 1,addr and
+    write the handler in machine code. ONRASTER is for pacing to a point
+    in the frame, not for splitting the screen.
+
+    For exact frame timing, VSYNC (HELP TIME) is still the better tool:
+    draw, VSYNC, draw is synchronous and never drops anything. ONVSYNC is
+    for background work - a clock, a cursor, an animation counter - that
+    can tolerate arriving late.
 
 The machine boots to a shell; SuperBasic is an ordinary program the shell
 runs, not the ROM. That is deliberate - it keeps BASIC replaceable and

@@ -47,6 +47,37 @@
 #                                      check is that the bytes arrived,
 #                                      not merely that a file appeared
 #
+#   session F -- interrupts, and BRUN
+#    11. IRQ 1,addr                 - a handler POKEd in as seven bytes of
+#                                     machine code, which STORES A CONSTANT
+#                                     the BASIC side never computes. The
+#                                     word reads 0 before and 4660 after,
+#                                     so the check cannot pass on leftover
+#                                     memory
+#    12. BRUN "T.BIN",addr          - the same trick from a file written by
+#                                     pyfatfs: loaded, called, and its
+#                                     return value read back out of ERR%.
+#                                     ERR% and not ERR: SET_ERRERL creates
+#                                     it as an INTEGER, and a bare name is
+#                                     looked up as a float -- VAR_FIND
+#                                     matches on type before name, so
+#                                     "PRINT ERR" reports the variable as
+#                                     not found. Stock behaviour, and the
+#                                     same for ERL%, DOSSTAT% and BIOSSTAT%
+#
+#                                     NEXT takes no variable in this BASIC.
+#                                     S_NEXT reads its record off the return
+#                                     stack and never parses one, so the " I"
+#                                     in "NEXT I" is left for the statement
+#                                     checker and comes back as a syntax
+#                                     error on that line
+#    13. ONVSYNC / RETIRQ           - the deferred handler. I-J is 1500
+#                                     whatever NEXT's off-by-one convention
+#                                     is, so it says one thing only: the
+#                                     return stack came back intact from
+#                                     every tick that fired INSIDE the FOR
+#                                     loop. D proves the handler body ran
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -217,13 +248,64 @@ KEYS_E=$(keys_of \
     'PRINT POINT(4,5)' \
     'PRINT PEEK(&hE4AFFF)')
 
+# Interrupts and BRUN. The machine code both halves run is the same
+# seven bytes -- LDA #$1234 / STA $8610 / RTL -- once POKEd in and once
+# loaded off the card, because a constant the interpreter never computes
+# is the only thing that can prove foreign code actually executed.
+#
+# Every word read back is zeroed first. Without that, "it reads 4660"
+# would also pass on a machine where 4660 was already sitting there, and
+# the first print in each pair is exactly the negative control for the
+# second.
+KEYS_F=$(keys_of \
+    'POKEW &h8600,0' \
+    'POKEW &h8610,0' \
+    'PRINT PEEKW(&h8600)' \
+    'POKE &h8500,&hA9' \
+    'POKE &h8501,&h34' \
+    'POKE &h8502,&h12' \
+    'POKE &h8503,&h8D' \
+    'POKE &h8504,&h00' \
+    'POKE &h8505,&h86' \
+    'POKE &h8506,&h6B' \
+    'IRQ 1,&h8500' \
+    'WAIT 200' \
+    'IRQ 1,0' \
+    'PRINT PEEKW(&h8600)' \
+    'PRINT PEEKW(&h8610)' \
+    'BRUN "T.BIN",&h8700' \
+    'PRINT PEEKW(&h8610)' \
+    'PRINT ERR%' \
+    '5 D=0' \
+    '10 FOR I=1 TO 500' \
+    '20 NEXT' \
+    '30 J=I' \
+    '40 ONVSYNC 200' \
+    '50 FOR I=1 TO 2000' \
+    '60 NEXT' \
+    '70 ONVSYNC 0' \
+    '80 PRINT I-J' \
+    '90 PRINT D' \
+    '100 END' \
+    '200 D=42' \
+    '210 RETIRQ' \
+    'RUN')
+
+# The BRUN payload: the same instructions POKEd in above, but reaching
+# the machine as a file. It returns $1234 in A, which lands in ERR.
+printf '\xA9\x34\x12\x8D\x10\x86\x6B' > "$OUT/t.bin"
+
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
 # be fooled by what the other left behind.
-run_session () {        # $1 = tag, $2 = key script
+run_session () {        # $1 = tag, $2 = key script, $3 = extra file, $4 = its name
     cp "$CORE/boot/fat32.img" "$OUT/card$1.img"
     python tools/putfile.py "$(cygpath -m "$OUT/card$1.img")" \
         "$(cygpath -m "$OUT/basic.bin")" BASIC.BIN >/dev/null || return 1
+    if [ -n "${3:-}" ]; then
+        python tools/putfile.py "$(cygpath -m "$OUT/card$1.img")" \
+            "$(cygpath -m "$3")" "$4" >/dev/null || return 1
+    fi
     SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 90 \
         "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
         -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
@@ -239,23 +321,25 @@ if [ "$NEG" = "0" ]; then
     run_session C "$KEYS_C" || { echo "session C produced no recording"; exit 1; }
     run_session D "$KEYS_D" || { echo "session D produced no recording"; exit 1; }
     run_session E "$KEYS_E" || { echo "session E produced no recording"; exit 1; }
+    run_session F "$KEYS_F" "$OUT/t.bin" T.BIN || { echo "session F produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
     cp "$OUT/outA.gif" "$OUT/outD.gif"
     cp "$OUT/outA.gif" "$OUT/outE.gif"
+    cp "$OUT/outA.gif" "$OUT/outF.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-gif_a, gif_b, gif_c, gif_d, gif_e, fontinc = (sys.argv[1], sys.argv[2],
-                                              sys.argv[3], sys.argv[4],
-                                              sys.argv[5], sys.argv[6])
-negative = sys.argv[7] == "1"
+(gif_a, gif_b, gif_c, gif_d, gif_e, gif_f,
+ fontinc) = (sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
+             sys.argv[5], sys.argv[6], sys.argv[7])
+negative = sys.argv[8] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -303,7 +387,8 @@ rows_b = [] if negative else last_screen(gif_b)
 rows_c = [] if negative else last_screen(gif_c)
 rows_d = [] if negative else last_screen(gif_d)
 rows_e = [] if negative else last_screen(gif_e)
-rows = rows_a + rows_b + rows_c + rows_d + rows_e
+rows_f = [] if negative else last_screen(gif_f)
+rows = rows_a + rows_b + rows_c + rows_d + rows_e + rows_f
 
 def fail(msg):
     print("FAIL:", msg)
@@ -593,6 +678,31 @@ if not any(r.strip() == "55" for r in rows_e):
 if len([r for r in rows_e if r.strip() == "7"]) < 2:
     fail("CLRBITMAP did not fill the whole frame, or LINE painted too wide")
 
+# ---- session F: interrupts and BRUN --------------------------------------
+# 4660 is $1234, stored by seven bytes of machine code that BASIC never
+# executes an instruction of. It has to appear TWICE -- once from the
+# handler the kernel called at a raster line, once from the file BRUN
+# loaded and JSLed -- and 0 has to appear twice before them, which is
+# what stops either check passing on memory that already held the value.
+if len([r for r in rows_f if r.strip() == "0"]) < 2:
+    fail("the two words did not read 0 before the code that writes them "
+         "ran -- the checks below would prove nothing")
+if len([r for r in rows_f if r.strip() == "4660"]) != 3:
+    fail("expected 4660 three times in session F: from the IRQ handler, "
+         "from the BRUN'd file, and from ERR carrying its return value")
+
+# The deferred handler. I-J is 1500 whichever value NEXT leaves the loop
+# variable at, so this asserts one thing and one thing only: every tick
+# that fired between two statements of the FOR loop pushed and popped the
+# return stack in balance. RETIRQ restoring the wrong BIP would derail
+# the program long before it reached here.
+if not any(r.strip() in ("1500", "1.50000E03") for r in rows_f):
+    fail("ONVSYNC handlers firing inside a FOR loop did not leave the "
+         "loop where they found it -- I-J was not 1500")
+if not any(r.strip() in ("42", "4.20000E01") for r in rows_f):
+    fail("the ONVSYNC handler never ran, or never reached its second "
+         "statement -- D was not 42")
+
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")
 print("      RENAME and COPY, and wrote and read a data file with PRINT #")
@@ -601,6 +711,10 @@ for r in rows:
     if r:
         print("   ", r)
 PY
+# `|| exit 1` and not decoration: without it a fail() printed FAIL and the
+# script carried on to the pyfatfs check, whose success became the exit
+# status. A run that had failed reported 0.
+[ $? -eq 0 ] || exit 1
 
 # The screen only proves SuperBasic can read back what SuperBasic wrote.
 # pyfatfs is a second, independent FAT32 implementation, so it can tell a

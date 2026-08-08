@@ -32,6 +32,9 @@ silently clear whatever else lived in it.
     writes exactly the image and no more.
 
 Sprite collisions raise an interrupt, KIRQ_SPRCOL (slot 2 in the kernel's
-IRQ table). Nothing in SuperBasic can install a handler yet; when it can,
-that is the cheap way to do hit detection instead of comparing
-rectangles in BASIC.
+IRQ table). ONCOLLISION line runs a BASIC subroutine for it and IRQ 2,addr
+installs machine code - HELP SYSTEM for both, and for what "deferred"
+costs the BASIC one. Either is cheaper than comparing rectangles in
+BASIC. VERA raises the collision at the END of a frame, so what you get
+is "something hit something since the last frame", once a frame, and not
+a report of which pair.

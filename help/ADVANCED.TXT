@@ -50,16 +50,32 @@ pieces. Keep the palette in an array and save that.
 
 --- interrupts, which most of the above depends on ---
 
-[ ] ONVSYNC line-number - run a subroutine every frame.
-[ ] ONRASTER line,line-number - run one at a given scanline, for split
-    screens and colour bars.
-[ ] ONCOLLISION line-number - sprite collision.
+[x] ONVSYNC line-number - run a subroutine every frame.
+[x] ONRASTER line,line-number - run one when the beam passes a scanline.
+[x] ONCOLLISION line-number - sprite collision.
+[x] RETIRQ - return from one. HELP SYSTEM has the full story and the
+    limits, which matter here: these are DEFERRED to the next statement
+    boundary, so they are for pacing and background work. A colour bar or
+    a split screen needs IRQ 1,addr and machine code.
 
-These three are the keystone. Animation timing, envelopes, PCM refill,
-smooth scrolling and hit detection are all waiting on the same thing: a
-way for BASIC to say "run this every frame". The kernel already has the
-slots (K_IRQ_SET, eleven of them) and the dispatcher already saves and
-restores VERA's ports around a handler, so the hard part is done. What
-is missing is the BASIC side: re-entering the interpreter from an
-interrupt safely, which is a real design problem and the reason this is
+These three were the keystone. Animation timing, envelopes, PCM refill,
+smooth scrolling and hit detection were all waiting on the same thing: a
+way for BASIC to say "run this every frame". The kernel already had the
+slots (K_IRQ_SET, eleven of them) and the dispatcher already saved and
+restored VERA's ports around a handler, so the hard part was done. What
+was missing was the BASIC side: re-entering the interpreter from an
+interrupt safely, which is a real design problem and the reason this was
 listed here rather than assumed.
+
+The answer taken was not to re-enter it at all. The interpreter is not
+re-entrant, and making it so would mean saving and restoring every
+scratch global at an ASYNCHRONOUS boundary - the exact shape of the bug
+that has cost this port four separate days. So the handler is entered
+from the statement boundary instead, where nothing is half-built, and
+the price is paid in latency rather than in a class of bug that only
+appears when an interrupt lands on the wrong instruction.
+
+That price is real and HELP SYSTEM states it plainly. What it buys is
+that everything above can now be built: an envelope stepped once a frame,
+a PCM buffer topped up, a sprite hit noticed - none of which needs to
+happen AT the interrupt, only soon after it.
