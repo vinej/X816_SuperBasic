@@ -130,6 +130,10 @@ any future target gets it too.
 
     Watch the keyword rule above: a label called DONE begins with DO and
     tokenizes as DO followed by NE. FINISH is fine.
+
+    GOTO, GOSUB, THEN and the three interrupt handlers (ONVSYNC,
+    ONRASTER, ONCOLLISION - HELP SYSTEM) all take one, through the same
+    search, so a name means the same thing wherever it is written.
 [x] AUTO [start [, step]] - number the lines as they are typed. 10 and
     10 by default; AUTO 0 switches it off, and so does pressing RETURN on
     a line with nothing after the number.

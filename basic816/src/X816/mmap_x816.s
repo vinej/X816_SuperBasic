@@ -315,6 +315,27 @@ ADV_FLIP  = $008898         ; word - non-zero in the steep half, where the
 ADV_T     = $00889A         ; word - the angle being assembled, and LERP's
                             ;  fraction
 
+; Shapes on the bitmap (X816/shapes_x816.s). GX/GY/GCOL and the rest of
+; the line drawing block above are shared; these are what a rectangle,
+; a circle and an ellipse need on top of them.
+GRX0      = $0088A0         ; word - the rectangle's corners, put in order
+GRY0      = $0088A2         ;  by GFX_RORDER so either way round works
+GRX1      = $0088A4
+GRY1      = $0088A6
+GHX0      = $0088A8         ; word - a horizontal span's two ends
+GHX1      = $0088AA
+GCX       = $0088AC         ; word - a circle's centre
+GCY       = $0088AE
+GCR       = $0088B0         ; word - its radius
+GCDX      = $0088B2         ; word - the octant walk's offsets
+GCDY      = $0088B4
+GCE       = $0088B6         ; word - the midpoint error term
+GCSPAN    = $0088B8         ; word - non-zero to FILL rather than outline
+GOA       = $0088BA         ; word - the ellipse's semi-axes, and
+GOB       = $0088BC
+GOA2      = $0088BE         ;  their squares, computed once
+GOB2      = $0088C0
+
 ; PLAY's parser state.
 PLY_P     = $008810         ; dword - where it is in the string
 PLY_N     = $008814         ; word - characters left

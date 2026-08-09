@@ -86,9 +86,32 @@
     there, and installing your own takes it away until something calls
     the cursor back. Its ENABLE is never touched by this statement -
     clearing it would stop FRAMES, WAIT and VSYNC dead.
-[x] ONVSYNC line - run a BASIC subroutine once a frame. 0 disarms it.
-[x] ONRASTER scanline,line - run one when the beam passes a scanline.
-[x] ONCOLLISION line - run one when sprites collide.
+[x] ONVSYNC target - run a BASIC subroutine once a frame. 0 disarms it.
+[x] ONRASTER scanline,target - run one when the beam passes a scanline.
+[x] ONCOLLISION target - run one when sprites collide.
+
+    THE TARGET IS A LINE NUMBER OR A LABEL, and it is the same
+    TARGET_FIND that GOTO, GOSUB and THEN use - so a name means the same
+    thing everywhere in the language, and a label that works for one
+    works for all of them:
+
+        ONVSYNC tick
+        ...
+        LABEL tick
+          N = N + 1
+        RETIRQ
+
+    A label is resolved when the handler is ARMED, to the number of the
+    line it sits on, so the failure is reported by the statement that
+    got it wrong rather than at whatever statement the frame landed on.
+
+    NOT A PROC, and that is a decision rather than an omission. A
+    deferred handler is entered as a GOSUB and left with RETIRQ; a
+    DEFPROC is entered with a frame of locals and left with ENDPROC, and
+    the two unwind different things. Aiming a handler at a DEFPROC would
+    run the body and then pop a procedure frame nobody pushed. Making it
+    work means deciding what ENDPROC does when the frame under it came
+    from an interrupt, which is a language decision and not plumbing.
 [x] RETIRQ - return from any of the three. Not RETURN: a handler can fire
     while your own GOSUBs are pending, and a RETURN reaching that frame
     would unwind to the wrong place silently. With this as the only way

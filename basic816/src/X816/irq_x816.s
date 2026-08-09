@@ -295,6 +295,86 @@ IRQ_DISARM  .proc
             .pend
 
 ;
+; What a handler is aimed at: a line number, or a LABEL.
+;
+; Outputs:
+;   A = the line number to arm with, 0 to disarm
+;
+; A LABEL is resolved HERE, at arm time, to the number of the line it
+; sits on -- so IRQ_POLL goes on storing and finding a number and knows
+; nothing about names. That also means the label is checked when the
+; handler is armed rather than at whatever statement the frame happened
+; to land on, which is the same reason IRQ_CHKLINE exists.
+;
+; It is deliberately the same TARGET_FIND that GOTO, GOSUB and THEN use,
+; so a name means the same thing everywhere in the language and a label
+; that works for one works for all of them.
+;
+; TARGET_FIND moves CURLINE when it succeeds, and the program is
+; standing on the line that is arming the handler -- so it is saved and
+; put back, exactly as IRQ_CHKLINE does around FINDLINE.
+;
+; A PROC IS NOT ACCEPTED, and that is a decision rather than an
+; omission. A deferred handler is entered as a GOSUB and left with
+; RETIRQ; a DEFPROC is entered with a frame of locals and left with
+; ENDPROC, and the two unwind different things. Aiming a handler at a
+; DEFPROC would run the body and then pop a procedure frame nobody
+; pushed. Making it work means deciding what ENDPROC does when the frame
+; under it came from an interrupt, which is a language decision and not
+; a plumbing one.
+;
+IRQ_TARGET  .proc
+            PHP
+            setaxl
+
+            CALL SKIPWS
+            setas
+            LDA [BIP]
+            CALL ISALPHA
+            BCS it_name
+
+            setaxl                      ; a line number, as it always was
+            CALL EVALEXPR
+            CALL ASS_ARG1_INT
+            setal
+            LDA ARGUMENT1
+            CALL IRQ_CHKLINE
+            BRA it_done
+
+it_name     setaxl                      ; a LABEL
+            LDA CURLINE
+            PHA
+            LDA CURLINE+2
+            PHA
+
+            CALL TARGET_FIND
+            BCC it_bad
+
+            setaxl                      ; the number of the line it found
+            LDY #LINE_NUMBER
+            LDA [CURLINE],Y
+            STA @l IRQ_TMP
+
+            setaxl
+            PLA
+            STA CURLINE+2
+            PLA
+            STA CURLINE
+            LDA @l IRQ_TMP
+
+it_done     PLP
+            RETURN
+
+it_bad      setaxl                      ; put CURLINE back before throwing,
+            PLA                         ;  or the error reports the wrong line
+            STA CURLINE+2
+            PLA
+            STA CURLINE
+            PLP
+            THROW ERR_NOLINE
+            .pend
+
+;
 ; Check that a handler's line number exists, before arming it.
 ;
 ; Inputs:
@@ -383,12 +463,7 @@ S_ONVSYNC   .proc
             TRACE "S_ONVSYNC"
 
             setaxl
-            CALL EVALEXPR
-            CALL ASS_ARG1_INT
-
-            setal
-            LDA ARGUMENT1
-            CALL IRQ_CHKLINE
+            CALL IRQ_TARGET             ; a line number, or a LABEL
             STA @l IRQ_VLINE
 
             JSL KERN_IRQ_FRAMES         ; Arm from the CURRENT frame, so the
@@ -431,12 +506,7 @@ S_ONRASTER  .proc
             CALL EXPECT_TOK
 
             setaxl
-            CALL EVALEXPR               ; The BASIC line number
-            CALL ASS_ARG1_INT
-
-            setal
-            LDA ARGUMENT1
-            CALL IRQ_CHKLINE
+            CALL IRQ_TARGET             ; a line number, or a LABEL
             STA @l IRQ_RLINE
 
             setas
@@ -480,12 +550,7 @@ S_ONCOLLISION .proc
             TRACE "S_ONCOLLISION"
 
             setaxl
-            CALL EVALEXPR
-            CALL ASS_ARG1_INT
-
-            setal
-            LDA ARGUMENT1
-            CALL IRQ_CHKLINE
+            CALL IRQ_TARGET             ; a line number, or a LABEL
             STA @l IRQ_CLINE
 
             setas

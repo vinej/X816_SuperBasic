@@ -176,6 +176,26 @@
 #                                   then threw a syntax error on the
 #                                   pass that ENDS it
 #
+#   session Q -- fast maths, the machine, shapes, and ON* by name
+#    30. SIN8/COS8/ATAN2/LERP     - integer game maths. ATAN2 is
+#                                   checked on all four axes AND on
+#                                   a diagonal in the quadrant where
+#                                   both reflections apply, which is
+#                                   the one the octant decomposition
+#                                   gets wrong
+#    31. MIN/MAX/CLAMP            - with NEGATIVE arguments, which is
+#                                   what turned up the comma bug: a
+#                                   minus after a comma had been a
+#                                   BINARY minus since the beginning
+#    32. FRE, TURBO               - FRE drops by more than the string
+#                                   asked for, TURBO's bit reads back
+#    33. RECT/FRECT/CIRCLE/FCIRCLE - read back with POINT, and one
+#                                   rectangle given its corners the
+#                                   WRONG WAY ROUND: the ordering was
+#                                   inverted and filled the screen
+#                                   with everything except the shape
+#    34. ONVSYNC <label>          - the handler found by name
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -804,6 +824,77 @@ PYADP
 # by name) and the countdown 5 3 1 are what a fixed NEXT looks like.
 # Bare NEXT is kept beside them because it always worked and must
 # go on working.
+# Fast maths, the machine statements, the shapes, and a handler
+# found by name. Four groups in one session because each is a couple
+# of lines and the screen is 60 rows.
+#
+# THE NEGATIVE ARGUMENTS ARE THE POINT of the MIN/MAX/CLAMP lines.
+# MAX(-7,-9) is the call that found a bug older than this port: a
+# minus after a COMMA was tokenized as a binary minus, so every
+# argument list with a negative in it was wrong -- PRINT A,-2
+# printed -4. It needed a two-argument function where a negative
+# SECOND argument is meaningful before anything noticed.
+#
+# ATAN2(-10,-10) is 160 and not 32: it is in the quadrant where both
+# the dx and the dy reflection apply, and applying them in the wrong
+# order or to the wrong half is the classic way to get an octant
+# decomposition that works on the axes and nowhere else.
+#
+# The shapes are read back with POINT, which shares no code with the
+# drawing. A pixel INSIDE the outline shapes must be 0 and inside the
+# filled ones must be the colour -- that pair is what tells RECT from
+# FRECT. And RECT 300,60,280,50 gives its corners the wrong way round
+# on purpose: the ordering compare was inverted, which made the row
+# loop count away from its limit and fill the whole screen EXCEPT the
+# rectangle.
+KEYS_Q=$(keys_of \
+    '10 PRINT SIN8(0)' \
+    '20 PRINT SIN8(64)' \
+    '30 PRINT SIN8(300)' \
+    '40 PRINT COS8(0)' \
+    '50 PRINT ATAN2(0,1)' \
+    '60 PRINT ATAN2(-10,-10)' \
+    '70 PRINT LERP(0,100,128)' \
+    '80 PRINT MIN(3,5)' \
+    '90 PRINT MAX(-7,-9)' \
+    '100 PRINT CLAMP(-5,0,10)' \
+    '110 F=FRE' \
+    '120 A$=SPACE$(200)' \
+    '130 PRINT F-FRE>200' \
+    '140 TURBO 1' \
+    '150 PRINT PEEK(&h9F80) AND 4' \
+    '160 TURBO 0' \
+    '170 GRAPHICS 1' \
+    '180 CLRBITMAP 0' \
+    '190 GCOLOR 5' \
+    '200 RECT 10,10,20,20' \
+    '210 FRECT 30,30,40,40,7' \
+    '220 CIRCLE 100,100,20,3' \
+    '230 FCIRCLE 200,100,20,9' \
+    '240 RECT 300,60,280,50,2' \
+    '250 GRAPHICS 0' \
+    '260 PRINT POINT(15,10)' \
+    '270 PRINT POINT(15,15)' \
+    '280 PRINT POINT(35,35)' \
+    '290 PRINT POINT(100,80)' \
+    '300 PRINT POINT(100,100)' \
+    '310 PRINT POINT(200,100)' \
+    '320 PRINT POINT(290,50)' \
+    '330 PRINT POINT(290,55)' \
+    '340 N=0' \
+    '350 ONVSYNC tick' \
+    '360 FOR I=1 TO 200' \
+    '370 WAIT 5' \
+    '380 NEXT I' \
+    '390 ONVSYNC 0' \
+    '400 PRINT N>0' \
+    '410 PRINT "QOK"' \
+    '420 END' \
+    '500 LABEL tick' \
+    '510 N=N+1' \
+    '520 RETIRQ' \
+    'RUN')
+
 KEYS_P=$(keys_of \
     '10 PRINT VER' \
     '20 PRINT VER-1' \
@@ -932,6 +1023,7 @@ if [ "$NEG" = "0" ]; then
     run_session N "$KEYS_N" "$OUT/raw.ima" RAW.IMA "$OUT/bad.wav" BAD.WAV || { echo "session N produced no recording"; exit 1; }
     run_session O "$KEYS_O" || { echo "session O produced no recording"; exit 1; }
     run_session P "$KEYS_P" || { echo "session P produced no recording"; exit 1; }
+    run_session Q "$KEYS_Q" || { echo "session Q produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -948,22 +1040,23 @@ else
     cp "$OUT/outA.gif" "$OUT/outN.gif"
     cp "$OUT/outA.gif" "$OUT/outO.gif"
     cp "$OUT/outA.gif" "$OUT/outP.gif"
+    cp "$OUT/outA.gif" "$OUT/outQ.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
- gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, fontinc, adpexp) = (
+ gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, fontinc, adpexp) = (
                     sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
                     sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
                     sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
-                    sys.argv[17], sys.argv[18])
-negative = sys.argv[19] == "1"
+                    sys.argv[17], sys.argv[18], sys.argv[19])
+negative = sys.argv[20] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -1022,9 +1115,10 @@ rows_m = [] if negative else last_screen(gif_m)
 rows_n = [] if negative else last_screen(gif_n)
 rows_o = [] if negative else last_screen(gif_o)
 rows_p = [] if negative else last_screen(gif_p)
+rows_q = [] if negative else last_screen(gif_q)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
         rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
-        rows_o + rows_p)
+        rows_o + rows_p + rows_q)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -1685,6 +1779,30 @@ if not any(r.strip() == "TOKOK" for r in rows_p):
 # And LIST detokenizes a three-byte token back to its keyword.
 if not any(r.strip() == "10 PRINT VER" for r in rows_p):
     fail("LIST did not turn a TOKENS3 token back into its keyword")
+
+# ---- session Q: fast maths, the machine, shapes, ON* by name ----------
+# The numbers PRINT produces, in order. Checking the SEQUENCE and not
+# just presence: every one of these is a small integer and several
+# repeat, so "does 32 appear" would pass on almost any wrong answer.
+q_want = ["0", "127", "112", "127",        # SIN8 x3 (300 wraps to 44), COS8
+          "64", "160",                     # ATAN2 south, and north-west
+          "50",                            # LERP half way
+          "3", "-7", "0",                  # MIN, MAX with two negatives, CLAMP
+          "-1",                            # FRE dropped by more than 200
+          "4",                             # TURBO's bit
+          "5", "0", "7", "3", "0", "9", "2", "0",   # the shapes, through POINT
+          "-1"]                            # the ONVSYNC label fired
+q_got = [r.strip() for r in rows_q if r.strip().lstrip("-").isdigit()]
+if q_got[:len(q_want)] != q_want:
+    fail("session Q did not answer as it must: wanted %r, got %r.\n"
+         "         positions 5-6 are ATAN2 -- 160 is the quadrant where "
+         "both reflections apply; 9 is MAX(-7,-9), the call that found "
+         "the comma bug; 14-21 are the shapes read back with POINT, "
+         "where an outline must be 0 inside and a fill must not, and the "
+         "last pair is a rectangle given its corners backwards."
+         % (q_want, q_got[:len(q_want)]))
+if not any(r.strip() == "QOK" for r in rows_q):
+    fail("session Q did not reach the end")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

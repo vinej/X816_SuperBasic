@@ -2024,6 +2024,85 @@ send upstream.
 
 X816 48,795 bytes of the 65,280 cap; the C256 still assembles (§23).
 
+## 31. Shapes, and handlers found by name (2026-08-08)
+
+### RECT, FRECT, CIRCLE, FCIRCLE, GCOLOR, BITMAP
+
+In `X816/shapes_x816.s`, built entirely out of `GFX_PSET` and a new
+`GFX_HLINE` — so the clipping is still done once, in `GFX_ADDR`, and a
+shape that runs off the edge draws the part that fits.
+
+**Outline and filled are separate keywords.** `help/GRAPHIC.TXT` left
+*"filled or outline is an argument"* open for `RECT` and had already
+answered it itself for circles by listing `CIRCLE` and `FCIRCLE`, so
+rectangles get the same answer. A mode argument would have to be written
+on every call, and the one thing worse than a keyword is a magic number.
+
+**The colour is optional**, which is what makes `GCOLOR` worth a keyword:
+the comma is *peeked* for rather than expected, so `RECT 0,0,10,10` and
+`RECT 0,0,10,10,7` are both whole statements.
+
+Filled shapes draw **spans**, not pixels — one address calculation for a
+whole row rather than one per pixel.
+
+**`RECT`'s token was a by-word for `MEMCOPY`.** The tokenizer searches
+the base table before the extended one, so a name in both is shadowed and
+a second `RECT` in `TOKENS2` could never be reached — `RECT 0,0,10,10`
+tokenized to a bare keyword and reported a syntax error. The base entry
+now points at the statement on the X816 and stays a by-word on the C256,
+so no id moves; when `MEMCOPY` is built it should compare the token by
+**id** rather than by type.
+
+### The ordering compare that filled the screen
+
+`GFX_RORDER`'s y half branched the opposite way to its x half, so it
+swapped the corners when they were **already in order**. `y0` became the
+larger, every row loop counted *up away* from its limit, round through
+65535 and back — and `FRECT` filled the whole screen **except** the
+rectangle. A striking way to be told that a compare is backwards, and
+invisible in `RECT` until a corner was tested on the far side.
+
+### OVAL was written and taken out
+
+Bresenham's ellipse needs **two regions**, and the second one's error
+term is `b2*(x+0.5)^2 + a2*(y-1)^2 - a2*b2`, which does not fit the
+16-bit words the rest of that file uses. One region draws the top and
+never reaches the ends of the other axis — the leftmost pixel of
+`OVAL 300,50,340,70` was simply missing. A wrong shape is worse than no
+shape, so it is out and `help/GRAPHIC.TXT` says what it needs: the
+incremental form, `sx = 2*b2*x` and `sy = 2*a2*y` carried along, in
+32-bit arithmetic, with the multiplies done three times at the start and
+never inside the walk.
+
+### ONVSYNC / ONRASTER / ONCOLLISION take a LABEL
+
+His request, and it costs almost nothing because `TARGET_FIND` — the same
+routine `GOTO`, `GOSUB` and `THEN` use — already resolves a name. So a
+label means the same thing everywhere in the language:
+
+```
+ONVSYNC tick
+...
+LABEL tick
+  N = N + 1
+RETIRQ
+```
+
+The label is resolved **at arm time**, to the number of the line it sits
+on, so `IRQ_POLL` goes on storing and finding a number and knows nothing
+about names — and a bad name is reported by the statement that got it
+wrong rather than at whatever statement the frame landed on.
+
+**A PROC is not accepted, and that is a decision.** A deferred handler is
+entered as a `GOSUB` and left with `RETIRQ`; a `DEFPROC` is entered with
+a frame of locals and left with `ENDPROC`, and the two unwind different
+things. Aiming a handler at a `DEFPROC` would run the body and then pop a
+procedure frame nobody pushed. Making it work means deciding what
+`ENDPROC` does when the frame under it came from an interrupt — a
+language decision, not plumbing, and one to take deliberately.
+
+X816 49,979 bytes of the 65,280 cap; the C256 still assembles (§23).
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

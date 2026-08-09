@@ -16,9 +16,11 @@ coexist and a program can print while it draws.
     meets: the layer can be absent, or present but switched off in the
     OSD, and both read 0 from a program's point of view. Better to say
     "turn the bitmap layer on" than to draw into nothing.
-[ ] BITMAP n,addr - point a bitmap layer at its pixel data. On VERA2
+[x] BITMAP n,addr - point a bitmap layer at its pixel data. On VERA2
     this is the DISPLAY BASE at $9F62-$9F64, latched at vsync - which is
-    page flipping, and 1 MB holds two 8bpp frames.
+    page flipping, and 1 MB holds two 8bpp frames. The layer number is
+    accepted and ignored: VERA2 has one bitmap layer, and a program that
+    says which one is being clearer rather than wrong.
 [x] CLRBITMAP c - fill the frame. 307,200 stores, done by running the
     data bank up the four whole banks the frame covers and then the
     45,056 bytes left over.
@@ -32,14 +34,46 @@ coexist and a program can print while it draws.
 [x] PAL2 index,rgb - VERA2 has a palette of its own, and nothing like
     VERA's: an index register auto-increments and writing the HIGH half
     commits the entry, so the two halves must go out in order.
-[ ] RECT x1,y1,x2,y2,c - rectangle. Filled or outline is an argument
-    still to be decided.
+[x] RECT x1,y1,x2,y2[,c] - rectangle outline.
+[x] FRECT x1,y1,x2,y2[,c] - filled.
+
+    OUTLINE AND FILLED ARE SEPARATE KEYWORDS, which is the argument this
+    page left open. The page had already answered it for circles by
+    listing CIRCLE and FCIRCLE beside each other, so rectangles get the
+    same answer: a mode argument would have to be written on every call,
+    and the one thing worse than a keyword is a magic number.
+
+    The corners may be given either way round.
+
+    RECT's token was a BY-WORD for MEMCOPY and is now this statement.
+    The tokenizer searches the base table before the extended one, so a
+    name in both is shadowed - a second RECT in the extended table could
+    never have been reached. MEMCOPY is a stub that throws; when it is
+    built it should compare this token by ID rather than by TYPE.
 [ ] FILL x,y,c - flood fill.
-[ ] CIRCLE x,y,r,c - circle outline.
-[ ] FCIRCLE x,y,r,c - filled circle.
+[x] CIRCLE x,y,r[,c] - circle outline. The midpoint walk: integer
+    throughout, no square root and no trigonometry. r=0 is one pixel and
+    a negative r draws nothing.
+[x] FCIRCLE x,y,r[,c] - filled circle. The same walk, drawing a SPAN an
+    edge instead of a pixel - one address calculation for a whole row is
+    what makes it affordable.
 [ ] OVAL x1,y1,x2,y2,c - ellipse in a bounding box.
+
+    A half-built one was written and TAKEN OUT rather than left to draw
+    the wrong shape. Bresenham's ellipse needs TWO regions, one stepping
+    in x while the slope is shallower than -1 and one stepping in y
+    after it, and the second region's error term does not fit the 16-bit
+    words the rest of this page uses. One region draws the top and never
+    reaches the ends of the other axis - the leftmost pixel was simply
+    missing. It wants the incremental form in 32-bit arithmetic.
 [ ] GTEXT x,y,c,s$ - draw a string into the bitmap.
-[ ] GCOLOR c - set a pen colour so the drawing statements can omit it.
+[x] GCOLOR c - set a pen colour so the drawing statements can omit it.
+
+    THE COLOUR IS OPTIONAL on RECT, FRECT, CIRCLE and FCIRCLE, which is
+    what makes this worth a keyword: "GCOLOR 5 : CIRCLE 100,100,40"
+    reads better than repeating the pen on every line. PLOT and LINE
+    still require theirs - they are older than this and programs pass
+    one.
 
 Two different bitmap engines are available, and picking between them is
 the first real decision here:

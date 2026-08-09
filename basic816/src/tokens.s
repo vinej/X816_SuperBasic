@@ -1500,7 +1500,24 @@ TOK_NEGATIVE = $AF
 TOK_LINEAR = $E6
             DEFTOK "LINEAR", TOK_TY_BYWRD, 0, 0, 0                      ; E6 - Keyword for MEMCOPY statement
 TOK_RECT = $E7
-            DEFTOK "RECT", TOK_TY_BYWRD, 0, 0, 0                        ; E7 - Keyword for MEMCOPY statement
+; RECT was a BY-WORD for MEMCOPY and is now the rectangle statement.
+; The tokenizer searches the base table BEFORE the extended one, so a
+; name in both is shadowed by the base entry and a second DEFTOK in
+; TOKENS2 could never be reached -- "RECT 0,0,10,10" tokenized to this
+; bare keyword and reported a syntax error.
+;
+; MEMCOPY is a stub that throws (help/MEMORY.TXT), so nothing wants the
+; by-word today. When it is built it should compare this token by ID
+; rather than by TYPE, which is what a keyword doing two jobs costs and
+; is cheaper than spending a second id on the same five letters.
+; ...on the X816. The C256 keeps the by-word, because S_RECT lives in
+; the X816 tree and the base table is unconditional -- one entry either
+; way, so no id moves.
+.if SYSTEM == SYSTEM_X816
+            DEFTOK "RECT", TOK_TY_STMNT, 0, S_RECT, 0                      ; E7
+.else
+            DEFTOK "RECT", TOK_TY_BYWRD, 0, 0, 0                            ; E7
+.endif
 ; $E8
             DEFTOK "LOCATE", TOK_TY_STMNT, 0, S_LOCATE, 0               ; Token for LOCATE statement
 ; $E9
@@ -1747,6 +1764,16 @@ TOKENS2
 ; still be written into a line as a two-byte extended token.
             DEFTOK "MIN", TOK_TY_FUNC, 0, FN_MIN, 0
             DEFTOK "MAX", TOK_TY_FUNC, 0, FN_MAX, 0
+
+; Shapes on the bitmap. The colour is OPTIONAL on every one of them --
+; GCOLOR sets the pen they fall back on -- and outline and filled are
+; separate keywords rather than a mode argument, which is the answer
+; help/GRAPHIC.TXT had already chosen for itself by listing CIRCLE and
+; FCIRCLE beside each other.
+            DEFTOK "FRECT", TOK_TY_STMNT, 0, S_FRECT, 0
+            DEFTOK "CIRCLE", TOK_TY_STMNT, 0, S_CIRCLE, 0
+            DEFTOK "FCIRCLE", TOK_TY_STMNT, 0, S_FCIRCLE, 0
+            DEFTOK "GCOLOR", TOK_TY_STMNT, 0, S_GCOLOR, 0
 .endif
 
 ; ENDIF closes the block form of IF. Portable -- it is language, not

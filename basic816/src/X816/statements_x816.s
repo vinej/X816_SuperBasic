@@ -114,9 +114,9 @@ S_SETDATE       .proc
 ; palette. It stayed a stub here for as long as PAL was the only way to
 ; write an entry.
 
-S_BITMAP        .proc
-                THROW ERR_ARGUMENT
-                .pend
+; BITMAP is real now -- X816/shapes_x816.s, with the rest of the
+; bitmap statements. Its token was spent by BASIC816 long ago, so
+; implementing it cost none.
 
 S_FILL          .proc
                 THROW ERR_ARGUMENT
