@@ -8,8 +8,26 @@ an address here is 24 bits and that is all there is to it.
 [x] POKE addr,value - write one.
 [x] PEEKW(addr) / POKEW addr,value - 16-bit.
 [x] PEEKL(addr) / POKEL addr,value - 24-bit.
-[ ] MEMCOPY src,dst,len - block copy. Reserved, refuses today; would be
-    the place to use the blitter or a hardware fill, HELP VERAFX.
+[x] MEMCOPY src,dst,len - block copy, anywhere in the 16 MB.
+
+    The source is read through the one [ptr] this machine can spare -
+    the direct page is a single page and full - so the DESTINATION uses
+    the trick the bitmap code uses: its bank goes into DBR and the store
+    is a plain absolute-indexed one. The bank is set once and again only
+    when the offset wraps, so a 64 KB run costs one bank switch rather
+    than 65,536.
+
+    FORWARD, one byte at a time, and OVERLAP IS NOT HANDLED. Copying a
+    region on top of itself works when the destination is BELOW the
+    source and scrambles it when the destination is above and closer
+    than len. Going backwards in that case is four more instructions and
+    is not done: a block move that silently chose a direction would be
+    worse than one that says which it uses.
+
+    IT IS NOT THE BLITTER. This page always said this would be the place
+    for a hardware fill or blit and HELP VERAFX is where those will
+    live; this is the CPU doing it, which works everywhere - including
+    on itself, and on memory VERA cannot see.
 [x] FRE - bytes still free for the program, its variables and the heap.
     Takes no parentheses; classic BASICs want a dummy argument and throw
     it away, and there is nothing here to throw away.
@@ -25,7 +43,7 @@ an address here is 24 bits and that is all there is to it.
 [ ] ALLOC(size) / FREE addr - grab a block of SDRAM from the kernel
     (K_MEM_ALLOC). The arena is huge and the allocator has a 32-block
     cap, so the pattern is one big block sub-allocated by hand.
-[ ] VPEEK(addr) / VPOKE addr,value - VERA's own 128 KB of VRAM, which
+[x] VPEEK(addr) / VPOKE addr,value - VERA's own 128 KB of VRAM, which
     is NOT in the CPU address space: it is reached through a port at
     $9F20-$9F23. Tiles, sprite pixels and the VERA palette all live
     there, so graphics statements need this even if users never do.

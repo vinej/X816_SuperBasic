@@ -196,6 +196,20 @@
 #                                   with everything except the shape
 #    34. ONVSYNC <label>          - the handler found by name
 #
+#   session R -- BIN$ and MEMCOPY
+#    35. BIN$                     - shortest and not padded, which is
+#                                   the decision it embodies: HEX$
+#                                   emits whole BYTES and a bit is
+#                                   not a byte
+#    36. MEMCOPY                  - three bytes moved, the FOURTH
+#                                   left alone, and the same copy
+#                                   again ACROSS A BANK: the
+#                                   destination bank goes into DBR
+#                                   and is re-set only when the
+#                                   offset wraps, so crossing one is
+#                                   the path with something to get
+#                                   wrong
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -847,6 +861,37 @@ PYADP
 # on purpose: the ordering compare was inverted, which made the row
 # loop count away from its limit and fill the whole screen EXCEPT the
 # rectangle.
+# BIN$ and MEMCOPY.
+#
+# BIN$(5) is "101" and not "00000101": HEX$ emits whole bytes,
+# because a hex digit is half a byte and pairs of them are what a
+# program pokes, and a bit is not a byte. BIN$(0) is "0" -- the loop
+# writes a digit before it tests, so zero is one digit and not none.
+#
+# MEMCOPY writes THREE bytes and the fourth must still hold what was
+# put there first: a block move that copies one byte too many is the
+# commonest way to write one, and only a byte beyond the end can say
+# so. The second copy crosses into another BANK, which is the only
+# time the destination's DBR has to move -- one switch per 64 KB is
+# the whole design of the loop, so the boundary is where it breaks.
+KEYS_R=$(keys_of \
+    '10 PRINT BIN$(0)' \
+    '20 PRINT BIN$(5)' \
+    '30 PRINT BIN$(255)' \
+    '40 PRINT BIN$(256)' \
+    '50 POKE &h50000,17' \
+    '60 POKE &h50001,34' \
+    '70 POKE &h50002,51' \
+    '80 POKE &h50103,19' \
+    '90 MEMCOPY &h50000,&h50100,3' \
+    '100 PRINT PEEK(&h50100)' \
+    '110 PRINT PEEK(&h50102)' \
+    '120 PRINT PEEK(&h50103)' \
+    '130 MEMCOPY &h50000,&h60000,3' \
+    '140 PRINT PEEK(&h60002)' \
+    '150 PRINT "MEMOK"' \
+    'RUN')
+
 KEYS_Q=$(keys_of \
     '10 PRINT SIN8(0)' \
     '20 PRINT SIN8(64)' \
@@ -1024,6 +1069,7 @@ if [ "$NEG" = "0" ]; then
     run_session O "$KEYS_O" || { echo "session O produced no recording"; exit 1; }
     run_session P "$KEYS_P" || { echo "session P produced no recording"; exit 1; }
     run_session Q "$KEYS_Q" || { echo "session Q produced no recording"; exit 1; }
+    run_session R "$KEYS_R" || { echo "session R produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -1041,22 +1087,25 @@ else
     cp "$OUT/outA.gif" "$OUT/outO.gif"
     cp "$OUT/outA.gif" "$OUT/outP.gif"
     cp "$OUT/outA.gif" "$OUT/outQ.gif"
+    cp "$OUT/outA.gif" "$OUT/outR.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
- gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, fontinc, adpexp) = (
+ gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, gif_r, fontinc,
+ adpexp) = (
                     sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
                     sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
                     sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
-                    sys.argv[17], sys.argv[18], sys.argv[19])
-negative = sys.argv[20] == "1"
+                    sys.argv[17], sys.argv[18], sys.argv[19],
+                    sys.argv[20])
+negative = sys.argv[21] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -1116,9 +1165,10 @@ rows_n = [] if negative else last_screen(gif_n)
 rows_o = [] if negative else last_screen(gif_o)
 rows_p = [] if negative else last_screen(gif_p)
 rows_q = [] if negative else last_screen(gif_q)
+rows_r = [] if negative else last_screen(gif_r)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
         rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
-        rows_o + rows_p + rows_q)
+        rows_o + rows_p + rows_q + rows_r)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -1803,6 +1853,24 @@ if q_got[:len(q_want)] != q_want:
          % (q_want, q_got[:len(q_want)]))
 if not any(r.strip() == "QOK" for r in rows_q):
     fail("session Q did not reach the end")
+
+# ---- session R: BIN$ and MEMCOPY --------------------------------------
+# In order. "0" and "101" would both appear somewhere on almost any
+# screen, so the sequence is what carries the information here.
+r_want = ["0", "101", "11111111", "100000000",   # BIN$, shortest not padded
+          "17", "51", "19",                      # the copy, and the byte AFTER
+          "51"]                                  # the same copy across a bank
+r_got = [x.strip() for x in rows_r if x.strip().lstrip("-").isdigit()]
+if r_got[:len(r_want)] != r_want:
+    fail("BIN$ or MEMCOPY did not answer as it must: wanted %r, got %r. "
+         "The fourth number is BIN$(256), which is where a shift that "
+         "lost the high half stops early; the seventh is the byte AFTER "
+         "the copy and must still be 19, because a block move that "
+         "writes one byte too many is the commonest way to write one; "
+         "the last crosses a BANK, which is the only time the "
+         "destination's DBR has to move." % (r_want, r_got[:len(r_want)]))
+if not any(x.strip() == "MEMOK" for x in rows_r):
+    fail("session R did not reach the end")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

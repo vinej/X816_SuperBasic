@@ -122,8 +122,125 @@ S_FILL          .proc
                 THROW ERR_ARGUMENT
                 .pend
 
+;
+; MEMCOPY src,dst,len -- a block copy anywhere in the 16 MB.
+;
+; The source is read through MTEMP, which is the only [ptr] this file
+; can have -- the direct page is one page and full (PORT.md 19) -- so
+; the DESTINATION uses the same trick the bitmap code does: its bank
+; goes into DBR and the store is a plain absolute-indexed one.
+;
+; The bank is set ONCE and again only when the destination offset wraps,
+; so a 64 KB run costs one bank switch and not 65,536 of them. The
+; source needs no such care: INC on a 32-bit pointer carries into its
+; bank by itself.
+;
+; FORWARD, one byte at a time. Two consequences worth stating rather
+; than discovering:
+;
+; OVERLAP IS NOT HANDLED. Copying a region on top of itself works when
+; the destination is BELOW the source and scrambles it when the
+; destination is above and closer than len -- the classic memmove
+; problem. Going backwards in that case is four more instructions and
+; is not done, because a block move that silently chose a direction
+; would be worse than one that says which it uses.
+;
+; IT IS NOT THE BLITTER. help/MEMORY.TXT says this would be the place
+; to use hardware fill or blit, and VERAFX is where those live; this is
+; the CPU doing it, which works everywhere including on itself.
+;
 S_MEMCOPY       .proc
-                THROW ERR_ARGUMENT
+                PHP
+                TRACE "S_MEMCOPY"
+                PHB
+                setaxl
+
+                CALL EVALEXPR               ; source
+                CALL ASS_ARG1_INT
+                setal
+                LDA ARGUMENT1
+                STA @l MC_S
+                LDA ARGUMENT1+2
+                STA @l MC_S+2
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR               ; destination
+                CALL ASS_ARG1_INT
+                setal
+                LDA ARGUMENT1
+                STA @l MC_D
+                LDA ARGUMENT1+2
+                STA @l MC_D+2
+
+                setas
+                LDA #','
+                CALL EXPECT_TOK
+                setal
+                CALL EVALEXPR               ; length
+                CALL ASS_ARG1_INT
+                setal
+                LDA ARGUMENT1
+                STA @l MC_N
+                LDA ARGUMENT1+2
+                STA @l MC_N+2
+
+                setal                       ; MTEMP is the source cursor, and
+                LDA @l MC_S                 ;  it is set AFTER the last
+                STA MTEMP                   ;  EVALEXPR: it is shared scratch
+                LDA @l MC_S+2               ;  and an expression can stream
+                STA MTEMP+2                 ;  a loaded file through it
+
+mc_bank         setaxl                      ; the destination bank into DBR
+                LDA @l MC_D+2
+                setas
+                PHA
+                PLB
+                setaxl
+                LDA @l MC_D                 ; and its offset into X. LDX has
+                TAX                         ;  no long addressing mode, which
+                                            ;  is why the bank went through A
+                                            ;  above as well.
+
+mc_loop         LDA @l MC_N                 ; anything left?
+                ORA @l MC_N+2
+                BEQ mc_done
+
+                setas
+                LDA [MTEMP]
+                STA @w 0,X
+                setal
+
+                INC MTEMP                   ; the source carries into its own
+                BNE mc_count                ;  bank
+                INC MTEMP+2
+
+mc_count        LDA @l MC_N                 ; one fewer, 32-bit
+                BNE mc_low
+                LDA @l MC_N+2
+                DEC A
+                STA @l MC_N+2
+                LDA #$FFFF
+                STA @l MC_N
+                BRA mc_next
+mc_low          DEC A
+                STA @l MC_N
+
+mc_next         INX                         ; and the destination. X wrapping
+                BNE mc_loop                 ;  to 0 is the bank boundary, and
+                                            ;  the only time DBR has to move
+                LDA @l MC_D+2
+                INC A
+                STA @l MC_D+2
+                LDA #0
+                STA @l MC_D
+                BRA mc_bank
+
+mc_done         PLB
+                PLP
+                RETURN
                 .pend
 
 ;;;

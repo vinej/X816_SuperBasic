@@ -336,6 +336,13 @@ GOB       = $0088BC
 GOA2      = $0088BE         ;  their squares, computed once
 GOB2      = $0088C0
 
+; MEMCOPY (X816/statements_x816.s). The SOURCE cursor is MTEMP, not one
+; of these: [ptr] addressing exists only in the direct page and MTEMP is
+; the scratch pointer that is already there.
+MC_S      = $0088C4         ; dword - where the copy reads from
+MC_D      = $0088C8         ; dword - and writes to; its bank goes to DBR
+MC_N      = $0088CC         ; dword - bytes still to move, counts to zero
+
 ; PLAY's parser state.
 PLY_P     = $008810         ; dword - where it is in the string
 PLY_N     = $008814         ; word - characters left

@@ -1818,6 +1818,7 @@ TOK_LABEL = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
             DEFTOK "LCASE$", TOK_TY_FUNC, 0, FN_LCASE, 0
             DEFTOK "STRING$", TOK_TY_FUNC, 0, FN_STRINGS, 0
             DEFTOK "SPACE$", TOK_TY_FUNC, 0, FN_SPACES, 0
+            DEFTOK "BIN$", TOK_TY_FUNC, 0, FN_BIN, 0
 
 ; 127, not 128. Sub-ids run $80 + index, so an index of 127 would be
 ; sub-id $FF -- and $FF is now the SECOND ESCAPE, the one that selects

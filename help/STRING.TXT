@@ -50,8 +50,18 @@ for want of code. See the note after the list.
 [ ] REPLACE$(s$,old$,new$) - substitution.
 [ ] SPLIT / JOIN into a string array - parsing a line of input is the
     single most common thing a beginner's program does with text.
-[ ] BIN$(n) and its inverse - handy next to HEX$ when poking hardware
+[x] BIN$(n) - the binary form, handy next to HEX$ when poking hardware
     bits, which on this machine is most of what HELP says to do.
+
+    SHORTEST, not padded: BIN$(5) is "101". HEX$ emits whole BYTES -
+    HEX$(5) is "05" - because a hex digit is half a byte and pairs of
+    them are what a program pokes. A bit is not a byte. BIN$(0) is "0",
+    and a negative number comes out as all 32 bits of its two's
+    complement, which is what the machine holds.
+[ ] The inverse of BIN$ - reading a binary string back, or a &b literal
+    beside the &h one the tokenizer already has. &h is where it belongs:
+    a literal costs no token and reads better in the middle of an
+    expression than a function call would.
 
 The token table filled up while these were being written, and LCASE$,
 STRING$ and SPACE$ were cut for want of an id. They are back: tokens are

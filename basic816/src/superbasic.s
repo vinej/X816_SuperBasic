@@ -373,6 +373,76 @@ FN_STRINGS  .proc
             RETURN
             .pend
 
+;
+; BIN$(n) -- the binary form of an integer, shortest that says it.
+;
+; Built BACKWARDS from the end of the temporary string and returned as
+; a pointer into it, which is how HEX$ has always worked here: the
+; number of digits is not known until the last one is written, and
+; walking down from the end costs nothing that walking up and reversing
+; would not cost twice.
+;
+; SHORTEST, not padded. HEX$ emits whole BYTES -- HEX$(5) is "05" --
+; because a hex digit is half a byte and pairs of them are what a
+; program pokes. A bit is not a byte, and BIN$(5) padded to eight would
+; be "00000101" for a number whose whole interest is that it is 101.
+; BIN$(0) is "0": the loop writes a digit before it tests, so zero is
+; one digit rather than none.
+;
+; Negative numbers come out in two's complement, all 32 bits of them,
+; which is what the machine holds and what somebody poking bits wants
+; to see.
+;
+FN_BIN      .proc
+            FN_START "FN_BIN"
+            PHP
+
+            CALL EVALEXPR
+            CALL ASS_ARG1_INT
+            CALL TEMPSTRING
+
+            setaxs
+            LDY #$FF                ; terminate it, then fill downwards
+            LDA #0
+            STA [STRPTR],Y
+            DEY
+
+bn_loop     setas
+            LDA ARGUMENT1
+            AND #1
+            CLC
+            ADC #'0'
+            STA [STRPTR],Y
+            DEY
+
+            setal                   ; value >>= 1, all 32 bits of it
+            LSR ARGUMENT1+2
+            ROR ARGUMENT1
+
+            LDA ARGUMENT1           ; anything left to say?
+            ORA ARGUMENT1+2
+            BNE bn_loop
+
+            setaxs                  ; the first character written, which is
+            TYA                     ;  where the answer starts. SEC before
+            SEC                     ;  ADC is the +1 -- Y is one below it.
+            ADC STRPTR
+            STA ARGUMENT1
+            LDA STRPTR+1
+            STA ARGUMENT1+1
+            LDA STRPTR+2
+            STA ARGUMENT1+2
+            LDA STRPTR+3
+            STA ARGUMENT1+3
+
+            LDA #TYPE_STRING
+            STA ARGTYPE1
+
+            PLP
+            FN_END
+            RETURN
+            .pend
+
 FN_SPACES   .proc
             FN_START "FN_SPACES"
             PHP

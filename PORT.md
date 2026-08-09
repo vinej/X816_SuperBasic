@@ -2103,6 +2103,45 @@ language decision, not plumbing, and one to take deliberately.
 
 X816 49,979 bytes of the 65,280 cap; the C256 still assembles (§23).
 
+## 32. BIN$ and MEMCOPY (2026-08-08)
+
+**`BIN$(n)`** — built backwards from the end of the temporary string and
+returned as a pointer into it, which is how `HEX$` has always worked
+here: the number of digits is not known until the last one is written.
+
+**Shortest, not padded.** `HEX$` emits whole *bytes* — `HEX$(5)` is
+`"05"` — because a hex digit is half a byte and pairs of them are what a
+program pokes. A bit is not a byte, and `BIN$(5)` padded to eight would
+be `"00000101"` for a number whose whole interest is that it is `101`.
+`BIN$(0)` is `"0"`: the loop writes a digit before it tests.
+
+The *inverse* is left on the page as its own line, and the note there
+says where it belongs — a `&b` literal beside the `&h` one the tokenizer
+already has, because a literal costs no token and reads better inside an
+expression than a function call.
+
+**`MEMCOPY src,dst,len`** — the source is read through `MTEMP`, the one
+`[ptr]` this file can have, so the **destination** uses the trick the
+bitmap code uses: its bank goes into `DBR` and the store is a plain
+absolute-indexed one. The bank is set once and again only when the
+offset wraps, so a 64 KB run costs one bank switch and not 65,536; the
+source needs no such care because `INC` on a 32-bit pointer carries into
+its own bank.
+
+**Forward, and overlap is not handled** — copying a region onto itself
+works when the destination is *below* the source and scrambles it when
+the destination is above and closer than `len`. Going backwards in that
+case is four more instructions and is deliberately not done: a block move
+that silently chose a direction would be worse than one that says which
+it uses. The page says so.
+
+`MTEMP` is set **after** the last `EVALEXPR`, not before — it is shared
+scratch and an expression can stream a loaded file through it. That is
+the same rule the note beside `IRQ_TMP` sets out, and the same one that
+`ENV_V` exists for (§26).
+
+X816 50,233 bytes of the 65,280 cap; the C256 still assembles (§23).
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public
