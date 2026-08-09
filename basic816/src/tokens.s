@@ -1815,6 +1815,14 @@ TOKENS2
             DEFTOK "FCIRCLE", TOK_TY_STMNT, 0, S_FCIRCLE, 0
             DEFTOK "GCOLOR", TOK_TY_STMNT, 0, S_GCOLOR, 0
             DEFTOK "GTEXT", TOK_TY_STMNT, 0, S_GTEXT, 0
+; ZX0 is a FUNCTION and answers one past the last byte out: a compressed
+; file says how big it unpacks to only by unpacking, and knowing where
+; the output ended is what lets a program load two back to back.
+            DEFTOK "ZX0", TOK_TY_FUNC, 0, FN_ZX0, 0
+; BMX v1, the format the X16 tools emit. BMXSAVE takes the size because
+; nothing in VRAM says how big a picture is.
+            DEFTOK "BMXLOAD", TOK_TY_STMNT, 0, S_BMXLOAD, 0
+            DEFTOK "BMXSAVE", TOK_TY_STMNT, 0, S_BMXSAVE, 0
 
 ; The machine itself. Three keywords rather than three I2CPOKEs: a
 ; beginner should not need a device address to turn the machine off, and

@@ -64,6 +64,8 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "X816/graphics_x816.s"  ; bitmap drawing on VERA2
 .include "X816/shapes_x816.s"    ; rectangles, circles, ellipses
 .include "X816/gfx2_x816.s"      ; GTEXT, and the flood fill
+.include "X816/zx0_x816.s"       ; ZX0 decompression
+.include "X816/bmx_x816.s"       ; BMX v1 images
 .include "X816/irq_x816.s"       ; IRQ, and the deferred ONVSYNC handlers
 .include "X816/vramio_x816.s"    ; VRAM readback, and VRAM to and from files
 .endif

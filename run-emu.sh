@@ -224,6 +224,29 @@
 #    39. leap years, both ways    - 2026-02-28 becomes 03-01 and
 #                                   2024-02-28 becomes 02-29
 #
+#   session T -- ALLOC, REPLACE$, &b, FILL and GTEXT
+#    40. ALLOC / FREE / POKE      - a block from the kernel, WRITTEN
+#                                   AND READ BACK. That round trip is
+#                                   what found POKE using a float
+#                                   address as its own bit pattern
+#    41. REPLACE$                 - including an overlapping needle
+#                                   and an empty one
+#    42. &b                       - and BIN$ of it, the round trip
+#    43. FILL                     - filled INSIDE a rectangle and NOT
+#                                   outside it: containment is the
+#                                   whole of a flood fill
+#    44. GTEXT                    - pixels where a glyph has them
+#
+#   session U -- ZX0 and BMX
+#    45. ZX0                      - against an INDEPENDENT decoder,
+#                                   on a stream built to use all
+#                                   three of its states: a literal
+#                                   run, a match at a NEW offset and
+#                                   a match repeating the LAST one
+#    46. BMXLOAD / BMXSAVE        - the palette AND the pixels, and
+#                                   then a round trip through a file
+#                                   this program wrote itself
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -907,6 +930,89 @@ PYADP
 # clock that gets it wrong is wrong for one day every hundred years --
 # exactly long enough for nobody to have tried it. 2026 is not a leap
 # year and 2024 is.
+# ALLOC, REPLACE$, &b, FILL and GTEXT.
+#
+# THE ALLOC ROUND TRIP IS THE POINT of the first three lines. ALLOC
+# hands back an address, POKE writes to it and PEEK reads it back --
+# and that is what turned up POKE never converting its address to an
+# integer. A float address was used as its own BIT PATTERN, so with A
+# holding 2097408 the write went to $000400 in bank 0 while PEEK read
+# $200100. Both halves have to be here or the bug comes back.
+#
+# REPLACE$ on "banana" is the overlapping case: "ana" matches at 1
+# and again at 3, and a decoder that restarts one character on rather
+# than past the whole needle gives a different answer. The empty
+# needle must give the string back unchanged -- matching everywhere
+# is a loop that never advances.
+#
+# FILL is checked INSIDE and OUTSIDE the rectangle. Filling the inside
+# is easy; not leaking through the outline is the whole job, and a
+# fill that ran away would paint 150,115 too.
+# ZX0 and BMX, both against files Python built and understands.
+#
+# The ZX0 stream is hand-composed to use each of the three states on
+# purpose -- a literal run, a match at a NEW offset, a match at the
+# LAST offset -- and then decoded again by an independent Python
+# decoder, which is what says the stream is a valid one before the
+# machine is asked about it. "HELLO HELLO WORLD WO" is what it says.
+#
+# The bytes checked are chosen one per state: 0 is a literal, 6 is
+# the first byte of the new-offset match, 12 is a literal again and
+# 17 and 19 are the repeat. Getting the offset wrong leaves the
+# literals perfectly correct and only the matches wrong, which is
+# exactly what it did before the multiply was fixed.
+python "C:/Users/jyv/AppData/Local/Temp/claude/c--quartus-projects-X816-SuperBasic/8f4c86e3-c9af-4b74-ac5c-ad0608b6ae44/scratchpad/zx0make.py" "$OUT/t.zx0" >/dev/null || exit 1
+python "C:/Users/jyv/AppData/Local/Temp/claude/c--quartus-projects-X816-SuperBasic/8f4c86e3-c9af-4b74-ac5c-ad0608b6ae44/scratchpad/bmxmake.py" "$OUT/t.bmx" >/dev/null || exit 1
+
+# BMX: an 8x4 image with four palette entries from 16. The RANGE is
+# the point of the save -- an entry nobody wrote does not read back
+# (HELP PAL), so saving all 256 writes junk over the text palette and
+# the screen goes black on the reload. It did, once. 16,4 is this
+# program saying which entries are its own.
+KEYS_U=$(keys_of \
+    '10 BLOAD "T.ZX0",&h50000' \
+    '20 E=ZX0(&h50000,&h51000)' \
+    '30 PRINT E-&h51000' \
+    '40 PRINT PEEK(&h51000)' \
+    '50 PRINT PEEK(&h51006)' \
+    '60 PRINT PEEK(&h5100C)' \
+    '70 PRINT PEEK(&h51011)' \
+    '80 BMXLOAD "T.BMX",&h14000' \
+    '90 PRINT PALGET(16)' \
+    '100 PRINT VPEEK(&h14009)' \
+    '110 BMXSAVE "O.BMX",&h14000,8,4,16,4' \
+    '120 VPOKE &h14009,0' \
+    '130 PAL 16,0' \
+    '140 BMXLOAD "O.BMX",&h14000' \
+    '150 PRINT PALGET(16)' \
+    '160 PRINT VPEEK(&h14009)' \
+    '170 PRINT "UOK"' \
+    'RUN')
+
+KEYS_T=$(keys_of \
+    '10 A=ALLOC(1000)' \
+    '20 PRINT A>0' \
+    '30 POKE A,77' \
+    '40 PRINT PEEK(A)' \
+    '50 FREE A' \
+    '60 PRINT REPLACE$("banana","ana","X")' \
+    '70 PRINT REPLACE$("abc","","!")' \
+    '80 PRINT REPLACE$("aXbXc","X","")' \
+    '90 PRINT &b101' \
+    '100 PRINT BIN$(&b101101)' \
+    '110 GRAPHICS 1' \
+    '120 CLRBITMAP 0' \
+    '130 RECT 100,100,140,130,5' \
+    '140 FILL 120,115,9' \
+    '150 GTEXT 200,200,3,"Hi"' \
+    '160 GRAPHICS 0' \
+    '170 PRINT POINT(120,115)' \
+    '180 PRINT POINT(100,100)' \
+    '190 PRINT POINT(150,115)' \
+    '200 PRINT POINT(200,200)' \
+    '210 PRINT "TOK2"' \
+    'RUN')
+
 KEYS_S=$(keys_of \
     '10 SETTIME "14:30:00"' \
     '20 PRINT GETTIME$' \
@@ -1120,6 +1226,8 @@ if [ "$NEG" = "0" ]; then
     run_session Q "$KEYS_Q" || { echo "session Q produced no recording"; exit 1; }
     run_session R "$KEYS_R" || { echo "session R produced no recording"; exit 1; }
     run_session S "$KEYS_S" || { echo "session S produced no recording"; exit 1; }
+    run_session T "$KEYS_T" || { echo "session T produced no recording"; exit 1; }
+    run_session U "$KEYS_U" "$OUT/t.zx0" T.ZX0 "$OUT/t.bmx" T.BMX || { echo "session U produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -1139,9 +1247,11 @@ else
     cp "$OUT/outA.gif" "$OUT/outQ.gif"
     cp "$OUT/outA.gif" "$OUT/outR.gif"
     cp "$OUT/outA.gif" "$OUT/outS.gif"
+    cp "$OUT/outA.gif" "$OUT/outT.gif"
+    cp "$OUT/outA.gif" "$OUT/outU.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$WOUT/outS.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$WOUT/outS.gif" "$WOUT/outT.gif" "$WOUT/outU.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
@@ -1149,14 +1259,15 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
  gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, gif_r, gif_s,
- fontinc, adpexp) = (
+ gif_t, gif_u, fontinc, adpexp) = (
                     sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
                     sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
                     sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
                     sys.argv[17], sys.argv[18], sys.argv[19],
-                    sys.argv[20], sys.argv[21])
-negative = sys.argv[22] == "1"
+                    sys.argv[20], sys.argv[21], sys.argv[22],
+                    sys.argv[23])
+negative = sys.argv[24] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -1218,9 +1329,11 @@ rows_p = [] if negative else last_screen(gif_p)
 rows_q = [] if negative else last_screen(gif_q)
 rows_r = [] if negative else last_screen(gif_r)
 rows_s = [] if negative else last_screen(gif_s)
+rows_t = [] if negative else last_screen(gif_t)
+rows_u = [] if negative else last_screen(gif_u)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
         rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
-        rows_o + rows_p + rows_q + rows_r + rows_s)
+        rows_o + rows_p + rows_q + rows_r + rows_s + rows_t + rows_u)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -1947,6 +2060,70 @@ if not any(x.strip() == "2024-02-29" for x in rows_s):
          "century rules above it for one day every hundred")
 if not any(x.strip() == "CLKOK" for x in rows_s):
     fail("session S did not reach the end")
+
+# ---- session T: ALLOC, REPLACE$, &b, FILL, GTEXT ----------------------
+# 77 read back out of a block ALLOC handed over is two things at once:
+# the allocator works, and POKE reached the address it was given. POKE
+# used a float address as its own BIT PATTERN until this was written.
+if not any(x.strip() == "77" for x in rows_t):
+    fail("a byte written to an ALLOC'd block did not read back. Either "
+         "ALLOC did not hand out usable memory, or POKE went somewhere "
+         "else -- it used to use a float address as its bit pattern")
+for want, why in (
+    ("bXna", "REPLACE$ did not handle an overlapping needle: \"ana\" "
+             "matches in \"banana\" at 1 and again at 3, and stepping "
+             "one character on instead of past the needle gives a "
+             "different answer"),
+    ("abc", "REPLACE$ with an EMPTY needle did not give the string back "
+            "unchanged -- matching everywhere is a loop that never "
+            "advances"),
+    ("5", "&b did not read a binary literal: &b101 is 5"),
+    ("101101", "BIN$ did not turn a &b literal back into the same "
+               "digits"),
+):
+    if not any(x.strip() == want for x in rows_t):
+        fail(why)
+# FILL: inside is the easy half, OUTSIDE is the job.
+if not any(x.strip() == "9" for x in rows_t):
+    fail("FILL did not fill the inside of the rectangle")
+if not any(x.strip() == "5" for x in rows_t):
+    fail("FILL ate the rectangle's own outline")
+if not any(x.strip() == "3" for x in rows_t):
+    fail("GTEXT put no pixel where the glyph has one")
+if not any(x.strip() == "TOK2" for x in rows_t):
+    fail("session T did not reach the end")
+
+# ---- session U: ZX0 and BMX -------------------------------------------
+# ZX0, in order, against a stream an independent Python decoder has
+# already agreed unpacks to "HELLO HELLO WORLD WO":
+#   20  the length -- as a float, because E is one
+#   72  byte 0, a LITERAL
+#   72  byte 6, the first byte of the NEW-offset match
+#   87  byte 12, a literal again
+#   32  byte 17, the LAST-offset match
+# Getting the offset wrong leaves every literal correct and only the
+# matches wrong, so the literals alone would not notice.
+u_want = ["2.00000E01", "72", "72", "87", "32"]
+u_got = [x.strip() for x in rows_u if x.strip().lstrip("-").replace(".", "")
+         .replace("E", "").isdigit()]
+if u_got[:len(u_want)] != u_want:
+    fail("ZX0 did not decode as an independent decoder says it must: "
+         "wanted %r, got %r. The first is the length; then a literal, "
+         "the first byte of a NEW-offset match, another literal, and a "
+         "LAST-offset match -- one per state." % (u_want, u_got[:len(u_want)]))
+# BMX: loaded, then destroyed, then reloaded from this program's OWN
+# file. 15 is palette entry 16 ($000F) and 9 is pixel 9; both have to
+# appear TWICE, once from each load.
+if len([x for x in rows_u if x.strip() == "15"]) < 2:
+    fail("BMX did not round-trip the PALETTE: entry 16 should read $000F "
+         "after the load and again after reloading the file BMXSAVE "
+         "wrote")
+if len([x for x in rows_u if x.strip() == "9"]) < 2:
+    fail("BMX did not round-trip the PIXELS")
+if not any(x.strip() == "UOK" for x in rows_u):
+    fail("session U did not reach the end -- if the screen is blank, the "
+         "palette range saved was wider than the entries this program "
+         "set, and the junk went over the text colours")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

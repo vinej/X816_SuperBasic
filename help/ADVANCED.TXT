@@ -45,22 +45,62 @@ rather than a design one.
 
 --- images ---
 
-[ ] BMXLOAD file$,addr - load a BMX v1 image: palette into the palette,
-    pixels into VRAM. The format the X16 tools emit, so there is a supply
-    of art and converters already.
-[ ] BMXSAVE file$,addr - write one back out.
+[x] BMXLOAD file$,addr - load a BMX v1 image: palette into the palette,
+    pixels into VRAM. The format the X16 tools and Prog8 emit, so there
+    is a supply of art and converters already.
 
-If BMXSAVE reads the palette from VERA it will write bytes that are not
-colours, because entries nobody ever wrote do not read back (HELP PAL) -
-and loading that file installs them for real and the screen goes to
-pieces. Keep the palette in an array and save that.
+    The pixels go to VRAM CONTIGUOUSLY from addr. The library version
+    writes rows a settable stride apart so a narrow image can be stamped
+    into a wider screen; that is an argument nobody would pass, and a
+    320-wide image - the whole 320x240 bitmap - is identical either way.
+
+    A COMPRESSED FILE IS REFUSED rather than half-read. Byte 14 is the
+    only thing that says so, and one whose pixels are packed would
+    otherwise load as noise.
+[x] BMXSAVE file$,addr,w,h,palstart,palcount - write one back out, 8bpp.
+
+    WIDTH AND HEIGHT ARE ARGUMENTS because nothing in VRAM says how big
+    a picture is, and a save that assumed 320x240 would be wrong for
+    every sprite sheet anybody wanted to keep.
+
+    SO IS THE PALETTE RANGE, and that is the argument that matters. This
+    page has always warned that reading the palette back from VERA gives
+    bytes that are not colours, because entries nobody ever wrote do not
+    read back (HELP PAL) - and loading such a file installs them FOR
+    REAL and the screen goes to pieces.
+
+    That is not a hypothesis. The first version of this statement saved
+    all 256 entries, and the test that reloaded its own output came back
+    with a BLANK SCREEN: the junk had gone over the text palette and the
+    glyphs were black on black. Naming the range is how a program says
+    which entries are its own.
 
 --- compression ---
 
-[ ] ZX0 decompression - unpack data compressed by zx0 or salvador. A
-    320x240 screen is 76,800 bytes and a BASIC program that wants three
-    of them cannot afford them raw. Decompression also turns a slow card
-    read into a fast one, which matters more than the space.
+[x] ZX0(src,dst) - unpack data compressed by zx0 or salvador, and
+    answer ONE PAST the last byte written. A 320x240 screen is 76,800
+    bytes and a program that wants three of them cannot afford them raw;
+    decompression also turns a slow card read into a fast one, which
+    matters more than the space.
+
+        E = ZX0(&h50000, &h51000)
+
+    A FUNCTION, because the length is the one thing a caller cannot work
+    out for itself - a compressed file says how big it unpacks to only
+    by unpacking, and knowing where the output ended is what lets a
+    program load two of them back to back.
+
+    THE MODERN ZX0 v2 STREAM, which is what zx0 and salvador emit by
+    default - not their -classic mode.
+
+    RAM TO RAM, AND NOT IN PLACE: the match copier reads the output
+    back, so the destination must not overlap the source.
+
+    Ported from the working 6502 version in X816_Library. What had to
+    change is the pointers - that one lives inside 64 KB and this
+    machine is flat 16 MB - so all three cursors are 24-bit, and they
+    are MTEMP, ARGUMENT1 and ARGUMENT2 borrowed rather than four bytes
+    of direct page each.
 
 --- sound ---
 

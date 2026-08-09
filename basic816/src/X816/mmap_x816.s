@@ -400,6 +400,30 @@ FIL_SX    = $008A26         ; word - the seed the statement was given
 FIL_SY    = $008A28
 FIL_STK   = $008B00         ; 1 KB - FIL_MAX entries of (x, y)
 
+; ZX0 (X816/zx0_x816.s). The three CURSORS are not here -- MTEMP,
+; ARGUMENT1 and ARGUMENT2 are borrowed, because [ptr] addressing exists
+; only in the direct page and those three are scratch nothing else
+; touches while a decompression runs.
+ZX_S      = $008F00         ; dword - where the compressed data started
+ZX_BITS   = $008F04         ; word - the bit buffer, sentinel in bit 0
+ZX_LAST   = $008F06         ; word - the last byte read, for the backtrack
+ZX_BT     = $008F08         ; word - a bit was read early and put back
+ZX_INV    = $008F0A         ; word - invert the gamma's data bits
+ZX_VAL    = $008F0C         ; word - the length being decoded
+ZX_OFF    = $008F0E         ; word - the match offset
+ZX_T      = $008F10         ; word - scratch
+
+; BMX (X816/bmx_x816.s).
+BMX_VA    = $008F14         ; dword - the VRAM address of the pixels
+BMX_N     = $008F18         ; dword - pixel bytes still to move
+BMX_I     = $008F1C         ; word - an offset into the staging buffer
+BMX_PN    = $008F1E         ; word - palette entries still to move
+BMX_W     = $008F20         ; word - the picture's size, which the file
+BMX_H     = $008F22         ;  carries and a save has to be told
+BMX_T     = $008F24         ; word - a header field being assembled
+BMX_PS    = $008F26         ; word - the first palette entry a save takes
+BMX_PX    = $008F28         ; word - where the pixels start in the file
+
 ; Mouse extras.
 MOUSE_WH  = $0084A0         ; word - wheel movement, signed, cleared by a read
 MOUSE_PK  = $0084A2         ; byte - bytes in one movement packet: 3, or 4

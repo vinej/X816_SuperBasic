@@ -2142,6 +2142,61 @@ the same rule the note beside `IRQ_TMP` sets out, and the same one that
 
 X816 50,233 bytes of the 65,280 cap; the C256 still assembles (§23).
 
+## 34. ZX0 and BMX (2026-08-09)
+
+### ZX0
+
+`ZX0(src,dst)` unpacks a ZX0 v2 stream and answers **one past** the last
+byte written — a function, because the length is the one thing a caller
+cannot work out for itself.
+
+Ported from the working 6502 version in `X816_Library`. What had to
+change is the pointers: that one lives inside 64 KB and this machine is
+flat 16 MB, so all three cursors are 24-bit — and they are `MTEMP`,
+`ARGUMENT1` and `ARGUMENT2` **borrowed**, not four bytes of direct page
+each. `[ptr]` addressing exists only there, the page has 46 bytes left,
+and none are spent here.
+
+**The bug was the original's own idiom.** It computes `offset = val*128`
+as an `LSR` into the high byte and a `ROR` of the carry into bit 7 of the
+low one — a *byte* pair. Transcribed into 16-bit `A`, that stored two
+bytes at `ZX_OFF+1` and smeared past it. Here it is one seven-bit shift.
+
+The symptom named the cause once the numbers were visible: **every
+literal byte was right and only the matches were wrong**, which can only
+be the offset.
+
+Checked against an **independent decoder**. Python builds a stream by
+hand that uses each of the three states on purpose — a literal run, a
+match at a new offset, a match repeating the last one — decodes it with a
+separate implementation to prove the stream is valid, and the machine
+then has to agree byte for byte.
+
+### BMX, and the warning that came true
+
+`BMXLOAD file$,addr` reads a v1 image: palette into the palette, pixels
+contiguously into VRAM. A compressed file is **refused** rather than
+half-read; byte 14 is the only thing that says so.
+
+`BMXSAVE file$,addr,w,h,palstart,palcount`. Width and height are
+arguments because nothing in VRAM says how big a picture is — a save that
+assumed 320×240 would be wrong for every sprite sheet.
+
+**The palette range is an argument too, and that is the one that
+matters.** `help/ADVANCED.TXT` has warned since it was written that
+reading the palette back from VERA gives bytes that are not colours,
+because entries nobody wrote do not read back — and that loading such a
+file installs them for real.
+
+The first version of this statement saved all 256 entries. The probe that
+reloaded its own output came back with a **blank screen**: the junk had
+gone over the text palette and the glyphs were black on black. The page
+said it would, and it did. Naming the range is how a program says which
+entries are its own — and it is the same lesson `run-emu.sh`'s session G
+already carries about `PALSAVE`.
+
+X816 54,089 bytes of the 65,280 cap; the C256 still assembles (§23).
+
 ## 33. A soft clock, and the end of help/TIME.TXT (2026-08-09)
 
 There is no RTC and there is not going to be. What there is is a
