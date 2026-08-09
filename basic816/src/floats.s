@@ -782,24 +782,45 @@ loop            CMP #150
                 BEQ adj_sign
                 BLT shift_right
 
-                THROW ERR_OVERFLOW      ; Throw an overflow error if the magnitude is too great.
+                ; An exponent above 150 means the value is at least 2^24
+                ; and the mantissa must shift LEFT to become the integer.
+                ; THIS BRANCH WAS COMMENTED OUT, and the THROW below sat
+                ; in its place -- so converting ANY float >= 16,777,216
+                ; to an integer has thrown ?OVERFLOW on every build since
+                ; BASIC816. It hid for the same reason four other bugs
+                ; hid today: nobody had written the input. A%=2E7 was
+                ; never typed, INT never saw a big float, and the float
+                ; PRINT bug above 1e5 made large values look wrong
+                ; anyway, so nothing pointed here. What finally did was
+                ; durexForth's F., which scales every number into
+                ; [1e8,1e9) before converting -- through this same
+                ; routine, assembled unchanged into fpengine.bin.
+                ;
+                ; 157 is the last exponent whose shifted mantissa fits a
+                ; signed 32-bit integer; past it the overflow is real.
+                ; (The one value that loses is exactly -2^31, whose
+                ; float form is e=158: a documented edge, not worth the
+                ; special case.)
+                CMP #158
+                BLT shift_left
+                THROW ERR_OVERFLOW      ; The magnitude really is too great
 
-; shift_left      setal
-;                 LDA l_mantissa
-;                 ASL A
-;                 STA l_mantissa
-;                 LDA l_mantissa+2
-;                 ROL A
-;                 STA l_mantissa+2
-;                 setas
+shift_left      setal
+                LDA l_mantissa
+                ASL A
+                STA l_mantissa
+                LDA l_mantissa+2
+                ROL A
+                STA l_mantissa+2
+                setas
 
-;                 LDA l_exponent
-;                 DEC A
-;                 STA l_exponent
+                LDA l_exponent
+                DEC A
+                STA l_exponent
 
-;                 CMP #150
-;                 BEQ adj_sign
-;                 BRA shift_left
+                CMP #150
+                BEQ adj_sign
+                BRA shift_left
 
 shift_right     setal
                 LDA l_mantissa+2

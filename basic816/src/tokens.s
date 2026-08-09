@@ -1916,9 +1916,9 @@ TOKENS3
 ; count comes back as the answer rather than through a variable named
 ; as a fourth argument. Both take the array as w$(), with nothing
 ; between the brackets: the whole array, not a cell of it.
+.if SYSTEM == SYSTEM_X816
             DEFTOK3 "SPLIT", TOK_TY_FUNC, 0, FN_SPLIT, 0
             DEFTOK3 "JOIN$", TOK_TY_FUNC, 0, FN_JOIN, 0
-.if SYSTEM == SYSTEM_X816
             DEFTOK3 "VER", TOK_TY_FUNC, 0, FN_VER, 0
 .endif
 

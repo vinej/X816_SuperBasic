@@ -2590,6 +2590,57 @@ them cost an hour: a fix that changes WHICH branch a comparison takes
 must be probed on inputs that used to take the OTHER branch; and the
 suite only defends the shapes somebody once wrote into it.
 
+## 39. FTOI's missing branch, and the float engine's second life (2026-08-09)
+
+The evening's arc: durexForth's float library was replaced with THIS
+port's engine — `floats_x816.s` and `transcendentals_x816.s` assembled
+unchanged into a 5 KB blob (`X816_DurexForth/fpengine/`), a jump table
+at $00:5000, IEEE singles one Forth cell wide. BM8 there fell from
+525 s to 17.4 s, and Ahl's arithmetic error from 3.4e+37 (the old
+MFLPT `F**` exploded near 1.0) to 0.180 — against 0.176 here, the same
+engine giving the same truncation through two languages.
+
+### The branch that was never in
+
+The port's `F.` scales every value into [1e8, 1e9) before converting —
+and every conversion threw. **`FTOI`'s shift-left branch was commented
+out upstream**, with `THROW ERR_OVERFLOW` sitting in its place: any
+float ≥ 2^24 = 16,777,216 converted to an integer has thrown ?OVERFLOW
+on every build since BASIC816. `A%=20000000.0` was never typed by
+anyone, `INT` never saw a big float — and the PRINT bug below made
+large floats look broken anyway, so nothing pointed at the conversion.
+The branch is restored with a real bound (exponent 158, past which the
+overflow is honest; the one casualty is exactly -2^31, documented).
+Session V asserts `A%=20000000.0` prints 20000000.
+
+Probes on both sides: BASIC round-trips ±2e7 and `INT(123456789.0)` =
+123456784 — the nearest single, faithfully converted; Forth round-trips
+Ahl's 10×SQR/10×^2 to ≈N for 2, 16, 100.
+
+### The C256 checks were vacuously green
+
+`build-c256.sh` reports failure as "FAILED to assemble" on stdout and
+keeps errors in `build/c256.log`; every check this session grepped for
+"error:" and matched nothing either way. The C256 build had actually
+been broken since the morning's SPLIT/JOIN commit — its 14 bytes of new
+direct-page globals overflowed the C256's smaller page — and three
+commit messages claimed "the C256 still assembles" in good faith and
+wrongly. SPLIT/JOIN and their globals are X816-guarded now (the C256 is
+a compile check, not a feature port — §23), the build is verified by
+its own words, and the record stands corrected here.
+
+### Still open
+
+**Floats ≥ 1e5 PRINT ten times too large with a digit dropped**
+(`PRINT 123456.0` → `1.2345E06`) — ancestral, the camouflage that kept
+FTOI's bug invisible, and the reason the first benchmark screens looked
+five-digit. The value underneath is correct; the fault is in the float
+formatter. Filed as the next fix.
+
+**X816_Library's `f_pow` is suspect**: its `f_ln`/`f_exp` share the old
+MFLPT algorithms verbatim (same author, same comments), and the blowup
+near 1.0 has not been probed there. `1.000677^1024` is the test.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

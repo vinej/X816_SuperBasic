@@ -34,10 +34,15 @@ SB_J        .word ?             ; a second one
 SB_P        .dword ?            ; a pointer into the middle of a string
 SB_K        .word ?             ; a third index, for the one function that
                         ;  walks three strings at once
+; The SPLIT/JOIN globals are X816-only, like their functions below:
+; they are what pushed the C256's smaller direct page past its cap,
+; and that build is a compile check (PORT.md 23), not a feature port.
+.if SYSTEM == SYSTEM_X816
 SB_L        .word ?             ; a fourth, for SPLIT: the separator length
 SB_SRC      .dword ?            ; SPLIT's source string
 SB_SEP      .dword ?            ; the separator, for SPLIT and JOIN$
 SB_ARR      .dword ?            ; the string array either of them is given
+.endif
 .send
 
 ;
@@ -670,6 +675,7 @@ sf_done     CALL SB_RETSTR
             RETURN
             .pend
 
+.if SYSTEM == SYSTEM_X816
 ;;;
 ;;; SPLIT and JOIN$ -- a string and a string array, in both directions.
 ;;;
@@ -1086,3 +1092,4 @@ jn_done     CALL SB_RETSTR              ; Y is the length; it terminates it
 
 jn_range    THROW ERR_RANGE
             .pend
+.endif

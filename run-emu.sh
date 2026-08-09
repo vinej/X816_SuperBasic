@@ -1024,6 +1024,8 @@ KEYS_V=$(keys_of \
     '172 PRINT ABS(6-1)' \
     '174 PRINT 10-5+2' \
     '176 PRINT MAX(10-2,3)' \
+    '177 A%=20000000.0' \
+    '178 PRINT A%' \
     '180 PRINT "VSPLIT"' \
     'RUN' \
     'NEW' \
@@ -2211,7 +2213,9 @@ v_want = ["3.00000", "[10]", "[20]", "[30]", "10-20-30", "3", "[]",
           "1", "[abc]", "3", "abc", "2", "1/2",
           # a minus inside a function argument (the TOK_FUNC_OPEN
           # marker regression), left-associative chains, and both:
-          "5", "7", "8", "VSPLIT"]
+          "5", "7", "8",
+          # FTOI above 2^24 -- the commented-out shift_left branch:
+          "20000000", "VSPLIT"]
 v_seq = [x.strip() for x in rows_v]
 v_i = 0
 for want in v_want:
