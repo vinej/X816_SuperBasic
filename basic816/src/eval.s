@@ -307,7 +307,25 @@ OPHIGHPREC  .proc
             CPY #OPERATOR_TOP       ; Is the stack empty?
             BEQ is_false            ; Yes: return false
 
-            PHA                     ; The token is wanted twice
+            ; TOK_FUNC_OPEN IS NOT AN OPERATOR. It is a $01 marker with
+            ; no record of its own, so TOKPRECED read some real token's
+            ; record through the alias -- and the precedence that came
+            ; back happened to equal the minus sign's. The old
+            ; push-on-tie ACCIDENTALLY protected it; the associativity
+            ; fix popped it into PROCESSOP, and ABS(6-1) -- any minus
+            ; inside a function argument -- became a syntax error while
+            ; ABS(900/5) kept working, because the divide's precedence
+            ; missed the alias's. A marker is a floor, exactly like "(":
+            ; nothing pops it but the code that pushed it, so anything
+            ; on the stack without bit 7 answers "push".
+            PHA                     ; The incoming token, wanted after
+            LDA #1,B,Y              ;  the marker test
+            BMI tos_is_op           ; Bit 7 set: a real operator token
+            PLA
+            BRA is_false
+
+tos_is_op   PLA                     ; The incoming token, wanted twice
+            PHA
             CALL TOKPRECED          ; Get the precedence for the passed operator
             STA SCRATCH             ; Save it for later comparison
             PLA

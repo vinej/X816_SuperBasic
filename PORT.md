@@ -2550,6 +2550,46 @@ gone. 303 ms is ~2,400 cycles an iteration, which on his hardware
 now runs the canonical empty loop ~4× faster than a C64 at 8 MHz and
 ~7× at 14.
 
+## 38. The fix's own bug: ABS(6-1) and the marker that posed as an operator (2026-08-09)
+
+The associativity fix (§36) shipped a regression, found the same evening
+by the benchmark it was helping: Ahl's program ended in
+`PRINT ABS(1010-S/5)` and got a syntax error.
+
+The shape was exact once probed: **a minus inside a function's argument
+list** failed — `ABS(6-1)`, `SQR(16-7)`, `MAX(10-2,3)` — while
+`ABS(900/5)`, `ABS(2*3)` and plain `(1010-900/5)` all worked. An A/B
+against the pre-fix binary confirmed the old evaluator passed all of
+them: the regression was mine.
+
+The mechanism is worth the paragraph. `TOK_FUNC_OPEN` is a `$01`
+pseudo-token pushed to mark the start of an argument list. It has **no
+token record**, so `TOKPRECED` reads some real token's record through
+the alias — and the precedence that happens to come back **equals the
+minus sign's**. For thirty years of BASIC816 that never mattered: on a
+precedence tie the old code answered "push", which protected the marker
+*by accident*. The associativity fix made ties pop — correct for
+operators, fatal for a marker, which went to `PROCESSOP` and threw. The
+divide's precedence missed the alias's value, which is why `/` kept
+working and `-` did not.
+
+The fix states the principle the accident was standing in for: **a
+marker is a floor, like `(`** — anything on the operator stack without
+bit 7 answers "push", before any precedence is read. Nothing pops a
+marker but the code that pushed it.
+
+**The suite had no session with a minus inside a function argument**,
+which is how the regression passed 22 sessions. Session V now asserts
+`ABS(6-1)`=5, `10-5+2`=7 and `MAX(10-2,3)`=8 — the regression, the
+original fix, and both at once. An eighteen-case probe (six shapes,
+twelve associativity cases, `MID$` with an expression argument, nested
+parens inside a call) is green.
+
+Two lessons repeated from this same day, recorded because repeating
+them cost an hour: a fix that changes WHICH branch a comparison takes
+must be probed on inputs that used to take the OTHER branch; and the
+suite only defends the shapes somebody once wrote into it.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

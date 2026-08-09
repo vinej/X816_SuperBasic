@@ -10,47 +10,52 @@
 #                            that add ONE feature at a time: an empty FOR
 #                            loop, then K=K+1, then division, then more
 #                            arithmetic, then GOSUB, then a nested loop,
-#                            then an array, then exponent/log/sine. Because
-#                            each isolates one thing, the DIFFERENCES
-#                            between them say where the interpreter spends
-#                            its time, which is worth more than any single
-#                            number.
+#                            then an array, then exponent/log/sine. The
+#                            DIFFERENCES between them say where the
+#                            interpreter spends its time. BM1I is this
+#                            port's own addition: BM1 on K%, the integer
+#                            fast path.
 #
 #   Ahl's benchmark          David Ahl, Creative Computing, 1983-84. One
 #                            program, and it reports ACCURACY as well as
-#                            speed. The accuracy column is a real result
-#                            here rather than a formality: these floats are
-#                            this port's own software implementation
-#                            (X816/floats_x816.s), not Microsoft's.
+#                            speed; these floats are the port's own
+#                            software IEEE-754 singles, so the accuracy
+#                            column is a result and not a formality.
 #
 # WHY THE TIMES ARE REAL DESPITE -warp. The emulator's millisecond counter
 # is driven by EXECUTED CYCLES at the emulated 8 MHz (X816_Emulator
-# src/memory.c timer_step: clks_per_ms = MHZ * 1000), not by the host's
-# wall clock. Warping makes the run finish sooner without changing what
-# TIMER reads. So the numbers are the seconds the real machine would take,
-# to the accuracy of the emulator's cycle model -- which is per-instruction
-# counting, CHECKED AGAINST THE FPGA on 2026-08-09: BM1 measured 946 ms on
-# the MiSTer at 8 MHz against 871 ms here, so the model runs about 8
-# percent optimistic. Deltas and percentages from this script are sound;
-# absolute times worth quoting come from hardware. The same run measured
-# 539 ms at TURBO's 14 MHz -- 540.6 predicted by pure clock ratio, so the
-# interpreter is compute-bound and TURBO is worth exactly its ratio.
+# src/memory.c timer_step), not by the host's wall clock. Warping changes
+# how long the run takes, not what TIMER reads. Checked against the FPGA
+# on 2026-08-09: BM1 measured 946 ms on the MiSTer at 8 MHz against 871
+# here, so the cycle model runs about 8 percent optimistic -- deltas and
+# percentages from this script are sound; absolute times worth quoting
+# come from hardware. The same run measured 539 ms at TURBO's 14 MHz,
+# against 540.6 predicted by pure clock ratio: the interpreter is
+# compute-bound and TURBO is worth exactly its ratio.
 #
-# READING THE RESULT. The X816 runs at 8 MHz where a C64, an Apple II or a
-# Spectrum ran at about 1. The raw figure answers "is this machine fast";
-# the figure divided by 8 answers "is this interpreter good", which is the
-# question about the port. Published tables for those machines are easy to
-# find and are deliberately NOT reproduced here: a comparison column is
-# only worth having from a source you trust.
+# THE PROGRAM IS TYPED IN, AND RUN IS THE LAST KEYSTROKE. -autokeys types
+# into the SMC key FIFO on a timer and keeps typing while the guest is
+# busy; the FIFO drops what does not fit. This harness lost three rounds
+# to that: one session running all nine let a RUNNING benchmark eat the
+# next LOAD, so eight of nine "results" were copies of the first; a
+# session per benchmark lost the RUN itself during a long LOAD; and the
+# repair lost its trailing newline to $(...), which STRIPS them -- RUN sat
+# on the input line for five minutes while the GIF grew to 198 MB. Hence:
+# type the program from bench/*.BAS (one source of truth with the card
+# that runs on real hardware), make RUN the final keystroke, and end with
+# a LITERAL backslash-n, which command substitution cannot strip and
+# -autokeys converts to CR itself.
 #
-# This is NOT part of run-emu.sh and must not become part of it. That suite
-# is a pass/fail on correctness; a benchmark has no failing value, and a
-# slow build is not a broken one.
+# The sessions run in PARALLEL, one per benchmark; safe for the same
+# reason -warp is.
 #
-#   ./run-bench.sh                 build, run all nine, print the table
+# This is NOT part of run-emu.sh and must not become part of it. That
+# suite is a pass/fail on correctness; a benchmark has no failing value.
+#
+#   ./run-bench.sh                 build, run all ten, print the table
 #   ./run-bench.sh --raw           also dump each decoded screen
-#   ./run-bench.sh --raw BM6 AHL   only those, which is how you find out
-#                                  why one of them printed nothing
+#   ./run-bench.sh --raw BM6 AHL   only those, to see why one printed
+#                                  nothing
 # ============================================================================
 set -u
 cd "$(dirname "$0")"
@@ -73,63 +78,28 @@ cp build/basic.bin "$OUT/basic.bin"
 cp "$CORE/boot/fat32.img" "$OUT/card.img"
 python tools/putfile.py "$(cygpath -m "$OUT/card.img")" \
     "$(cygpath -m "$OUT/basic.bin")" BASIC.BIN >/dev/null || exit 1
-for t in $TAGS; do
-    python tools/putfile.py "$(cygpath -m "$OUT/card.img")" \
-        "$(cygpath -m "bench/$t.BAS")" "$t.BAS" >/dev/null || exit 1
-done
 
 PAD='                                        '
-
-# THE PROGRAM IS TYPED IN, NOT LOADED, AND THAT IS THE WHOLE TRICK.
-#
-# -autokeys types into the SMC key FIFO on a timer and keeps typing while
-# the guest is busy; the FIFO drops whatever does not fit. Both earlier
-# versions of this script lost to that race. Driving all nine from one
-# session let a RUNNING benchmark eat the next LOAD, so RUN re-ran the
-# previous program and printed its time again -- nine plausible rows, one
-# real measurement. A session each fixed that and then lost the race one
-# step earlier: LOADing a longer file takes long enough that the padding
-# ran out and the RUN itself was eaten. BM6 received "UN", and BM7 and
-# AHL received nothing at all.
-#
-# Tuning the padding cannot fix it. Too little and RUN is eaten; too much
-# and the part that DOES echo runs past column 80, wraps, and the line
-# editor -- which reads one screen row -- gets half a command.
-#
-# So RUN is the LAST thing typed, and nothing follows it. The program text
-# comes from bench/*.BAS line by line, which keeps one source of truth:
-# the same files go on a card for real hardware, and typing them tokenizes
-# them exactly as LOAD would.
-prog_keys () {          # $1 = tag
-    local out='run BASIC.BIN
-' line
+prog_keys () {          # $1 = tag: the program text, then RUN, nothing after
+    local out='run BASIC.BIN\n' line
     while IFS= read -r line || [ -n "$line" ]; do
-        [ -n "$line" ] && out="$out$PAD$line
-"
+        [ -n "$line" ] && out="$out$PAD$line\n"
     done < "bench/$1.BAS"
-    # Literal backslash-n, NOT a real newline: the caller reads this
-    # through $(...), which STRIPS trailing newlines -- the first version
-    # ended with printf's 
-, the CR after RUN never reached the
-    # emulator, and RUN sat on the input line of every session for five
-    # minutes while the GIF grew to 198 MB. autokeys turns the two-byte
-    # sequence into CR itself, immune to the stripping.
-    printf '%s%sRUN\n' "$out" "$PAD"
+    printf '%s%sRUN\\n' "$out" "$PAD"
 }
 
-# ONE EMULATOR SESSION PER BENCHMARK, AND THEY RUN AT ONCE.
-#
-# Running them concurrently is free of consequence for exactly the reason
-# the times mean anything at all: the millisecond counter is driven by
-# executed cycles, so a session that gets less of the host's CPU takes
-# longer in wall time and reports the same number.
 run_one () {            # $1 = tag
     cp "$OUT/card.img" "$OUT/card$1.img"
-    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 300         "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")"         -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")"         -sdcard "$WOUT/card$1.img"         -autokeys "$(prog_keys "$1")"         -warp -gif "$WOUT/out$1.gif" >/dev/null 2>&1
+    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 300 \
+        "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
+        -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
+        -sdcard "$WOUT/card$1.img" \
+        -autokeys "$(prog_keys "$1")" \
+        -warp -gif "$WOUT/out$1.gif" >/dev/null 2>&1
 }
 
-echo "running the nine benchmarks at once. Each warps through its own"
-echo "emulated time; the wall clock this takes is not the measurement."
+echo "running the benchmarks at once. Each warps through its own emulated"
+echo "time; the wall clock this takes is not the measurement."
 for t in $TAGS; do run_one "$t" & done
 wait
 
@@ -189,21 +159,20 @@ for t in TAGS:
         print()
     rows += got
 
-# A result line is the tag and then the milliseconds. TIMER is a FLOAT
-# here, so a time prints as 1.23500E03 rather than 1235; float() reads
-# both. The lines that echo while being typed are indented by the autokeys
-# padding, so a tag in the first column is the program's own output.
+# A result line is the tag then the milliseconds, in column 0 -- typed
+# echo is indented by the autokeys padding. TIMER is a float, so a time
+# prints as 1.23500E03; float() reads both forms.
 WHAT = {
-    "BM1": "empty FOR loop, 1000 times",
+    "BM1":  "empty FOR loop, 1000 times",
     "BM1I": "the same loop on K% -- NEXT's integer fast path",
-    "BM2": "K=K+1 and a branch on a line number",
-    "BM3": "  + a division and three more terms",
-    "BM4": "  + constants instead of K (the classic one)",
-    "BM5": "  + a GOSUB and RETURN each pass",
-    "BM6": "  + an empty FOR loop of 5 inside",
-    "BM7": "  + an array store inside that loop",
-    "BM8": "K^2, LN(K) and SIN(K): the float library",
-    "AHL": "Ahl: 1000 SQR, 1000 ^, 2000 RND",
+    "BM2":  "K=K+1 and a branch on a line number",
+    "BM3":  "  + a division and three more terms",
+    "BM4":  "  + constants instead of K (the classic one)",
+    "BM5":  "  + a GOSUB and RETURN each pass",
+    "BM6":  "  + an empty FOR loop of 5 inside",
+    "BM7":  "  + an array store inside that loop",
+    "BM8":  "K^2, LN(K) and SIN(K): the float library",
+    "AHL":  "Ahl: 1000 SQR, 1000 ^, 2000 RND",
 }
 found, acc = {}, {}
 for r in rows:
@@ -212,6 +181,7 @@ for r in rows:
     m = re.match(r'^(BM[1-8]I?|AHL)\s+([0-9.E+-]+)$', r.strip())
     if m:
         found[m.group(1)] = float(m.group(2))
+        continue
     m = re.match(r'^(ACC|RER)\s+(\S+)$', r.strip())
     if m:
         acc[m.group(1)] = m.group(2)
@@ -232,13 +202,13 @@ for tag in TAGS:
         continue
     ms = found[tag]
     total += ms
-    print("%-5s %9.0f %9.2f   %s" % (tag, ms, ms / 1000.0, WHAT[tag]))
+    print("%-5s %9.0f %9.2f   %s" % (tag, ms, ms / 1000.0, WHAT.get(tag, "")))
 print("-" * 68)
-print("%-5s %9.0f %9.2f   all nine" % ("", total, total / 1000.0))
+print("%-5s %9.0f %9.2f   total" % ("", total, total / 1000.0))
 if acc:
     print()
-    print("Ahl's accuracy, 0 being perfect. This is the port's own software")
-    print("float library rather than Microsoft's, so it is a result:")
+    print("Ahl's accuracy, 0 being perfect (the port's own software IEEE-754")
+    print("singles, not Microsoft's -- it is a result):")
     print("   arithmetic error  %s" % acc.get("ACC", "?"))
     print("   RND sum error     %s" % acc.get("RER", "?"))
 print()

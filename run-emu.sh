@@ -1021,6 +1021,9 @@ KEYS_V=$(keys_of \
     '150 DIM V$(2)' \
     '160 PRINT SPLIT("1,2,3,4",",",V$())' \
     '170 PRINT JOIN$(V$(),"/",2)' \
+    '172 PRINT ABS(6-1)' \
+    '174 PRINT 10-5+2' \
+    '176 PRINT MAX(10-2,3)' \
     '180 PRINT "VSPLIT"' \
     'RUN' \
     'NEW' \
@@ -2205,7 +2208,10 @@ if not any(x.strip() == "UOK" for x in rows_u):
 #   2, 1/2   four pieces into an array of two: it fills what it has and
 #            says so, rather than throwing
 v_want = ["3.00000", "[10]", "[20]", "[30]", "10-20-30", "3", "[]",
-          "1", "[abc]", "3", "abc", "2", "1/2", "VSPLIT"]
+          "1", "[abc]", "3", "abc", "2", "1/2",
+          # a minus inside a function argument (the TOK_FUNC_OPEN
+          # marker regression), left-associative chains, and both:
+          "5", "7", "8", "VSPLIT"]
 v_seq = [x.strip() for x in rows_v]
 v_i = 0
 for want in v_want:
