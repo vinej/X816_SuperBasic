@@ -105,7 +105,8 @@
     line it sits on, so the failure is reported by the statement that
     got it wrong rather than at whatever statement the frame landed on.
 
-    NOT A PROC, and that is a decision rather than an omission. A
+    NOT A PROC, and that is a settled decision rather than an omission
+    - raised and left as it stands on 2026-08-09. A
     deferred handler is entered as a GOSUB and left with RETIRQ; a
     DEFPROC is entered with a frame of locals and left with ENDPROC, and
     the two unwind different things. Aiming a handler at a DEFPROC would

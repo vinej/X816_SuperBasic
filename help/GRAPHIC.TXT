@@ -57,7 +57,9 @@ coexist and a program can print while it draws.
 [x] FCIRCLE x,y,r[,c] - filled circle. The same walk, drawing a SPAN an
     edge instead of a pixel - one address calculation for a whole row is
     what makes it affordable.
-[ ] OVAL x1,y1,x2,y2,c - ellipse in a bounding box.
+[ ] OVAL x1,y1,x2,y2,c - ellipse in a bounding box. POSTPONED, and
+    deliberately: asked about and deferred on 2026-08-09, so this is a
+    decision rather than a gap nobody has looked at.
 
     A half-built one was written and TAKEN OUT rather than left to draw
     the wrong shape. Bresenham's ellipse needs TWO regions, one stepping
