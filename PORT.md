@@ -2142,6 +2142,54 @@ the same rule the note beside `IRQ_TMP` sets out, and the same one that
 
 X816 50,233 bytes of the 65,280 cap; the C256 still assembles (§23).
 
+## 33. A soft clock, and the end of help/TIME.TXT (2026-08-09)
+
+There is no RTC and there is not going to be. What there is is a
+free-running millisecond counter and `K_TIME_SET`, which can move its
+**origin** — the thing that page had already called "the only part of
+this that is real". Moving the origin so the counter reads milliseconds
+since midnight turns it into a time of day, and everything else is
+arithmetic on that one number.
+
+`TIMER` still measures intervals correctly afterwards: a difference of
+two readings does not care where the origin sits. It is simply no longer
+an uptime once `SETTIME` has been used, and the page says so.
+
+**The date is carried, not derived.** `SETDATE` records the date *and*
+the day number the counter was on; `GETDATE$` adds the midnights since.
+So it rolls **at** midnight rather than 24 hours after it was set,
+because the day boundary is a multiple of 86,400,000 in the same counter
+`SETTIME` aligned. Hence: `SETTIME` first, then `SETDATE`.
+
+Advancing one day at a time rather than by a closed-form civil-date
+conversion — the counter wraps at 49 days, so the loop can never run more
+than about fifty times, and the arithmetic is a great deal more code to
+get wrong for nothing anybody could measure.
+
+All four keywords existed as stubs and all four were lies of a kind:
+`SETTIME`/`SETDATE` threw, and `GETTIME$`/`GETDATE$` took a parenthesised
+argument, discarded it, and returned the **integer** 0 from something
+named with a dollar sign.
+
+### Two bugs, both about one constant
+
+**`` ` `` gives the bank byte** — bits 16-23 — and 86,400,000 is
+`$05265C00`, so the day divisor became `$00265C00` and every time of day
+was reduced by the wrong number. The other three constants are under
+2^24 where `` ` `` and `>> 16` agree, which is why only the *day* was
+wrong and only inside `GETTIME$`. A probe of `TIMER` either side of
+`SETTIME` settled in ninety seconds that the *setting* was fine — worth
+remembering as the shape of that bisect.
+
+**The roll loop counted in `CLK_W`**, which is also the scratch word
+`CLK_MLEN` uses — and the loop calls `CLK_MLEN`. The counter came back as
+a month length on the first pass and the walk went a month forward
+instead of a day. It has its own counter now. Same family as `ENV_V`
+(§26) and the `IRQ_TMP` note: **a routine's scratch is not free for its
+caller to borrow.**
+
+X816 51,252 bytes of the 65,280 cap; the C256 still assembles (§23).
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

@@ -9,12 +9,51 @@ actually wants: elapsed time, and a steady tick.
     1 kHz counter at $9F90-$9F93), not a jiffy count derived from the
     display, so it does not drift with TURBO and does not stop when
     interrupts are masked. Wraps after about 49 days.
-[ ] GETTIME$ / GETDATE$ - wall-clock strings. They parse and return 0:
-    there is no RTC to ask. If they ever mean anything it will be
-    because the boot firmware passed a time in, not because the machine
-    knows one.
-[ ] SETTIME / SETDATE - reserved, refuse. K_TIME_SET can move the
-    millisecond origin, which is the only part of this that is real.
+[x] SETTIME "HH:MM:SS" - tell the machine what time it is.
+
+    It does not set a clock, because there is none to set: it MOVES THE
+    ORIGIN of the millisecond counter, so that the counter itself reads
+    milliseconds since midnight. That is the part of this page that was
+    always real, and everything below is arithmetic on that one number.
+
+    TIMER STILL MEASURES INTERVALS correctly afterwards - a difference
+    of two readings does not care where the origin sits - but it is no
+    longer an uptime once SETTIME has been used.
+
+    Any non-digit separates, so "14:30:00", "14-30-00" and "14 30 00"
+    all read the same.
+[x] GETTIME$ - the time of day, "HH:MM:SS", with the leading zeros.
+    Takes no parentheses, like TIMER and FRAMES.
+[x] SETDATE "YYYY-MM-DD" / GETDATE$ - the date.
+
+    THE DATE IS CARRIED, NOT DERIVED. SETDATE records the date and the
+    day number the counter was on at that moment; GETDATE$ adds however
+    many midnights have gone by since. So it rolls over AT midnight and
+    not merely 24 hours after it was set, because the day boundary is a
+    multiple of 86,400,000 in the same counter SETTIME aligned.
+
+    SETTIME FIRST, THEN SETDATE. Setting the time moves the day
+    boundary, and a date recorded against the old one would roll at the
+    wrong moment.
+
+    Before SETDATE the date reads 0000-00-00, which is meant to look
+    wrong: the machine genuinely does not know it.
+
+    Leap years are the full rule - divisible by 4, except centuries,
+    except every fourth century - so 2024-02-28 becomes 2024-02-29 and
+    2026-02-28 becomes 2026-03-01.
+
+THE CLOCK SURVIVES MORE THAN YOU WOULD EXPECT, and less than a real one.
+The counter belongs to the kernel rather than to BASIC, so a time set
+here outlives RUN, NEW, a program that crashes, and even QUIT to the
+shell. It does not outlive a reset, because nothing on this machine
+does - there is no battery-backed clock and there is not going to be.
+
+IT IS RIGHT FOR 49 DAYS. The counter is 32 bits of milliseconds and
+wraps after 49.7 of them, and 86,400,000 does not divide 2^32 - so at
+the wrap the clock jumps rather than rolling cleanly, and GETDATE$ stops
+advancing rather than inventing a date. A machine left on for seven
+weeks needs telling again.
 [x] FRAMES - the VSYNC frame counter, 16-bit and wrapping. The right
     clock for animation: it advances 60 times a second whatever the CPU
     is doing. Unlike TIMER it IS maintained by the interrupt handler, so

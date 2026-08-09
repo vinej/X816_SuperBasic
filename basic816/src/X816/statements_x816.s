@@ -99,13 +99,9 @@ S_LOCATE        .proc
 ; rather than doing nothing silently. THROW aborts the statement, so
 ; there is no need to consume the argument list.
 ;
-S_SETTIME       .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_SETDATE       .proc
-                THROW ERR_ARGUMENT
-                .pend
+; SETTIME and SETDATE are real now -- X816/clock_x816.s, a soft clock
+; over the millisecond counter. There is still no RTC; what there is
+; is a counter whose ORIGIN the kernel can move.
 
 ; SETBGCOLOR and SETBORDER are real now -- further down this file, with
 ; TEXTCOLOR and BORDER, which are what they are each half of.

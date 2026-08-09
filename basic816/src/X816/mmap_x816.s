@@ -343,6 +343,25 @@ MC_S      = $0088C4         ; dword - where the copy reads from
 MC_D      = $0088C8         ; dword - and writes to; its bank goes to DBR
 MC_N      = $0088CC         ; dword - bytes still to move, counts to zero
 
+; The soft clock (X816/clock_x816.s). The date is CARRIED rather than
+; derived: there is no RTC, so SETDATE records a date and the day number
+; the millisecond counter was on, and GETDATE$ adds the midnights since.
+CLK_Y     = $0088D0         ; word - the year last set, 0 until SETDATE
+CLK_M     = $0088D2         ; word - month 1-12
+CLK_D     = $0088D4         ; word - day 1-31
+CLK_BASE  = $0088D6         ; word - the day number SETDATE recorded
+CLK_DSET  = $0088D8         ; word - non-zero once SETDATE has been used
+CLK_T     = $0088DA         ; dword - the counter, then each remainder
+CLK_U     = $0088DE         ; dword - the divisor of the moment
+CLK_ACC   = $0088E2         ; dword - milliseconds being assembled
+CLK_V     = $0088E6         ; word - a value being formatted or parsed
+CLK_W     = $0088E8         ; word - scratch beside it
+CLK_X     = $0088EA         ; word - and one more, for the times-ten
+CLK_N     = $0088EC         ; word - how much of the string is built
+CLK_R     = $0088EE         ; word - midnights still to walk forward. NOT
+                            ;  CLK_W: CLK_MLEN uses that as its own
+                            ;  scratch, and the roll loop calls it
+
 ; PLAY's parser state.
 PLY_P     = $008810         ; dword - where it is in the string
 PLY_N     = $008814         ; word - characters left

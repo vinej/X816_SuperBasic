@@ -87,36 +87,6 @@ INITIO      .proc
             RETURN
             .pend
 
-;
-; Sets ARGUMENT1 to the current time. The X816 has no RTC; phase 3 may
-; map this to KERN_TIME_GET. For now: 0.
-;
-GETTIME     .proc
-            PHP
-            setal
-            STZ ARGUMENT1
-            STZ ARGUMENT1+2
-            setas
-            LDA #TYPE_INTEGER
-            STA ARGTYPE1
-            PLP
-            RETURN
-            .pend
-
-;
-; Sets ARGUMENT1 to the current date. No RTC: 0.
-;
-GETDATE     .proc
-            PHP
-            setal
-            STZ ARGUMENT1
-            STZ ARGUMENT1+2
-            setas
-            LDA #TYPE_INTEGER
-            STA ARGTYPE1
-            PLP
-            RETURN
-            .pend
 
 ; Print a new line
 PRINTCR     .proc

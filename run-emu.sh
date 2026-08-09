@@ -210,6 +210,20 @@
 #                                   the path with something to get
 #                                   wrong
 #
+#   session S -- the soft clock
+#    37. SETTIME / GETTIME$       - there is no RTC; SETTIME moves the
+#                                   ORIGIN of the millisecond counter
+#                                   so the counter itself reads
+#                                   milliseconds since midnight
+#    38. the midnight roll        - set to 23:59:58, wait four
+#                                   seconds, and BOTH the time and the
+#                                   date must move. The date is
+#                                   carried rather than derived, so
+#                                   this is the only check that it
+#                                   rolls AT midnight
+#    39. leap years, both ways    - 2026-02-28 becomes 03-01 and
+#                                   2024-02-28 becomes 02-29
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -874,6 +888,41 @@ PYADP
 # so. The second copy crosses into another BANK, which is the only
 # time the destination's DBR has to move -- one switch per 64 KB is
 # the whole design of the loop, so the boundary is where it breaks.
+# The soft clock. There is no RTC on this machine and there is not
+# going to be; what there is is a free-running millisecond counter
+# whose ORIGIN the kernel can move, which is enough for a clock that
+# is told the time once.
+#
+# The seconds are not asserted exactly -- how much guest time a padded
+# forty-character line takes under -warp is not something to build a
+# check on -- so the two times are matched by their PREFIX and the
+# three dates exactly. The dates are where the arithmetic is.
+#
+# 23:59:58 plus four seconds is the whole point of the pair: the time
+# has to roll to 00:00:0x and the DATE has to roll with it. The date
+# is carried rather than derived from the counter, so nothing else
+# here would notice if it did not.
+#
+# Both leap-year branches, because the rule has three parts and a
+# clock that gets it wrong is wrong for one day every hundred years --
+# exactly long enough for nobody to have tried it. 2026 is not a leap
+# year and 2024 is.
+KEYS_S=$(keys_of \
+    '10 SETTIME "14:30:00"' \
+    '20 PRINT GETTIME$' \
+    '30 SETTIME "23:59:58"' \
+    '40 SETDATE "2026-02-28"' \
+    '50 PRINT GETDATE$' \
+    '60 WAIT 4000' \
+    '70 PRINT GETTIME$' \
+    '80 PRINT GETDATE$' \
+    '90 SETTIME "23:59:58"' \
+    '100 SETDATE "2024-02-28"' \
+    '110 WAIT 4000' \
+    '120 PRINT GETDATE$' \
+    '130 PRINT "CLKOK"' \
+    'RUN')
+
 KEYS_R=$(keys_of \
     '10 PRINT BIN$(0)' \
     '20 PRINT BIN$(5)' \
@@ -1070,6 +1119,7 @@ if [ "$NEG" = "0" ]; then
     run_session P "$KEYS_P" || { echo "session P produced no recording"; exit 1; }
     run_session Q "$KEYS_Q" || { echo "session Q produced no recording"; exit 1; }
     run_session R "$KEYS_R" || { echo "session R produced no recording"; exit 1; }
+    run_session S "$KEYS_S" || { echo "session S produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -1088,24 +1138,25 @@ else
     cp "$OUT/outA.gif" "$OUT/outP.gif"
     cp "$OUT/outA.gif" "$OUT/outQ.gif"
     cp "$OUT/outA.gif" "$OUT/outR.gif"
+    cp "$OUT/outA.gif" "$OUT/outS.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$WOUT/outS.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
- gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, gif_r, fontinc,
- adpexp) = (
+ gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, gif_r, gif_s,
+ fontinc, adpexp) = (
                     sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
                     sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
                     sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
                     sys.argv[17], sys.argv[18], sys.argv[19],
-                    sys.argv[20])
-negative = sys.argv[21] == "1"
+                    sys.argv[20], sys.argv[21])
+negative = sys.argv[22] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -1166,9 +1217,10 @@ rows_o = [] if negative else last_screen(gif_o)
 rows_p = [] if negative else last_screen(gif_p)
 rows_q = [] if negative else last_screen(gif_q)
 rows_r = [] if negative else last_screen(gif_r)
+rows_s = [] if negative else last_screen(gif_s)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
         rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
-        rows_o + rows_p + rows_q + rows_r)
+        rows_o + rows_p + rows_q + rows_r + rows_s)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -1871,6 +1923,30 @@ if r_got[:len(r_want)] != r_want:
          "destination's DBR has to move." % (r_want, r_got[:len(r_want)]))
 if not any(x.strip() == "MEMOK" for x in rows_r):
     fail("session R did not reach the end")
+
+# ---- session S: the soft clock ----------------------------------------
+# The times by PREFIX and the dates exactly: how much guest time a padded
+# line takes under -warp is not something to build a check on, and the
+# dates are where the arithmetic lives anyway.
+if not any(x.strip().startswith("14:30:") for x in rows_s):
+    fail("SETTIME did not move the millisecond counter's origin, so "
+         "GETTIME$ is still reporting an uptime")
+if not any(x.strip() == "2026-02-28" for x in rows_s):
+    fail("SETDATE did not record the date GETDATE$ read back")
+# The pair that matters: 23:59:58 plus four seconds has to roll BOTH.
+if not any(x.strip().startswith("00:00:") for x in rows_s):
+    fail("the time did not roll past midnight -- GETTIME$ is not reducing "
+         "the counter modulo a day")
+if not any(x.strip() == "2026-03-01" for x in rows_s):
+    fail("the DATE did not roll with the time. It is carried rather than "
+         "derived, so this is the only thing that checks it advances at "
+         "midnight -- and 2026 is not a leap year, so February has 28 days")
+if not any(x.strip() == "2024-02-29" for x in rows_s):
+    fail("2024 IS a leap year and 2024-02-28 must become 02-29. Getting "
+         "this wrong is wrong for one day every four years, and the "
+         "century rules above it for one day every hundred")
+if not any(x.strip() == "CLKOK" for x in rows_s):
+    fail("session S did not reach the end")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

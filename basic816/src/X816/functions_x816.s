@@ -125,32 +125,11 @@ step        PHA                         ; x ^= x << 7
             .pend
 
 ;
-; GETTIME(x) / GETDATE(x) -- no RTC on the X816: return 0 (phase 3 may
-; map GETTIME to the kernel millisecond clock).
+; GETTIME$ and GETDATE$ live in X816/clock_x816.s now. They took a
+; parenthesised argument and threw it away, and returned the INTEGER 0
+; from something named with a dollar sign; they take no parentheses
+; now, like TIMER and FRAMES beside them, and answer strings.
 ;
-F_GETTIME   .proc
-            FN_START "F_GETTIME"
-            PHP
-
-            CALL EVALEXPR               ; Evaluate (and ignore) the argument
-            CALL GETTIME
-
-            FN_END
-            PLP
-            RETURN
-            .pend
-
-F_GETDATE   .proc
-            FN_START "F_GETDATE"
-            PHP
-
-            CALL EVALEXPR               ; Evaluate (and ignore) the argument
-            CALL GETDATE
-
-            FN_END
-            PLP
-            RETURN
-            .pend
 
 ;
 ; TIMER -- milliseconds since the machine booted, as a 32-bit integer.
