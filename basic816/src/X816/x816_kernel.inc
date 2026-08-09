@@ -120,6 +120,13 @@ VERA_IRQ_LINE   = $02
 VERA_IRQ_SPRCOL = $04
 VERA_IRQ_AFLOW  = $08
 
+; The free-running millisecond counter, little-endian. Reading the LOW
+; byte latches bits 31:8, so every multi-byte read must start at $9F90
+; -- and a 16-bit LDA does, low byte first. It ticks 1 kHz wall clock
+; in both CPU speeds: x816.sv divides the raw domain clock, gated by
+; nothing, because both VIAs stop dead during an SD transfer.
+X816_TIMER      = $009F90
+
 ; VERA registers (bank 0 I/O page), for direct text-matrix reads
 VERA_ADDR_L     = $009F20
 VERA_ADDR_M     = $009F21

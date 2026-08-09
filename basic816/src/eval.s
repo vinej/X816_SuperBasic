@@ -262,9 +262,26 @@ error       THROW ERR_SYNTAX    ; Throw a syntax error (TODO: is this the right 
             .pend
 
 ;
-; Return true if the current operator's precedence is lower than the current top
-; of the operator stack. Return false if nothing is on the stack, or the top of
-; stack is lower precendence.
+; Return true if the operator at the top of the stack should be processed
+; BEFORE the current operator is pushed. Return false if nothing is on the
+; stack, or the top of stack should stay.
+;
+; EQUAL PRECEDENCE MEANS LEFT ASSOCIATIVITY, and getting that wrong is not
+; a style point: this used to answer false on a tie, so every chain of
+; same-precedence operators evaluated RIGHT to left. 10-5-2 was 7,
+; 10-5+2 was 3, 100/10/2 was 20 -- on every build since BASIC816. It
+; hid because an expression has to chain the SAME precedence level to
+; show it, and the tests never did.
+;
+; The tie goes to the stack ONLY WHEN BOTH OPERATORS ARE BINARY. A unary
+; operator on either side of the tie must keep push-on-tie, or it loses
+; its operand:
+;
+;   2^-3    NEG arrives with ^ on top (both precedence 0). Popping ^
+;           would ask it for two arguments when only "2" has been seen.
+;   -2^2    ^ arrives over NEG. Popping NEG gives (-2)^2 = 4; Microsoft
+;           BASIC binds ^ tighter than unary minus and answers -4.
+;   NOT NOT 0, - -5: prefix chains apply right to left by nature.
 ;
 ; Inputs:
 ;   A = the token of the current operator
@@ -290,15 +307,29 @@ OPHIGHPREC  .proc
             CPY #OPERATOR_TOP       ; Is the stack empty?
             BEQ is_false            ; Yes: return false
 
+            PHA                     ; The token is wanted twice
             CALL TOKPRECED          ; Get the precedence for the passed operator
             STA SCRATCH             ; Save it for later comparison
+            PLA
+            CALL TOKARITY           ; And its arity, for the tie below
+            STA SCRATCH2
 
             LDA #1,B,Y              ; Get the operator at the top of the stack
             CALL TOKPRECED          ; Get the precedence for the operator at TOS
 
             CMP SCRATCH             ; Compare the priorities (0 = highest priority)
-            BEQ is_false            ; A = SCRATCH, return false
-            BCC is_true             ; A < SCRATCH (A is higher priority), return false
+            BEQ is_equal            ; A = SCRATCH: associativity decides
+            BCC is_true             ; A < SCRATCH (A is higher priority), return true
+            BRA is_false            ; A > SCRATCH: the incoming binds tighter
+
+is_equal    LDA SCRATCH2            ; The incoming operator
+            CMP #2
+            BNE is_false            ; Unary: push, it binds its own operand
+            LDA #1,B,Y              ; The operator at the top of the stack
+            CALL TOKARITY
+            CMP #2
+            BNE is_false            ; Unary at TOS: push, -2^2 must be -(2^2)
+            BRA is_true             ; Two binaries: LEFT to RIGHT
 
 is_false    setal
             PLB

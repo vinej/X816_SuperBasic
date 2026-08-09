@@ -62,3 +62,16 @@ significant digits and adds an exponent whenever the decimal exponent is
 not zero, so 1024 prints as 1.02400E03. That is upstream BASIC816
 behaviour, identical on the C256, and not a fault in the port - but it
 is the sort of thing SuperBasic should probably change.
+
+Operators of equal precedence evaluate LEFT TO RIGHT: 10-5+2 is 7,
+100/10/2 is 5, 2^3^2 is 64. That sentence is on this page because it
+was NOT true until 2026-08-09: the evaluator resolved ties to the
+right, so 10-5+2 answered 3 and 100/10/2 answered 20, on every build
+since BASIC816 and on the C256 today. Any older program that leaned on
+the broken order - if one exists - will now get arithmetic instead.
+
+Two edges of that rule are worth knowing. -2^2 is -4, because ^ binds
+tighter than the minus sign in front of a number - the same answer
+Microsoft BASIC gives, and the same reason SQR(2)^2 needs no
+parentheses. And prefix operators still chain from the right: 10--5 is
+15, NOT NOT A is A.

@@ -38,6 +38,28 @@
 ; events of a Ctrl-C are taken by GET or INKEY and the break check sees
 ; a queue that is already empty.
 ;
+; THE POLL RUNS AT MOST EVERY 32 MILLISECONDS, and that gate is the
+; single biggest speed fix in this port. A poll is a whole bit-banged
+; I2C transaction with the SMC -- start, two address bytes, a command, a
+; data byte, the NAK, the stop, every edge a VIA store -- and it was
+; paid AT EVERY STATEMENT BOUNDARY. Measured on BM1 (Rugg & Feldman,
+; an empty FOR loop): 1235 ms with the poll, 862 ms without -- about
+; 3,000 cycles per statement, 30 percent of the simplest loop there is,
+; spent asking the keyboard whether anybody had pressed anything.
+;
+; The gate reads the free-running ms counter and skips the I2C while
+; less than 32 ms have passed since the last poll. Cost when it skips:
+; one 16-bit read, a subtract, a compare. Ctrl-C latency becomes at
+; most 32 ms plus one statement, which no finger can feel; the NMI
+; break above is not gated at all and stays instant. The subtraction
+; is mod 65536, so the counter wrapping every 65 seconds cannot strand
+; the gate.
+;
+; Reading 16 bits at $9F90 is safe under the latch rule (reading the
+; LOW byte is what latches bits 31:8, and a 16-bit LDA reads $9F90
+; first). It re-latches, so any 4-byte reader must start over at $9F90
+; -- which TIMER and WAIT already do on every read.
+;
 ; Outputs:
 ;   C set if BREAK (Ctrl-C or Ctrl+Alt+PrtScr) was pressed, clear otherwise
 ;
@@ -47,7 +69,17 @@ FK_TESTBREAK    PHX
                 setas
                 LDA @l KEYFLAG          ; The NMI got here first?
                 BMI nmi_break
+
                 setaxl
+                LDA @l X816_TIMER       ; The ms counter, low 16 bits
+                TAX                     ; Keep NOW: a second read could
+                SEC                     ;  straddle a tick and store a
+                SBC @l BRK_LASTMS       ;  time later than the one the
+                CMP #32                 ;  gate compared
+                BCC no_break            ; Too soon: no I2C
+                TXA
+                STA @l BRK_LASTMS
+
                 JSL KERN_CON_GETKEY     ; Non-blocking key poll
                 BCS no_break            ; Kernel error: treat as no key
                 CMP #0

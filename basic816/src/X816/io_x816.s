@@ -21,6 +21,10 @@ TEXT_ROWS = 60
 .section variables
 LINES_VISIBLE   .byte ?         ; Rows for pagination (bios.s PAGINATE)
 RNDSEED         .word ?         ; Software PRNG state (no RNG hardware)
+BRK_LASTMS      .word ?         ; When FK_TESTBREAK last polled the SMC:
+                                ;  the low 16 bits of the ms counter.
+                                ;  The gate on the break check's I2C
+                                ;  poll -- see kernel_x816.s.
 .send
 
 ; On the C256 KEYFLAG is a kernel bank-0 byte ($000F8A) raised by the
@@ -85,6 +89,9 @@ INITIO      .proc
             setal
             LDA #$2A55              ; Seed the software PRNG (any nonzero)
             STA @lRNDSEED
+
+            LDA #0                  ; First break check may poll at once
+            STA @l BRK_LASTMS
 
             ; Ctrl+Alt+PrtScr. The kernel owns the NMI vector and hands
             ; slot 8 to whoever asks; nothing had asked. A failure here

@@ -2371,6 +2371,114 @@ on the MSYS2 gcc that is installed, on the *unmodified* tree.
 X816 55,279 bytes of the 65,280 cap. 247 keywords: base 127/127 full,
 `TOKENS2` 117/127, `TOKENS3` 3/128. The C256 still assembles (§23).
 
+## 36. The benchmarks, the poll, and thirty years of wrong arithmetic (2026-08-09)
+
+He asked how fast SuperBasic is against the BASICs of the period, so the
+period's own benchmarks went in: **Rugg & Feldman BM1–BM8** (Kilobaud,
+1977) and **Ahl's** (Creative Computing, 1983), as `bench/*.BAS` and
+`./run-bench.sh`. One emulator session per program, run in parallel —
+safe because the ms counter counts **executed cycles**, so contention
+and `-warp` change wall time and not the reading. The header records the
+one caveat: the emulator's cycle model has never been checked against
+the FPGA, so his MiSTer run of the same card is worth more than the
+table.
+
+The first table said BM1 — `FOR`/`NEXT`, empty, 1000 times — took
+**1235 ms at 8 MHz**. He asked the right question: how can a 1 MHz C64
+post about the same number? Per cycle, this interpreter was ~9× slower.
+
+### The poll: 30 percent of every program
+
+An A/B with `FK_TESTBREAK`'s body stubbed named the cost: **BM1 fell
+from 1235 to 862 ms**. The break check did a full bit-banged I2C
+transaction with the SMC — start, address, command, restart, address,
+data, NAK, stop — **at every statement boundary**, ~3,000 cycles to ask
+whether anyone had pressed anything. The C64's equivalent is a matrix
+row read; the C256's is a flag an interrupt raises. This machine's
+keyboard lives behind I2C, and until yesterday there was no interrupt
+to raise a flag — the NMI handler (§35) is what made the fix safe.
+
+The fix is a **32 ms gate**: `FK_TESTBREAK` reads the free-running ms
+counter (16-bit read at $9F90 — the low-byte-first latch rule holds)
+and skips the I2C until 32 ms have passed. Statement cost drops to a
+read, a subtract, a compare. Ctrl-C latency becomes ≤32 ms + one
+statement; Ctrl+Alt+PrtScr is ungated and instant. BM1 gated: **871 ms,
+29% faster**, sitting on the no-poll floor. Bonus: WAIT/VSYNC/PLAY
+loops poll through the same routine, so SMC traffic on VIA port A —
+the bus the joystick scan can corrupt — drops by orders of magnitude.
+
+### The A/B that "hung", twice
+
+The instrumented run produced no results and the reflex was to blame
+the patched binary. A **negative control** (same run, unpatched binary)
+also produced nothing — the harness, not the code. `-autokeys` keeps
+typing while a program runs and the SMC FIFO drops the overflow; one
+session of nine benchmarks ate `LOAD` mid-run and re-ran the previous
+program nine times, **printing nine plausible times of which eight were
+copies**. Sessions-per-benchmark then lost the same race one step
+earlier (`RUN` ate itself), and the last version lost it to bash:
+`$(...)` **strips trailing newlines**, so the CR after `RUN` never
+existed and `RUN` sat on the input line for five minutes while the GIF
+grew to 198 MB. The fix all three times was structural, not tuning:
+type the program, make `RUN` the last keystroke, end with a literal
+backslash-n that `$()` cannot strip.
+
+### 10-5+2 was 3
+
+The BM4 probe printed `5/2*3+4-5` = **-0.1666...** — it had computed
+`5/(2*3)`. Chasing that: **every chain of equal-precedence operators
+evaluated right-to-left**. `10-5-2` was 7, `10-5+2` was 3, `100/10/2`
+was 20 — on every build since BASIC816, and on the C256 today. It hid
+because a program has to chain the *same* precedence level to see it,
+and the tests never did; single-operator expressions are everywhere and
+are all correct.
+
+The bug is one branch in `OPHIGHPREC` (`eval.s`): on equal precedence
+it answered "push" instead of "pop", which is right-associativity. The
+fix pops on a tie **only when both operators are binary**, because the
+unary ones must keep push-on-tie or lose their operands:
+
+- `2^-3` — `NEG` arrives with `^` on top, both precedence 0. Popping
+  `^` would demand two arguments when only `2` exists.
+- `-2^2` — `^` arrives over `NEG`. Popping `NEG` gives `(-2)^2 = 4`;
+  Microsoft binds `^` tighter than unary minus and answers **-4**.
+- `NOT NOT 0`, `10--5` — prefix chains apply right-to-left by nature.
+
+Twelve-case probe: `10-5-2`=3, `10-5+2`=7, `100/10/2`=5, `5/2*3`=7.5,
+`2^3^2`=64 (left, as Microsoft's), `2^-3`=0.125, `-2^2`=-4, `0-2^2`=-4,
+`6/2/3*4`=4, `1-2-3-4`=-8, `NOT NOT 5`=5, `10--5`=15. All correct. The
+in-program confirmation: BM4 now prints `A`=1499 = `(1000/2)*3+4-5`.
+
+`help/MATH.TXT` states the rule and dates the fix, so an old program
+that leaned on the broken order has something to find. **This fix
+belongs upstream** — `eval.s` is portable code and the C256 has the
+same bug.
+
+### The numbers as they stand — and the hardware's verdict
+
+BM1 871 ms in the emulator (was 1235). BM4's old and new times are
+**not comparable** — the expression changed meaning with the fix, so
+BM3/BM4 get fresh baselines in the re-bench.
+
+**He ran the fixed card on the MiSTer the same afternoon**: BM1 =
+**946 ms at 8 MHz**, **539 ms at TURBO's 14 MHz**. Two conclusions,
+both firsts:
+
+- **The emulator's cycle model is ~8% optimistic** (871 vs 946 —
+  ~6,970 modelled cycles per iteration against ~7,550 real). The model
+  had never been checked against the FPGA before. Deltas and
+  percentages from `run-bench.sh` are sound; absolute times worth
+  quoting come from hardware.
+- **TURBO scales perfectly**: 946 × 8/14 = 540.6 predicted, 539
+  measured — within 0.3%. Same cycle count at both speeds, so the
+  interpreter is compute-bound: no memory stall eats the higher clock.
+
+Per cycle that is still ~7× a C64's empty loop (~7,550 against
+~1,100), carried by the 8× clock — parity at 8 MHz, ~2× ahead at 14.
+The next suspects are the FOR frame's variable re-lookup per iteration
+and the software float increment. That is phase-2 work, to be measured
+the same way before anything is touched.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

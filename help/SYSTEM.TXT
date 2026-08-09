@@ -3,6 +3,13 @@
 [x] Ctrl-C - stop a running program. Checked between statements, which
     means a single statement that takes a long time cannot be broken
     into, and the check consumes the keystroke it reads.
+
+    THE CHECK ASKS THE KEYBOARD AT MOST EVERY 32 MILLISECONDS. Asking
+    is a whole I2C transaction with the SMC, and paying that at every
+    statement was 30 percent of the simplest loop there is - measured,
+    on the benchmarks in bench/. The break arrives up to 32 ms later
+    than it used to, which no finger can feel, and programs run about
+    a third faster. Ctrl+Alt+PrtScr below is not gated at all.
 [x] Ctrl+Alt+PrtScr - this machine's RUN/STOP-RESTORE. The SMC raises
     a real NMI in hardware, a handler in KIRQ_NMI (slot 8) raises the
     break flag, and the next break check stops the program.
