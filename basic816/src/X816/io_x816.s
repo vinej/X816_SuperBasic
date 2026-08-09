@@ -62,6 +62,23 @@ INITIO      .proc
             STA @lCTRL_DOWN         ;  otherwise read uninitialised RAM as a
                                     ;  held Ctrl and break on the first key
 
+            ; The console colour shadow, set to what the kernel actually
+            ; boots with rather than to something of ours: X816_Calypsi
+            ; runtime/console.c starts at ATTR_DEFAULT $01, which in its
+            ; layout (background high nibble, foreground low) is
+            ; foreground 1 on background 0. In CURCOLOR's layout -- the
+            ; C256's, foreground HIGH -- that is $10.
+            ;
+            ; So this asserts nothing: it records. SETBGCOLOR needs to
+            ; know the foreground and K_CON_COLOR offers no way to ask,
+            ; and a shadow that started as powered-up RAM would set the
+            ; foreground to noise the first time anybody changed only
+            ; the background. Calling K_CON_COLOR here to MAKE it true
+            ; would have been the other answer, and it would repaint
+            ; over whatever the shell handed us.
+            LDA #$10
+            STA @lCURCOLOR
+
             setal
             LDA #$2A55              ; Seed the software PRNG (any nonzero)
             STA @lRNDSEED

@@ -54,6 +54,8 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .if SYSTEM == SYSTEM_X816
 .include "X816/channels_x816.s"  ; record I/O: OPEN, CLOSE, PRINT #, INPUT #
 .include "X816/audio_x816.s"     ; VERA PCM and the YM2151
+.include "X816/psgenv_x816.s"    ; ENV/ENVOFF: volume envelopes over the PSG
+.include "X816/adpcm_x816.s"     ; ADPCMPLAY: IMA ADPCM, decoded then fed
 .include "X816/input_x816.s"     ; joystick, I2C, mouse
 .include "X816/font_x816.s"      ; the redefinable character set
 .include "X816/graphics_x816.s"  ; bitmap drawing on VERA2

@@ -32,8 +32,13 @@ S_TEXTCOLOR     .proc
                 CALL EVALEXPR       ; Get the background index
                 CALL ASS_ARG1_BYTE
 
+                setas
+                LDA ARGUMENT1       ; Park the background: the shadow below
+                AND #$0F            ;  needs it after the pull, and the pull
+                STA @l VID_A        ;  is what puts the foreground in A
+
                 setaxl
-                LDA ARGUMENT1       ; X = background
+                LDA @l VID_A        ; X = background
                 AND #$000F
                 TAX
 
@@ -43,6 +48,18 @@ S_TEXTCOLOR     .proc
                 AND #$00FF          ;  return address went with it -- so
                                     ;  TEXTCOLOR hung the machine every time
                                     ;  it was used.
+                STA @l VID_A+2      ; the foreground, kept across the shadow
+
+                setas               ; The shadow, in CURCOLOR's C256 layout:
+                LDA @l VID_A+2      ;  foreground high, background low. This
+                .rept 4             ;  statement is the only one that knows
+                ASL A               ;  BOTH halves, so it is the one that has
+                .next               ;  to keep it -- SETBGCOLOR sets half and
+                ORA @l VID_A        ;  reads the other half from here, the
+                STA @l CURCOLOR     ;  kernel having no way to be asked.
+
+                setal
+                LDA @l VID_A+2      ; C = foreground
                 JSL KERN_CON_COLOR
 
                 PLP
@@ -90,13 +107,8 @@ S_SETDATE       .proc
                 THROW ERR_ARGUMENT
                 .pend
 
-S_SETBGCOLOR    .proc
-                THROW ERR_ARGUMENT
-                .pend
-
-S_SETBORDER     .proc
-                THROW ERR_ARGUMENT
-                .pend
+; SETBGCOLOR and SETBORDER are real now -- further down this file, with
+; TEXTCOLOR and BORDER, which are what they are each half of.
 
 ; SETCOLOR is real now -- X816/vramio_x816.s, beside the rest of the
 ; palette. It stayed a stub here for as long as PAL was the only way to
@@ -314,7 +326,11 @@ S_WAIT          .proc
                 ADC @l WAIT_N+2
                 STA @l WAIT_T+2
 
-wait_loop       JSL FK_TESTBREAK
+wait_loop       CALL ENV_POLL               ; a note releasing across a WAIT
+                                            ;  has to keep moving, or the
+                                            ;  whole fade happens in the one
+                                            ;  step after it
+                JSL FK_TESTBREAK
                 BCS wait_break
                 JSL KERN_TIME_GET
                 SEC                         ; now - target, 32-bit
@@ -344,7 +360,9 @@ S_VSYNC         .proc
                 JSL KERN_IRQ_FRAMES         ; the frame we are on now
                 STA @l WAIT_N
 
-vsync_loop      JSL FK_TESTBREAK
+vsync_loop      CALL ENV_POLL               ; the same reason as WAIT, and the
+                                            ;  loop a game actually sits in
+                JSL FK_TESTBREAK
                 BCS vsync_break
                 JSL KERN_IRQ_FRAMES
                 CMP @l WAIT_N
@@ -427,6 +445,74 @@ S_BORDER        .proc
                 STA @l VERA_CTRL
                 LDA ARGUMENT1
                 STA @l VERA_DC_BORDER
+
+                PLP
+                RETURN
+                .pend
+
+;
+; SETBORDER c -- the colour around the display.
+;
+; THE SAME STATEMENT AS BORDER, under the name BASIC816 gave it, and
+; that is worth being plain about: help/AUDIOPCM.TXT removed PCMPUT for
+; being one page asking twice for one thing. This is two PAGES asking
+; once each -- CONSOLE has always listed SETBORDER and VIDEO lists
+; BORDER -- and, more to the point, SETBORDER's token is a BASE one
+; spent by BASIC816 long before this port existed. Keeping it costs
+; nothing today; the base slot is there to reclaim on the day the base
+; table needs one back, and SAVE writes ASCII rather than tokens, so
+; reclaiming it would not spoil anybody's stored program.
+;
+; NOT the C256's SETBORDER, which took a visibility flag and an RGB
+; triple. VERA's border is one byte: an index into the 256-colour
+; palette, the same numbers PAL writes.
+;
+S_SETBORDER     .proc
+                JMP S_BORDER        ; a tail call: S_BORDER's RTS returns
+                .pend               ;  straight to our caller
+
+;
+; SETBGCOLOR c -- the background of everything printed from now on, 0-15.
+;
+; TEXTCOLOR's second argument on its own, which is exactly what
+; help/CONSOLE.TXT asked for and exactly why it needed a shadow. The
+; kernel takes the pair together (K_CON_COLOR, foreground in C and
+; background in X) and offers no call to ask what they currently are --
+; there is no K_CON_GETCOLOR -- so setting half of a pair means
+; remembering the other half. TEXTCOLOR keeps CURCOLOR for that, and
+; INITIO seeds it with what the kernel's console actually boots at.
+;
+; Text already on the screen keeps the background it was drawn with,
+; like TEXTCOLOR and for the same reason: the attribute is a pen, not a
+; property of the screen.
+;
+S_SETBGCOLOR    .proc
+                PHP
+                TRACE "S_SETBGCOLOR"
+                setaxl
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+
+                setas
+                LDA ARGUMENT1
+                AND #$0F                    ; the new background
+                STA @l VID_A
+                LDA @l CURCOLOR
+                AND #$F0                    ; the foreground stays exactly
+                ORA @l VID_A                ;  where it was
+                STA @l CURCOLOR
+
+                setaxl
+                LDA @l VID_A                ; X = background
+                AND #$000F
+                TAX
+                LDA @l CURCOLOR             ; C = foreground. The 16-bit read
+                AND #$00F0                  ;  takes CTRL_DOWN beside it, so
+                .rept 4                     ;  the mask is not decoration.
+                LSR A
+                .next
+                JSL KERN_CON_COLOR
 
                 PLP
                 RETURN
@@ -574,6 +660,12 @@ S_SOUND         .proc
                 setal
                 LDA ARGUMENT1
                 AND #$000F
+                STA @l ENV_SV               ; kept for the envelope below.
+                                            ;  Safe across the two EVALEXPRs
+                                            ;  that follow: nothing an
+                                            ;  expression can reach writes it,
+                                            ;  because the only other writer
+                                            ;  is a STATEMENT.
                 ASL A                       ; Four bytes a voice
                 ASL A
                 CLC
@@ -610,7 +702,59 @@ S_SOUND         .proc
                 CALL EVALEXPR               ; Volume, 0-63
                 CALL ASS_ARG1_BYTE
 
+                ; ---- an armed voice does not get the volume it was given
+                ;
+                ; It gets ZERO, and the volume becomes the PEAK the frame
+                ; tick walks up to (X816/psgenv_x816.s). A voice with no
+                ; envelope falls straight through and this statement is
+                ; what it always was.
+                ;
+                ; VOLUME 0 STILL STOPS IT DEAD, envelope or not. SOUND
+                ; v,0,0 is how every program written against this BASIC
+                ; ends a note, help/AUDIOFM.TXT says so in as many words,
+                ; and quietly turning it into a release would break all of
+                ; them to save ENVOFF one line.
+                setaxl
+                LDA @l ENV_SV
+                .rept 4                     ; the record index is voice*16
+                ASL A
+                .next
+                STA @l ENV_P
+                TAX
                 setas
+                LDA @l ENV_TAB+11,X         ; armed?
+                BEQ snd_write
+                setal
+                LDA ARGUMENT1
+                BEQ snd_stop
+
+                setas
+                LDA ARGUMENT1
+                AND #$3F
+                STA @l ENV_TAB+1,X          ; the peak
+                STA @l AUD_T                ; and again, for the compare
+                LDA @l ENV_TAB+10,X         ; the sustain level
+                CMP @l AUD_T
+                BCC snd_dtgt                ; below the peak: it is the target
+                LDA @l AUD_T                ; at or above it: the decay must
+                                            ;  not run UPHILL, so it stops
+                                            ;  where the attack ended
+snd_dtgt        STA @l ENV_TAB+13,X
+                LDA #$C0                    ; both channels, as this statement
+                STA @l ENV_TAB+12,X         ;  has always written them
+                LDA #1                      ; attack
+                STA @l ENV_TAB,X
+                setal
+                LDA #0
+                STA @l ENV_TAB+2,X          ; from silence
+                STA ARGUMENT1               ; ...which is what gets written
+                BRA snd_write
+
+snd_stop        setas
+                LDA #0
+                STA @l ENV_TAB,X            ; phase off
+
+snd_write       setas
                 LDA #0
                 STA @l VERA_CTRL            ; Data port 0, DCSEL 0
                 LDA @l VID_A
@@ -631,6 +775,19 @@ S_SOUND         .proc
                 LDA #$20                    ; pulse, 50% duty
                 STA @l VERA_DATA0
 
+                ; A zero-frame attack has to be audible NOW rather than at
+                ; the next frame, or ENV v,0,0,63,0 -- the degenerate
+                ; envelope that should behave exactly like plain SOUND --
+                ; would start every note a frame late and silent.
+                setaxl
+                LDA @l ENV_P
+                TAX
+                setas
+                LDA @l ENV_TAB,X
+                CMP #1                      ; did the block above trigger it?
+                BNE snd_done
+                CALL ENV_STEPV
+snd_done
                 PLP
                 RETURN
                 .pend

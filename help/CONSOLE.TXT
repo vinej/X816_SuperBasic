@@ -14,12 +14,39 @@ than by poking VERA. See X816_core/doc/KERNEL.md section 4.
 [x] SETCOLOR index,rgb - reprogram one of the 16 text colours. It is the
     same store PAL makes with the index held to 0-15, which is the point
     of it: 0-15 ARE the text palette, so 200 is a mistake here. HELP PAL.
-[ ] SETBGCOLOR c - set the background colour. Refuses today; TEXTCOLOR's
-    bg argument is the way to do it.
-[ ] SETBORDER c - set the border colour. Refuses today.
+[x] SETBGCOLOR c - the background of everything printed from now on,
+    0-15. TEXTCOLOR's second argument on its own, with the foreground
+    left exactly where it was.
+
+    That last part is the whole of the work. The kernel takes the pair
+    together and has no call to ask what they currently are, so setting
+    half of a pair means REMEMBERING the other half: TEXTCOLOR keeps a
+    shadow, and it is seeded at startup with what the kernel's console
+    actually boots at (foreground 1 on background 0) rather than with a
+    guess. A shadow made of powered-up RAM would have set the
+    foreground to noise the first time anybody changed only the
+    background.
+
+    Text already on screen keeps the background it was drawn with. The
+    attribute is a pen, not a property of the screen - the same rule
+    TEXTCOLOR has.
+[x] SETBORDER c - the colour around the display, 0-255. It is a PALETTE
+    INDEX, not an RGB triple: the C256's SETBORDER took a visibility
+    flag and three colour components, and VERA's border is one byte
+    indexing the same 256 colours PAL writes.
+
+    It is the same statement as BORDER (HELP VIDEO) under a second
+    name, and that is worth saying rather than hiding. HELP AUDIOPCM
+    removed PCMPUT for being one page asking twice for one thing; this
+    is two pages asking once each, and SETBORDER's token was spent by
+    BASIC816 long before this port. Keeping it costs nothing today, and
+    the slot can be reclaimed if the base token table ever needs one -
+    SAVE writes ASCII, not tokens, so no stored program would notice.
 [ ] SCREEN mode - pick a text or bitmap mode. HELP GRAPHIC.
-[ ] CHARSET addr - point the console at a different font in VRAM. There
-    is no character ROM here, so this takes an address, not a ROM number.
+[x] CHARSET addr - point the console at a different font in VRAM. There
+    is no character ROM here, so this takes an address, not a ROM
+    number. Built with the rest of the font work - HELP VIDEO has it and
+    CHARSETAT, which is what makes it safe to use from a program.
 
 Two console behaviours are worth knowing because they are not the C64's:
 

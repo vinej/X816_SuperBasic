@@ -48,6 +48,40 @@ registers inside its block at $9F20-$9F3F.
     therefore limited by memory, which is 14 MB, and not by the FIFO.
 
     PCMRESET stops it. So does another PCMPLAY.
+[x] ADPCMPLAY file$ - the same thing from a file a QUARTER the size.
+
+    IMA ADPCM keeps four bits a sample instead of sixteen. The file is
+    loaded, decoded whole into memory, and handed to the same AFLOW
+    feeder PCMPLAY uses - so everything above about streaming applies
+    unchanged, and the saving is in the card read and in the space,
+    which is what limits sound here.
+
+    IT DECODES BEFORE IT PLAYS ANYTHING, and on a big file that is a
+    second or two of the statement not returning. Nothing interpreted
+    can feed a DAC live and nothing here pretends otherwise.
+
+    A WAV or a raw stream. Reading the WAV header is not politeness: an
+    IMA WAV restarts its predictor at every block, the block size is in
+    the header and nowhere else, and a decoder that ignored it would
+    drift into noise a fraction of a second in. A file that is not RIFF
+    is decoded as one continuous stream from a predictor of 0, which is
+    the convention for a headerless one. A RIFF that is stereo, or not
+    IMA, is REFUSED rather than decoded into noise.
+
+    It sets two things for itself, and that is the difference from
+    PCMPLAY. The format, because an IMA file has exactly one decoded
+    format - 16-bit mono - and there is nothing for a program to choose.
+    And the RATE, when the file is a WAV, because the header says what
+    it is; a raw stream says nothing, so there PCMRATE stands. The rate
+    register is about a tenth of a percent off, which is a tenth of a
+    semitone over eight octaves.
+
+    THE FILE IS CAPPED AT 96 KB. The decoded audio goes to a fixed
+    384 KB buffer at $0A:0000, four bytes out for every byte in, and the
+    size is checked before anything is decoded. 96 KB is about eight
+    seconds at 22 kHz or seventeen at 11 kHz.
+
+    PCMRESET stops it, and so does another PCMPLAY or ADPCMPLAY.
 
 A paced feeder in BASIC is the loop you would expect - push while not
 full, top up when not empty - and it is worth writing once to see the
@@ -64,4 +98,5 @@ Where the samples come from matters more here than anywhere else on
 these pages. A second of 8-bit mono at 22 kHz is 22 KB - larger than the
 whole BASIC program space is likely to be, and far too large to sit in a
 DATA statement. Samples belong on the card and want streaming, so this
-page depends on HELP FILE landing first.
+page depends on HELP FILE landing first. ADPCMPLAY is the answer to the
+size of them: the same second is 5.5 KB compressed.

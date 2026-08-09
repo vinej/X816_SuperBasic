@@ -1551,6 +1551,19 @@ TOKENS2
             DEFTOK "FMINST", TOK_TY_STMNT, 0, S_FMINST, 0
             DEFTOK "FMLOAD", TOK_TY_STMNT, 0, S_FMLOAD, 0
             DEFTOK "PLAY", TOK_TY_STMNT, 0, S_PLAY, 0
+
+; Volume envelopes over the PSG. ENV arms a voice and ENVOFF lets a note
+; go; SOUND's volume becomes the peak. Two keywords and not three: ENV
+; with all four arguments zero disarms, which is spelled out in
+; X816/psgenv_x816.s and costs no sub-id.
+            DEFTOK "ENV", TOK_TY_STMNT, 0, S_ENV, 0
+            DEFTOK "ENVOFF", TOK_TY_STMNT, 0, S_ENVOFF, 0
+
+; IMA ADPCM: a quarter the file for the same sound. One keyword, because
+; the decoded audio goes to a fixed buffer and is handed straight to the
+; feeder -- a decode-to-an-address form would need a second keyword just
+; to report how long the answer was.
+            DEFTOK "ADPCMPLAY", TOK_TY_STMNT, 0, S_ADPCMPLAY, 0
 .endif
 
 ; ENDIF closes the block form of IF. Portable -- it is language, not

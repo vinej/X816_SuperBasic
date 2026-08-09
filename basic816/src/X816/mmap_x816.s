@@ -249,6 +249,55 @@ PCM_ON    = $008806         ; byte - the AFLOW handler is installed
 ; OPEN rather than FMINST.
 AUD_T     = $008830         ; 16 bytes
 
+; PSG volume envelopes (X816/psgenv_x816.s). ENV_TAB is sixteen bytes a
+; voice for sixteen voices, laid out in the header of that file; the
+; index into it is voice*16 so that it is four shifts and no multiply.
+;
+; ENV_A through ENV_R park ENV's five arguments across the EVALEXPRs
+; that read them, for the reason spelled out beside IRQ_TMP: an
+; expression can call a function that uses VID_A, so the arguments
+; cannot live there.
+ENV_ANY   = $008840         ; byte - any voice armed. IRQ_REARM folds this
+                            ;  into IRQ_ARMED, so an armed envelope costs
+                            ;  a running program what an armed ONVSYNC does
+ENV_FRAME = $008842         ; word - the kernel frame count at the last tick
+ENV_N     = $008844         ; word - frames still to apply, this poll
+ENV_P     = $008846         ; word - the voice being worked on, as voice*16
+ENV_TGT   = $008848         ; word - the level the phase is walking towards
+ENV_TMP   = $00884A         ; word - scratch inside one step
+ENV_NOW   = $00884C         ; word - the frame count just read
+ENV_SV    = $00884E         ; word - SOUND's voice, kept across the two
+                            ;  EVALEXPRs after it
+ENV_V     = $008858         ; word - ENV's voice, likewise. NOT ENV_P: the
+                            ;  frame tick WRITES that one as its loop
+                            ;  counter, and ENV parks its voice across four
+                            ;  more expressions -- so the two would alias
+                            ;  the day anything let a tick in mid-statement
+ENV_A     = $008850         ; word - ENV's attack, in frames
+ENV_D     = $008852         ; word - its decay
+ENV_S     = $008854         ; word - its sustain, which is a LEVEL
+ENV_R     = $008856         ; word - its release
+ENV_TAB   = $008900         ; 256 bytes - sixteen voices of sixteen
+
+; IMA ADPCM (X816/adpcm_x816.s). The two cursors the decoder runs on are
+; NOT here: they are MTEMP and PCM_PTR, both direct page, because [ptr]
+; addressing exists nowhere else -- and both are borrowed rather than
+; new, MTEMP being the staging cursor VIO_LOAD has finished with and
+; PCM_PTR being where the decoded audio has to end up anyway.
+ADP_PRED  = $008860         ; word - the predictor, signed 16-bit
+ADP_IDX   = $008862         ; word - the step index, 0-88
+ADP_STEP  = $008864         ; word - step_table[index]
+ADP_DIFF  = $008866         ; word - what this nibble moves the predictor
+ADP_NIB   = $008868         ; word - the nibble being decoded, 0-15
+ADP_IN    = $00886A         ; dword - compressed bytes still to read
+ADP_OUTN  = $00886E         ; dword - decoded bytes written
+ADP_BLK   = $008872         ; word - IMA block size, 0 = one raw stream
+ADP_BLKN  = $008874         ; word - data bytes left in this block
+ADP_RATE  = $008876         ; dword - sample rate out of a WAV header, 0
+                            ;  if the file did not say and PCMRATE stands
+ADP_T     = $00887A         ; 8 bytes - the 32-bit clamp, and the chunk
+                            ;  walk's length and bytes-remaining
+
 ; PLAY's parser state.
 PLY_P     = $008810         ; dword - where it is in the string
 PLY_N     = $008814         ; word - characters left

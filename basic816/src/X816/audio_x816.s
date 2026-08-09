@@ -1436,7 +1436,10 @@ PLY_DELAY       .proc
                 ADC @l PLY_MS+2
                 STA @l WAIT_T+2
 
-pd_loop         JSL FK_TESTBREAK
+pd_loop         CALL ENV_POLL           ; PLAY blocks for a whole note, and a
+                                        ;  PSG envelope running underneath it
+                                        ;  must not stop for that long
+                JSL FK_TESTBREAK
                 BCS pd_break
 
                 JSL KERN_TIME_GET

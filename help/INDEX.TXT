@@ -21,9 +21,9 @@ works today, which the upstream documentation cannot.
  SPRITE      VERA sprites             SPRITE SPRITEAT SPRITESHOW
  TILE        tilemaps and layers      TILESET TILEMAP TILEAT
  PAL         palettes                 PAL SETCOLOR
- AUDIOFM     FM notes and instruments SOUND FMNOTE PLAY
+ AUDIOFM     FM notes and instruments SOUND ENV FMNOTE PLAY
  AUDIOYM     raw YM2151 registers     YMPOKE YMPEEK
- AUDIOPCM    sampled sound, VERA FIFO PCMRATE PCMPUT PCMPLAY
+ AUDIOPCM    sampled sound, VERA FIFO PCMRATE PCMOUT PCMPLAY ADPCMPLAY
  VERAFX      accelerators             FXMULT FXFILL BLIT
  MEMORY      peek, poke, where things live
  FILE        the SD card              LOAD SAVE DIR BLOAD BSAVE

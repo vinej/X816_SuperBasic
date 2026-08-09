@@ -1569,6 +1569,272 @@ shell or SuperBasic re-enters and re-`LOAD`s the file.
 which is the thing this direction is removing; its design is in §24 if
 that changes.
 
+## 26. Volume envelopes over the PSG (2026-08-08)
+
+`ENV v,a,d,s,r` and `ENVOFF v`, the first of the two audio items on
+`help/ADVANCED.TXT`. Everything is in `X816/psgenv_x816.s`; the design
+sketch on that help page was followed, and the three places it turned out
+to be wrong are below.
+
+The interface: **a, d and r are times in FRAMES** — the frames a full
+0-to-63 sweep would take, so a shorter sweep takes proportionally less —
+and **s is a level, 0-63**. `SOUND`'s volume stops being the volume and
+becomes the **peak**. `SOUND v,0,0` still stops a voice dead, envelope or
+not: `help/AUDIOFM.TXT` has said so since the statement existed and every
+program written against it does that.
+
+### The tick is polled in four places, not one
+
+The sketch said `IRQ_POLL`, and `IRQ_POLL` alone is not enough. The first
+program anybody writes is
+
+```
+SOUND 0,440,63 : ENVOFF 0 : WAIT 1000
+```
+
+and `WAIT` does not reach a statement boundary for a second, so the whole
+release would happen in the one step *after* it. `WAIT`, `VSYNC` and
+`PLAY`'s note delay each poll it from inside their own loop. That is
+three lines of change and it is the difference between the feature
+working and appearing not to.
+
+### It applies elapsed FRAMES, not one step a call
+
+One step per poll makes an envelope's length depend on how fast the
+program runs, which makes "sixty frames" mean nothing. The poll asks the
+kernel for the frame count, subtracts, and applies that many steps —
+**capped at eight**, so a long `WAIT` cannot walk six hundred frames of
+sixteen voices in one go. Past the cap an envelope finishes late rather
+than the machine appearing to hang.
+
+### The state is sixteen bytes a voice, not eight
+
+The level is **8.8 fixed point** and the three rates are steps in the
+same units, because the step has to be fractional: a four-second fade is
+a quarter of a level a frame, and an integer step can only be 0, which
+never arrives, or 1, which arrives in one second. Sixteen bytes also
+makes the index `voice*16` — four shifts, no multiply.
+
+### Two decisions worth keeping
+
+**It runs on the near side of both of `IRQ_POLL`'s gates.** The `BUSY`
+re-entry guard and the `ST_RUNNING` test both come *after* the envelope
+tick, because the tick re-enters nothing — it walks its own table and
+writes VERA. Behind `BUSY` an `ONVSYNC` handler would freeze every
+envelope for as long as it ran; behind `ST_RUNNING` a note started at the
+prompt would never move. `IRQ_REARM` folds `ENV_ANY` into `IRQ_ARMED`, so
+the fast path stays one 16-bit read for a program that never says `ENV`.
+
+**The two channel bits are remembered, not read back.** The PSG is VRAM
+and VRAM does read back, but `help/PAL.TXT` records what this port
+learned about believing a read of VERA's non-pixel space, and a wrong
+pair of bits here is a silent voice rather than an odd colour.
+
+**Two tokens, not three.** `ENV v,0,0,0,0` disarms: an envelope rising
+instantly to a sustain of nothing is silence and can never be what
+somebody meant. `ENVCLR` would have cost one of the ~40 remaining
+extended sub-ids to say the same thing.
+
+### How it was verified
+
+A twelfth emulator session, and the numbers are the point — every one is
+arithmetic the code did not print:
+
+| line | expected | why that number |
+|---|---|---|
+| `ENV 0,0,0,63,0 : SOUND 0,440,63` | 255 | instant attack to `$C0│63` |
+| `ENVOFF 0` | 192 | instant release, channel bits kept |
+| `ENV 1,120,0,63,0`, read next statement | 192 | still at zero: it ramps |
+| ...after `WAIT 1000` | **223** | 60 of 120 frames = level 31, half |
+| ...after `WAIT 3000` | 255 | the attack completes |
+| `ENV 2,0,60,20,0`, after `WAIT 2000` | 212 | decay reached sustain 20 |
+| `ENV 4,0,0,63,60 : ENVOFF 4`, `WAIT 500` | **222** | 30 of 60 frames, half |
+| ...after `WAIT 2000` | 192 | the release finished, voice off |
+| `ENV 3,...` then `ENV 3,0,0,0,0` | 232 | disarmed: plain `SOUND` volume 40 |
+
+The two bolded halves are what makes this a rate check rather than a
+motion check: a level that merely moves would pass every other row.
+
+X816 45,496 bytes of the 65,280 cap; the C256 still assembles (§23).
+
+## 27. IMA ADPCM (2026-08-08)
+
+`ADPCMPLAY file$`, the second of the two audio items. A file a quarter
+the size, decoded whole into memory and handed to the AFLOW feeder
+`PCMPLAY` already had — so it is a decoder and nothing else, exactly as
+`help/ADVANCED.TXT` framed it.
+
+### Where the decoded audio goes — the page's one open question
+
+**A fixed buffer at `$0A:0000`,** the 384 KB between the staging buffer's
+128 KB and `$10:0000`, which is the EXEC staging area (§3). That caps the
+compressed file at 96 KB, and the check happens **before anything is
+decoded** — the alternative is finding out by writing over the next
+program's staging area, which comes back as *that* program misbehaving.
+
+`K_MEM_ALLOC` from the arena at `$20:0100` was tidier and was not taken.
+The kernel allows 32 blocks and nothing here would ever free one, so a
+program that played ten sounds would run out of *blocks* with megabytes
+free — a failure whose message would say nothing about sound.
+
+**Known and left:** `VIO_LOAD` does not cap what it loads, so a file
+larger than the staging buffer's 128 KB writes past it — into this decode
+buffer, and past `$0F:FFFF` at half a megabyte. That is `VIO_LOAD`'s
+behaviour and `PCMPLAY` has had it since §22; the size check here refuses
+the file *afterwards*, which reports the right thing to the user but does
+not prevent the write. Capping it belongs in `VIO_LOAD`, where all eight
+of its callers would get it, and is a separate change.
+
+### It reads WAV files, and that is correctness, not convenience
+
+An IMA WAV **restarts the predictor at every block**, with the starting
+value in a four-byte block header, and the block size is in the `fmt `
+chunk and nowhere else. A decoder that ignored that drifts into noise a
+fraction of a second in. So the chunk walk is not there to be friendly —
+without it the decode is wrong on every file anybody actually has.
+
+A non-RIFF file is decoded as one continuous stream from predictor 0,
+index 0. A RIFF that is stereo or not format 17 is **refused**, rather
+than decoded into noise and left for the speaker to report.
+
+### Two things it sets that PCMPLAY does not
+
+The **format** (16-bit mono): an IMA file has exactly one decoded format,
+so there is nothing for a program to choose and a wrong `PCMMODE` would
+only be a way to hear noise. And the **rate**, from the WAV header —
+`PCMPLAY` cannot, because a raw sample does not say. The register step is
+25000000/(512·128) ≈ 381.47 Hz and 381 is used, which is 0.1% off: a
+tenth of a semitone across eight octaves.
+
+### The two cursors are borrowed, not new
+
+`MTEMP` is the input cursor and **`PCM_PTR` the output one** — both
+direct page, because `[ptr]` addressing exists nowhere else, and the
+direct page has four bytes free and not eight (§19). `MTEMP` is the
+staging cursor `VIO_LOAD` has just finished with; `PCM_PTR` is where the
+answer has to end up anyway, so the decode leaves it pointing at what the
+feeder is about to play. `PCM_STOP` runs first, so no interrupt is
+reading `PCM_PTR` while it is a decoder's.
+
+### The predictor add is 32-bit, and that is the bug not made
+
+`diff` reaches 1.875 × 32767 ≈ 61438 — a number that fits a 16-bit word
+but not a *signed* one, and the sum lands either side of the range. Done
+narrow and clamped on the carry, the quiet case is right and the loud
+case is wrong, which sounds like a bad sample rather than a bad decoder.
+So the predictor is sign-extended into 32 bits, added, and clamped by
+asking whether the high word is still the low word's sign extension.
+
+### How it was verified
+
+A thirteenth emulator session, checked against **an independent Python
+decoder** rather than against itself. Python builds an IMA WAV of 40
+blocks whose nibbles are pseudo-random — deliberately not a smooth
+signal, because a real one lives in the low half of the step table and
+would never reach either clamp — decodes it, and writes down four
+samples. BASIC runs `ADPCMPLAY` and `PEEK`s those same four out of the
+decode buffer.
+
+| sample | is | and that is |
+|---|---|---|
+| 0 | `$E0C0` = −8000 | the first block's header predictor, used as sample 0 |
+| 100 | `$8000` | the **low clamp**, exactly |
+| 504 | `$7FFF` | the **high clamp**, exactly, and the last sample of block 0 |
+| 505 | `$E4A8` = −7000 | the **second block's** header predictor: it restarted |
+
+Plus the rate register reading 29 (11025 Hz out of the WAV header), the
+16-bit mode bit set, and AFLOW armed — so the header was parsed, the
+format was set, and the feeder started.
+
+The random nibbles reaching both clamps is the part that matters. That is
+the arithmetic most likely to be wrong and the least likely to be
+exercised by a well-behaved test signal.
+
+X816 47,117 bytes of the 65,280 cap; the C256 still assembles (§23).
+
+## 28. SETBGCOLOR and SETBORDER (2026-08-08)
+
+Two `[ ]` lines on `help/CONSOLE.TXT` that both said "Refuses today".
+Small, and one of them needed a decision.
+
+### SETBGCOLOR needed a shadow, and the shadow needed a true starting value
+
+`K_CON_COLOR` takes **foreground and background together** and there is
+no `K_CON_GETCOLOR` — the kernel's console has nine calls and none of
+them reads the attribute back. So setting *half* of a pair means
+remembering the other half. `TEXTCOLOR` now keeps `CURCOLOR` (which
+existed as a C256 leftover and was, on this target, written by nothing
+and read by nothing), and `SETBGCOLOR` sets the low nibble and re-sends
+the pair.
+
+The part worth recording is **what the shadow starts as**. Powered-up
+RAM would have set the foreground to noise the first time a program
+changed only the background. Two ways out:
+
+1. Call `K_CON_COLOR` at startup to *make* the shadow true — which
+   repaints over whatever the shell handed us.
+2. Seed it with what the kernel actually boots at — which asserts
+   nothing and changes nothing.
+
+Taken: (2). `X816_Calypsi runtime/console.c` starts at
+`ATTR_DEFAULT 0x01`, and in **its** layout — background high nibble,
+foreground low — that is foreground 1 on background 0. `CURCOLOR` uses
+the **C256's opposite layout**, foreground high (`C256/statements_c256.s`
+has always built it as `(fg << 4) | bg`), so it is seeded `$10`. The two
+layouts being mirror images is exactly the sort of thing that silently
+works until somebody prints in colour, so both are written down at the
+seeding site. The X816 is now doing what the portable half already
+assumed: `CURCOLOR` was declared for this target and, until now, written
+by nothing and read by nothing.
+
+### SETBORDER is BORDER under a second name, deliberately
+
+`BORDER c` already existed (§ the VERA video pass) and does exactly this.
+The instinct from `help/AUDIOPCM.TXT` — where `PCMPUT` was **removed** as
+a name for being one page asking twice for one thing — does not transfer:
+this is two *pages* asking once each, `CONSOLE` having listed `SETBORDER`
+since BASIC816 and `VIDEO` listing `BORDER`. More to the point
+`SETBORDER`'s token is a **base** one, spent long before this port
+existed, so keeping it costs nothing that is not already spent.
+
+It is a `JMP S_BORDER` — a tail call, so `S_BORDER`'s `RTS` returns to
+`SETBORDER`'s caller and there is one copy of the code.
+
+Reclaiming the base slot is available if the base table ever needs one:
+**`SAVE` writes ASCII, not tokens** (`CMD_SAVE` runs `LISTPROG` into a
+buffer), so renumbering the base table would not spoil a stored program.
+That is the fact that makes the option real, and it is why it is written
+down here rather than assumed either way.
+
+Not the C256's `SETBORDER`, which took `visible[,r,g,b]`. VERA's border
+is one byte indexing the 256-colour palette.
+
+### How they were verified
+
+A fourteenth emulator session, reading the **text matrix attribute byte**
+back out of VRAM — the console's map is at `$00000`, 128 wide, cell
+`(glyph, attribute)`, so `(col,row)`'s attribute is `row*256 + col*2 + 1`:
+
+| what | reads | why that number |
+|---|---|---|
+| `TEXTCOLOR 7,0`, print at row 40 | 7 | foreground 7 on background 0 |
+| `SETBGCOLOR 4`, print at row 41 | **71** = `$47` | background 4, and **foreground still 7** |
+| `SETBORDER 5` | 5 | out of `$9F2C` itself |
+| `BORDER 9` | 9 | the same register: they are one statement |
+
+**71 is the assertion that matters.** A `SETBGCOLOR` that wrote the pair
+from an unseeded shadow, or that took the background for the foreground,
+lands on almost any other number.
+
+One thing the session shows in passing: the row printed on background 4
+decodes as blank, because the GIF reader treats any lit pixel as ink and
+a coloured background lights every pixel in the cell. Harmless here —
+the assertions are `VPEEK`s of the attribute, not of the glyph — but it
+is why the colours are set back to 0 before anything is printed to be
+read.
+
+X816 47,164 bytes of the 65,280 cap; the C256 still assembles (§23).
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

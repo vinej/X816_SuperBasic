@@ -16,6 +16,42 @@ voices below would make it a good one.
     NOT the YM2151: the PSG is simpler, it is VRAM rather than registers
     with a busy flag, and it was therefore the one that could be written
     first. The FM voices below are still to come.
+[x] ENV v,a,d,s,r - give a PSG voice a volume envelope, so a note can
+    rise, hold and FADE instead of starting and stopping like a switch.
+
+        ENV 0,4,30,40,45     : REM a plucked sort of note
+        SOUND 0,440,63       : REM 63 is now the PEAK, not the volume
+        ENVOFF 0             : REM let go: 45 frames down to silence
+
+    a, d and r are TIMES IN FRAMES - the frames a full 0-to-63 sweep
+    would take, so a shorter sweep takes proportionally less. s is a
+    LEVEL, 0-63: where the note holds until it is let go. 0 for a time
+    means instant, and an instant one happens inside the statement that
+    asks for it, so ENV v,0,0,63,0 sounds exactly like plain SOUND.
+
+    ALL FOUR ZERO DISARMS the voice, and that is the only way to take an
+    envelope off again. An envelope that rises instantly to a sustain of
+    nothing is silence, so it can never be what anyone meant.
+[x] ENVOFF v - let go of the note on voice v: fall to silence over its
+    release time, then stop. The statement the rest of this is for.
+
+    SOUND v,0,0 still stops a voice DEAD and still means what it always
+    meant - a program can use both on the same voice. ENVOFF on a voice
+    that is silent, already releasing, or was never given an envelope
+    does nothing rather than complaining: letting go twice is normal.
+
+    The tick is POLLED, not an interrupt. It runs at the statement
+    boundary, and inside WAIT, VSYNC and PLAY so that a fade across a
+    long pause keeps moving. What it costs is granularity: a program
+    doing very long statements advances its envelopes in fewer, larger
+    steps, and catch-up is capped at eight frames at a time so that
+    WAIT 10000 cannot walk six hundred frames in one go. It is NOT in
+    KIRQ_VSYNC on purpose - that slot is the kernel's blinking cursor
+    and taking it loses the cursor (HELP SYSTEM).
+
+    RUN and NEW disarm every envelope, exactly as they disarm ONVSYNC.
+    They do not silence the PSG: a voice caught mid-envelope stays where
+    it was, which is what a voice set by plain SOUND has always done.
 [x] FMINIT - silence every channel and load one usable instrument on all
     eight. Without it the chip powers up with every operator at zero
     output level and total silence, which reads as "FM is broken" rather
@@ -72,7 +108,8 @@ voices below would make it a good one.
 Timing was the thing to settle, and PLAY settles it by blocking - see
 above for why, and HELP SYSTEM for what ONVSYNC would and would not buy
 here. SOUND still has no length argument: a PSG voice sounds until it is
-silenced, and the statement that ends it is SOUND v,0,0.
+silenced, and the statement that ends it is SOUND v,0,0 - or ENVOFF v,
+which is the same thing said gently.
 
 Volume shadowing. FMVOL's attenuation is applied when it is set, so a
 later raw YMPOKE straight at a total-level register ($60-$7F) overrides

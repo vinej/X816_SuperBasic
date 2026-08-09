@@ -80,25 +80,41 @@ IRQ_POLL    .proc
                                         ;  happens on every statement of
                                         ;  every program ever written, so it
                                         ;  pays for none of the setup below.
-            AND #$FF00
-            BNE out                     ; A handler is running: the re-entry
-                                        ;  guard. A tick arriving now is
-                                        ;  DROPPED, not queued -- queueing
-                                        ;  guarantees a death spiral the
-                                        ;  moment the handler is slower than
-                                        ;  the source.
             JMP work
 
 out         PLP
             RETURN
 
-            ; ---- something is armed, and we are not inside a handler ----
+            ; ---- something is armed, or a handler is running ----
 
 work        PHD
             PHB
             setdp <>GLOBAL_VARS
             setdbr BASIC_BANK
             setaxl
+
+            ; Volume envelopes first, and BEFORE the two gates below.
+            ;
+            ; They belong on the near side of both because they re-enter
+            ; nothing: ENV_POLL walks its own table and writes VERA, and
+            ; touches no interpreter state at all. Behind the BUSY guard
+            ; an ONVSYNC handler would freeze every envelope for as long
+            ; as it ran, and behind the ST_RUNNING test a note started at
+            ; the READY prompt would never move.
+            setas
+            LDA @l ENV_ANY
+            BEQ noenv
+            CALL ENV_POLL
+noenv
+            setal
+            LDA @l IRQ_STATE
+            AND #$FF00
+            BNE done                    ; A handler is running: the re-entry
+                                        ;  guard. A tick arriving now is
+                                        ;  DROPPED, not queued -- queueing
+                                        ;  guarantees a death spiral the
+                                        ;  moment the handler is slower than
+                                        ;  the source.
 
             setas
             LDA STATE                   ; Only from a running program. At the
@@ -263,6 +279,11 @@ IRQ_DISARM  .proc
             PHP
             setaxl
 
+            CALL ENV_CLEAR              ; and the volume envelopes with them:
+                                        ;  same reasoning, and this is also
+                                        ;  the path INITBASIC takes, which is
+                                        ;  what zeroes the table at boot
+            setaxl
             LDA #0
             STA @l IRQ_STATE            ; ARMED and BUSY together
             STA @l IRQ_VLINE
@@ -336,9 +357,14 @@ IRQ_REARM   .proc
             LDA @l IRQ_VLINE
             ORA @l IRQ_RLINE
             ORA @l IRQ_CLINE
-            BEQ none
+            BNE some
 
-            setas
+            setas                       ; An armed envelope wants the same
+            LDA @l ENV_ANY              ;  fast path, so it is folded in here
+            BEQ none                    ;  rather than costing IRQ_POLL a
+                                        ;  second load on every statement of
+                                        ;  every program.
+some        setas
             LDA #1
             BRA store
 none        setas

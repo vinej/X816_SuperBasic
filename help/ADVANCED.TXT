@@ -41,33 +41,47 @@ pieces. Keep the palette in an array and save that.
 
 --- sound ---
 
-[ ] ENV v,a,d,s,r and ENVOFF v - attack, decay, sustain, release ticked
+[x] ENV v,a,d,s,r and ENVOFF v - attack, decay, sustain, release ticked
     once a frame across the PSG voices, so a note can fade instead of
-    stopping dead.
+    stopping dead. Built as designed, and documented in HELP AUDIOFM
+    beside SOUND, which is what it changes the meaning of.
 
-    The frame tick it needed now exists. It does NOT want a handler in
-    KIRQ_VSYNC -- that slot belongs to the kernel's cursor, and taking it
-    loses the cursor. It wants the tick SuperBasic already has: IRQ_POLL
-    runs between statements and notices when the kernel's frame counter
-    has moved (HELP SYSTEM). A volume envelope arriving a statement late
-    is inaudible.
+    Two things came out different from the sketch above. The tick is not
+    only IRQ_POLL: WAIT, VSYNC and PLAY's note delay poll it too, because
+    "SOUND : ENVOFF : WAIT 1000" is the first thing anybody writes and
+    without those three it holds the whole release for a second and then
+    collapses it in one step. And the poll applies as many steps as
+    FRAMES have passed rather than one per call, so a slow program gets
+    an envelope of the right length in coarser steps instead of one
+    stretched to its own speed - capped at eight, so a long WAIT cannot
+    walk hundreds of frames at once.
 
-    The shape: per voice a phase (attack, decay, sustain, release, off),
-    a level 0-63, and the four rates as steps per frame. SOUND sets the
-    peak; the tick walks the level towards the next target and writes the
-    PSG volume byte, keeping the two channel bits above it. Sixteen
-    voices of about eight bytes is all the state there is.
-[ ] ADPCM decode - about four times smaller than raw PCM. Decode a whole
-    file up front and play the result with PCMPLAY; nothing interpreted
-    can feed a DAC live (HELP AUDIOPCM).
+    The state is sixteen bytes a voice rather than eight: the level is
+    8.8 fixed point and the three rates are steps in the same units. A
+    four-second fade is a quarter of a level a frame, and an integer
+    step can only be 0, which never arrives, or 1, which arrives in one
+    second.
+[x] ADPCM decode - about four times smaller than raw PCM. Built as
+    ADPCMPLAY file$, documented in HELP AUDIOPCM beside PCMPLAY, which
+    is the statement it is the compressed twin of.
 
-    IMA ADPCM: a 4-bit nibble a sample, an 89-entry step table and a
-    16-entry index table, and about 150 lines around them. It fits the
-    machinery that is already here -- load the file to the staging
-    buffer, decode it into memory, hand the result to the AFLOW feeder --
-    so it is a decoder and nothing else. The one decision is where the
-    decoded audio goes, since it is four times the size of what was
-    loaded.
+    The open question was where the decoded audio goes, and the answer
+    is a fixed buffer at $0A:0000 - the 384 KB between the staging
+    buffer and $10:0000, which is the EXEC staging area and belongs to
+    whatever runs next. So a compressed file is capped at 96 KB, and it
+    is refused before anything is decoded rather than found out by
+    overrunning. K_MEM_ALLOC was the tidier alternative and was not
+    taken: the kernel allows 32 blocks and nothing here would free one,
+    so a program that played ten sounds would run out of BLOCKS with
+    megabytes free.
+
+    It reads WAV files as well as raw streams, and that is correctness
+    rather than convenience: an IMA WAV RESTARTS the predictor at every
+    block, the block size is in the header and nowhere else, and a
+    decoder that ignored it would drift into noise a fraction of a
+    second in. A WAV also says its own sample rate, so ADPCMPLAY sets
+    PCMRATE from it - the one thing PCMPLAY cannot do, because a raw
+    sample does not say.
 
 --- interrupts, which most of the above depends on ---
 

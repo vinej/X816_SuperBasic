@@ -122,6 +122,45 @@
 #                                    key-code register, so the string was
 #                                    parsed and played and not just taken
 #
+#   session L -- PSG volume envelopes
+#    23. ENV / ENVOFF / SOUND      - read straight out of the PSG's own
+#                                    volume byte with VPEEK, so every
+#                                    number is the hardware's and not
+#                                    BASIC's. Two of them are HALVES of a
+#                                    sweep, which is what makes this a
+#                                    check on the RATE and not merely on
+#                                    the level having moved
+#
+#   session M -- IMA ADPCM, against an independent decoder
+#    24. ADPCMPLAY on a WAV        - Python builds the file AND works
+#                                    out what it must decode to; BASIC
+#                                    PEEKs the decode buffer. The
+#                                    nibbles are pseudo-random on
+#                                    purpose: a real signal lives in the
+#                                    low half of the step table and
+#                                    would never reach either clamp,
+#                                    which is the arithmetic most likely
+#                                    to be wrong
+#
+#   session N -- the paths session M does not reach
+#    25. a RAW headerless stream   - decoded from a predictor of 0, and
+#                                    PCMRATE left alone because a raw
+#                                    file does not say what it is
+#    26. a STEREO IMA WAV          - REFUSED. Everything else about the
+#                                    file is well formed, so the channel
+#                                    count being looked at is the only
+#                                    thing that can refuse it
+#
+#   session O -- the console's two colour statements
+#    27. SETBGCOLOR / SETBORDER    - read back out of the TEXT MATRIX
+#                                    ATTRIBUTE BYTE and out of VERA's
+#                                    border register. 71 is the one
+#                                    that matters: background 4 with
+#                                    the foreground STILL 7 from an
+#                                    earlier TEXTCOLOR, which is the
+#                                    whole point of setting half of a
+#                                    pair
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -558,6 +597,236 @@ KEYS_K=$(keys_of \
     'LOAD "N.BAS"' \
     'LIST')
 
+# PSG volume envelopes, read back out of the PSG's own volume byte.
+#
+# VPEEK, because the PSG IS VRAM -- $1F9C0 plus four bytes a voice, and
+# the volume is the third of the four. So every number below came out of
+# the hardware; nothing here asks BASIC what it thinks it wrote. The two
+# channel bits live above the volume in the same byte, which is why the
+# readings are 192 plus a level rather than a level.
+#
+# A PROGRAM and not typed lines, and that is the whole reason this can
+# assert anything. Envelopes move in real time, so a check on where one
+# has GOT to is a check on how long ago the line before it ran -- and
+# under -autokeys that is however long the SMC took to deliver forty
+# padding characters. Inside a program the interval is WAIT's, which is
+# the same clock the envelope is stepping off.
+#
+# The two halves are the point. Voice 1 is read 60 frames into a
+# 120-frame attack and voice 4 30 frames into a 60-frame release, and
+# both must be at 31 and 30 of 63. A level that merely MOVED would pass
+# every other line here; a rate that was out by a factor of two would
+# read 255 or 207 and fail only these.
+KEYS_L=$(keys_of \
+    '10 ENV 0,0,0,63,0' \
+    '20 SOUND 0,440,63' \
+    '30 PRINT VPEEK(&h1F9C2)' \
+    '40 ENVOFF 0' \
+    '50 PRINT VPEEK(&h1F9C2)' \
+    '60 ENV 1,120,0,63,0' \
+    '70 SOUND 1,440,63' \
+    '80 A=VPEEK(&h1F9C6)' \
+    '90 WAIT 1000' \
+    '100 B=VPEEK(&h1F9C6)' \
+    '110 WAIT 3000' \
+    '120 PRINT VPEEK(&h1F9C6)' \
+    '130 PRINT A' \
+    '140 PRINT B' \
+    '150 ENV 2,0,60,20,0' \
+    '160 SOUND 2,440,63' \
+    '170 WAIT 2000' \
+    '180 PRINT VPEEK(&h1F9CA)' \
+    '190 ENV 4,0,0,63,60' \
+    '200 SOUND 4,440,63' \
+    '210 ENVOFF 4' \
+    '220 WAIT 500' \
+    '230 PRINT VPEEK(&h1F9D2)' \
+    '240 WAIT 2000' \
+    '250 PRINT VPEEK(&h1F9D2)' \
+    '260 ENV 3,30,0,63,30' \
+    '270 ENV 3,0,0,0,0' \
+    '280 SOUND 3,440,40' \
+    '290 PRINT VPEEK(&h1F9CE)' \
+    '300 PRINT "ENVOK"' \
+    'RUN')
+
+# IMA ADPCM, checked against a decoder that is not this one.
+#
+# Python builds the file AND works out what it has to decode to, writing
+# the answers to adpexp.txt for the check below to read. So the numbers
+# BASIC prints are compared against arithmetic done somewhere else, in
+# another language, from the published tables -- not against anything
+# this port computed.
+#
+# THE NIBBLES ARE PSEUDO-RANDOM ON PURPOSE. A real signal spends its
+# whole life in the low half of the step table, and the predictor clamps
+# at +32767 and -32768 would never run. They are the arithmetic most
+# likely to be wrong -- the intermediate reaches 1.875 * 32767, which
+# fits a 16-bit word but not a signed one -- and the least likely to be
+# reached by a well-behaved test tone. With random nibbles both clamps
+# fire within the first few hundred samples.
+#
+# Forty blocks, each with its own starting predictor, because an IMA WAV
+# RESTARTS at every block. Sample 505 is the second block's header
+# predictor and it is the one that says so.
+python - "$OUT/t.wav" "$OUT/adpexp.txt" "$OUT/raw.ima" "$OUT/bad.wav" <<'PYADP'
+import sys, struct
+
+STEP = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,
+        66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,
+        371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,
+        1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,
+        5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,
+        16818,18500,20350,22385,24623,27086,29794,32767]
+IDX = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8]
+
+BLOCK, NBLOCK, RATE = 256, 40, 11025
+
+def nibbles(seed, n):
+    x, out = seed, []
+    for _ in range(n):
+        x = (x * 1103515245 + 12345) & 0x7FFFFFFF
+        out.append((x >> 16) & 15)
+    return out
+
+def decode(nb, pred, index, out):
+    for n in nb:
+        step = STEP[index]
+        diff = step >> 3
+        if n & 4: diff += step
+        if n & 2: diff += step >> 1
+        if n & 1: diff += step >> 2
+        pred = pred - diff if n & 8 else pred + diff
+        pred = max(-32768, min(32767, pred))
+        index = max(0, min(88, index + IDX[n]))
+        out.append(pred)
+
+# ---- the WAV, in blocks ----
+data, samples = bytearray(), []
+for b in range(NBLOCK):
+    pred, index = (b * 1000) - 8000, (b * 7) % 89
+    data += struct.pack('<hBB', pred, index, 0)
+    samples.append(pred)                 # the header's predictor IS sample 0
+    nb = nibbles(b + 1, (BLOCK - 4) * 2)
+    for i in range(0, len(nb), 2):
+        data.append(nb[i] | (nb[i + 1] << 4))
+    decode(nb, pred, index, samples)
+
+fmt = struct.pack('<HHIIHHHH', 17, 1, RATE, RATE // 2, BLOCK, 4, 2,
+                  1 + (BLOCK - 4) * 2)
+chunks = b'fmt ' + struct.pack('<I', len(fmt)) + fmt
+chunks += b'data' + struct.pack('<I', len(data)) + bytes(data)
+open(sys.argv[1], 'wb').write(
+    b'RIFF' + struct.pack('<I', 4 + len(chunks)) + b'WAVE' + chunks)
+
+# ---- a RAW stream: no RIFF, no blocks, predictor 0 by convention ----
+nb = nibbles(99, 8000)
+raw = bytearray()
+for i in range(0, len(nb), 2):
+    raw.append(nb[i] | (nb[i + 1] << 4))
+open(sys.argv[3], 'wb').write(bytes(raw))
+rawsamples = []
+decode(nb, 0, 0, rawsamples)
+
+# ---- and a STEREO IMA WAV, which has to be refused ----
+badfmt = struct.pack('<HHIIHHHH', 17, 2, 11025, 11025, 512, 4, 2, 1017)
+d = bytes(1024)
+bad = b'fmt ' + struct.pack('<I', len(badfmt)) + badfmt
+bad += b'data' + struct.pack('<I', len(d)) + d
+open(sys.argv[4], 'wb').write(
+    b'RIFF' + struct.pack('<I', 4 + len(bad)) + b'WAVE' + bad)
+
+# The bytes BASIC will be asked to PEEK, in the order it prints them.
+with open(sys.argv[2], 'w') as f:
+    for k in (0, 100, 504, 505):
+        v = samples[k] & 0xFFFF
+        f.write("%d\n%d\n" % (v & 0xFF, v >> 8))
+    f.write("%d\n" % ((RATE + 190) // 381))      # VERA's rate register
+    f.write("32\n")                              # 16-bit mode
+    f.write("8\n")                               # AFLOW armed
+    f.write("-\n")                               # the raw session starts here
+    for k in (0, 50):
+        v = rawsamples[k] & 0xFFFF
+        f.write("%d\n%d\n" % (v & 0xFF, v >> 8))
+    f.write("20\n")                              # PCMRATE, untouched
+PYADP
+
+# Sample k is two bytes at $0A:0000 + 2k, so 0, 100, 504 and 505 are
+# $A0000, $A00C8, $A03F0 and $A03F2. 504 is the last sample of the first
+# block and 505 the first of the second, which is where a decoder that
+# ran on through the block header instead of restarting would part
+# company with the reference.
+# The console's two colour statements.
+#
+# The console map is at VRAM $00000, 128 cells wide, each cell a glyph
+# and an attribute -- so (col,row)'s ATTRIBUTE is at row*256 + col*2 + 1,
+# and 10241 and 10497 are rows 40 and 41 of column 0. The attribute is
+# the kernel's layout, background in the HIGH nibble: 7 is white on
+# black and $47 is white on blue.
+#
+# Rows 40 and 41 are chosen to be below the typed program and above
+# where its output lands. The row printed on background 4 decodes as
+# BLANK -- the reader treats any lit pixel as ink and a coloured
+# background lights every pixel of the cell -- which is harmless,
+# because what is asserted is the ATTRIBUTE and not the glyph, and is
+# why the colours go back to 0 before anything is printed to be read.
+KEYS_O=$(keys_of \
+    '10 TEXTCOLOR 7,0' \
+    '20 LOCATE 0,40' \
+    '30 PRINT "A"' \
+    '40 SETBGCOLOR 4' \
+    '50 LOCATE 0,41' \
+    '60 PRINT "B"' \
+    '70 SETBGCOLOR 0' \
+    '80 SETBORDER 5' \
+    '90 A=PEEK(&h9F2C)' \
+    '100 BORDER 9' \
+    '110 B=PEEK(&h9F2C)' \
+    '120 SETBORDER 0' \
+    '130 LOCATE 0,45' \
+    '140 PRINT VPEEK(10241)' \
+    '150 PRINT VPEEK(10497)' \
+    '160 PRINT A' \
+    '170 PRINT B' \
+    '180 PRINT "CONOK"' \
+    'RUN')
+
+KEYS_M=$(keys_of \
+    '10 ADPCMPLAY "T.WAV"' \
+    '20 PRINT PEEK(&hA0000)' \
+    '30 PRINT PEEK(&hA0001)' \
+    '40 PRINT PEEK(&hA00C8)' \
+    '50 PRINT PEEK(&hA00C9)' \
+    '60 PRINT PEEK(&hA03F0)' \
+    '70 PRINT PEEK(&hA03F1)' \
+    '80 PRINT PEEK(&hA03F2)' \
+    '90 PRINT PEEK(&hA03F3)' \
+    '100 PRINT PEEK(&h9F3C)' \
+    '110 PRINT PEEK(&h9F3B) AND 32' \
+    '120 PRINT PEEK(&h9F26) AND 8' \
+    '130 PRINT "ADPOK"' \
+    'RUN')
+
+# The two paths session M does not reach. PCMRATE 20 first, and 20 again
+# at the end: a raw stream carries no header and so must leave the rate
+# where the program put it -- the WAV in session M moves it to 29, so
+# the pair of sessions says the rate is taken from a header when there
+# is one and only then.
+#
+# Line 90 must NOT print. The stereo file is well formed in every other
+# way, so nothing but the channel count can refuse it.
+KEYS_N=$(keys_of \
+    '10 PCMRATE 20' \
+    '20 ADPCMPLAY "RAW.IMA"' \
+    '30 PRINT PEEK(&hA0000)' \
+    '40 PRINT PEEK(&hA0001)' \
+    '50 PRINT PEEK(&hA0064)' \
+    '60 PRINT PEEK(&hA0065)' \
+    '70 PRINT PEEK(&h9F3C)' \
+    '80 ADPCMPLAY "BAD.WAV"' \
+    '90 PRINT "NOTREACHED"' \
+    'RUN')
+
 # Eight kilobytes of square wave: more than the 4 KB FIFO, so the primer
 # fills it, and about a third of a second at rate 64, so it is over well
 # inside the WAIT that follows.
@@ -572,21 +841,24 @@ PYWAV
 # Each session gets its own card, written by pyfatfs -- an independent
 # FAT32 implementation, as everywhere else in the tree -- so neither can
 # be fooled by what the other left behind.
-run_session () {        # $1 = tag, $2 = key script, $3 = extra file, $4 = its name
-    cp "$CORE/boot/fat32.img" "$OUT/card$1.img"
-    python tools/putfile.py "$(cygpath -m "$OUT/card$1.img")" \
+run_session () {        # $1 = tag, $2 = keys, then (path, name) pairs
+    local tag="$1" keys="$2"
+    cp "$CORE/boot/fat32.img" "$OUT/card$tag.img"
+    python tools/putfile.py "$(cygpath -m "$OUT/card$tag.img")" \
         "$(cygpath -m "$OUT/basic.bin")" BASIC.BIN >/dev/null || return 1
-    if [ -n "${3:-}" ]; then
-        python tools/putfile.py "$(cygpath -m "$OUT/card$1.img")" \
-            "$(cygpath -m "$3")" "$4" >/dev/null || return 1
-    fi
+    shift 2
+    while [ $# -ge 2 ]; do      # any number of them: session N needs two,
+        python tools/putfile.py "$(cygpath -m "$OUT/card$tag.img")" \
+            "$(cygpath -m "$1")" "$2" >/dev/null || return 1
+        shift 2
+    done
     SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 90 \
         "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
         -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
-        -sdcard "$WOUT/card$1.img" \
-        -autokeys "$2" \
-        -warp -gif "$WOUT/out$1.gif" >/dev/null 2>&1
-    [ -f "$OUT/out$1.gif" ]
+        -sdcard "$WOUT/card$tag.img" \
+        -autokeys "$keys" \
+        -warp -gif "$WOUT/out$tag.gif" >/dev/null 2>&1
+    [ -f "$OUT/out$tag.gif" ]
 }
 
 run_session A "$KEYS_A" || { echo "session A produced no recording"; exit 1; }
@@ -601,6 +873,10 @@ if [ "$NEG" = "0" ]; then
     run_session I "$KEYS_I" "$OUT/w.raw" W.RAW || { echo "session I produced no recording"; exit 1; }
     run_session J "$KEYS_J" || { echo "session J produced no recording"; exit 1; }
     run_session K "$KEYS_K" "$OUT/n.bas" N.BAS || { echo "session K produced no recording"; exit 1; }
+    run_session L "$KEYS_L" || { echo "session L produced no recording"; exit 1; }
+    run_session M "$KEYS_M" "$OUT/t.wav" T.WAV || { echo "session M produced no recording"; exit 1; }
+    run_session N "$KEYS_N" "$OUT/raw.ima" RAW.IMA "$OUT/bad.wav" BAD.WAV || { echo "session N produced no recording"; exit 1; }
+    run_session O "$KEYS_O" || { echo "session O produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -612,19 +888,26 @@ else
     cp "$OUT/outA.gif" "$OUT/outI.gif"
     cp "$OUT/outA.gif" "$OUT/outJ.gif"
     cp "$OUT/outA.gif" "$OUT/outK.gif"
+    cp "$OUT/outA.gif" "$OUT/outL.gif"
+    cp "$OUT/outA.gif" "$OUT/outM.gif"
+    cp "$OUT/outA.gif" "$OUT/outN.gif"
+    cp "$OUT/outA.gif" "$OUT/outO.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
- gif_k, fontinc) = (sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
+ gif_k, gif_l, gif_m, gif_n, gif_o, fontinc, adpexp) = (
+                    sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
-                    sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12])
-negative = sys.argv[13] == "1"
+                    sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
+                    sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
+                    sys.argv[17])
+negative = sys.argv[18] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -678,8 +961,13 @@ rows_h = [] if negative else last_screen(gif_h)
 rows_i = [] if negative else last_screen(gif_i)
 rows_j = [] if negative else last_screen(gif_j)
 rows_k = [] if negative else last_screen(gif_k)
+rows_l = [] if negative else last_screen(gif_l)
+rows_m = [] if negative else last_screen(gif_m)
+rows_n = [] if negative else last_screen(gif_n)
+rows_o = [] if negative else last_screen(gif_o)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
-        rows_h + rows_i + rows_j + rows_k)
+        rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
+        rows_o)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -1177,6 +1465,131 @@ if not any(r.strip() == "200" for r in rows_g):
 if not any(r.strip() == "90" for r in rows_g):
     fail("SPRITESAVE/SPRITELOAD did not round-trip sprite pixels through "
          "the card")
+
+# ---- session L: PSG volume envelopes ------------------------------------
+# Every number here is VPEEK of the PSG's own volume byte, so it is the
+# hardware's answer and not BASIC's. The top two bits are the channel
+# bits, so a reading is 192 + the level: 255 is full, 192 is silence,
+# and the envelope's whole job is what happens between them.
+#
+# 255 TWICE, and they mean different things. The first is ENV 0,0,0,63,0
+# -- an envelope of all instants, which must behave exactly like plain
+# SOUND and reach the peak inside the statement. The second is voice 1
+# arriving at the top of a 120-frame attack after WAIT 3000.
+if len([r for r in rows_l if r.strip() == "255"]) != 2:
+    fail("a voice under an envelope did not reach its peak: either the "
+         "instant envelope ENV 0,0,0,63,0 failed to behave like plain "
+         "SOUND, or the 120-frame attack never finished")
+# 192 twice as well: the instant release on voice 0, and voice 4's
+# 60-frame release having run out. Both are silence with the channel
+# bits intact -- a 0 here would be an envelope that wrote the level
+# without them and killed the voice.
+if len([r for r in rows_l if r.strip() == "192"]) != 2:
+    fail("ENVOFF did not bring a voice to silence, or it wrote the level "
+         "without the two channel bits above it")
+# Voice 1 read the statement AFTER SOUND: still at zero, because a
+# 120-frame attack has moved half a level. This is what says the attack
+# ramps rather than jumping, and it fails if SOUND still writes the
+# volume it was given.
+if not any(r.strip() in ("192", "1.92000E02") for r in rows_l):
+    fail("SOUND on a voice with an envelope started at full volume -- the "
+         "volume it was given should have become the PEAK, and the note "
+         "should have started from silence")
+# THE ONE THAT MATTERS. 60 frames into a 120-frame attack is level 31 of
+# 63, so 223. A level that merely moved would pass every other check
+# here; a step computed at twice the rate reads 255 and at half reads
+# 207, and only this line can tell.
+if not any(r.strip() in ("223", "2.23000E02") for r in rows_l):
+    fail("half way through a 120-frame attack the level was not half: "
+         "the envelope is moving, but not at the rate it was asked for")
+# And the same again on the way down: 30 frames into a 60-frame release
+# is level 30.
+if not any(r.strip() == "222" for r in rows_l):
+    fail("half way through a 60-frame release the level was not half -- "
+         "ENVOFF is not walking the level down at its release rate")
+# 212 is 192+20: the decay stopped at the sustain level and held there.
+if not any(r.strip() == "212" for r in rows_l):
+    fail("the decay did not stop at the sustain level -- it either ran "
+         "past it to silence or never left the peak")
+# 232 is 192+40, a plain SOUND volume. It comes after ENV 3,0,0,0,0 on a
+# voice that HAD been armed, so it is the disarm form working: without
+# it the voice would be attacking from silence and read 192.
+if not any(r.strip() == "232" for r in rows_l):
+    fail("ENV v,0,0,0,0 did not disarm the voice -- SOUND should be the "
+         "statement it always was afterwards")
+if not any(r.strip() == "ENVOK" for r in rows_l):
+    fail("session L did not reach the end")
+
+# ---- sessions M and N: IMA ADPCM ----------------------------------------
+# The expected values were computed by the Python decoder above -- the
+# published step and index tables, in another language, from the same
+# nibbles. Nothing here compares SuperBasic against itself.
+#
+# IN ORDER, not merely present. Every value is a byte 0-255 and several
+# repeat, so "does 255 appear anywhere" would pass on almost any wrong
+# answer; the sequence is what carries the information.
+adp_want = [l.strip() for l in io.open(adpexp, encoding='utf-8')
+            if l.strip()]
+adp_m = adp_want[:adp_want.index("-")]
+adp_n = adp_want[adp_want.index("-") + 1:]
+
+def digits(rows_x):
+    return [r.strip() for r in rows_x if r.strip().isdigit()]
+
+got_m = digits(rows_m)
+if got_m[:len(adp_m)] != adp_m:
+    fail("ADPCMPLAY did not decode the WAV as an independent decoder "
+         "says it must: wanted %r, got %r. Bytes 3 and 4 are sample 100 "
+         "and bytes 5 and 6 sample 504, which are the two PREDICTOR "
+         "CLAMPS; bytes 7 and 8 are sample 505, the second block's own "
+         "starting predictor, which is wrong if the decoder ran on "
+         "through the block header instead of restarting at it. The "
+         "last three are VERA's rate register out of the WAV header, "
+         "the 16-bit mode bit, and AFLOW armed."
+         % (adp_m, got_m[:len(adp_m)]))
+if not any(r.strip() == "ADPOK" for r in rows_m):
+    fail("session M did not reach the end")
+
+got_n = digits(rows_n)
+if got_n[:len(adp_n)] != adp_n:
+    fail("a RAW headerless IMA stream did not decode from a predictor "
+         "of 0, or ADPCMPLAY moved PCMRATE for a file that says nothing "
+         "about its rate: wanted %r, got %r" % (adp_n, got_n[:len(adp_n)]))
+# The stereo WAV. It is well formed in every other way, so nothing but
+# the channel count can refuse it -- and a decoder that shrugged would
+# turn a stereo file into noise and leave the speaker to report it.
+if not any("Illegal argument" in r for r in rows_n):
+    fail("a STEREO IMA WAV was accepted -- it cannot be decoded by this "
+         "and has to be refused rather than played as noise")
+if any(r.strip() == "NOTREACHED" for r in rows_n):
+    fail("the line after the refused ADPCMPLAY ran: it threw nothing")
+
+# ---- session O: the console's two colour statements ---------------------
+# Out of the text matrix attribute byte, which is the console's own
+# memory: 7 is foreground 7 on background 0, the pair TEXTCOLOR set.
+if not any(r.strip() == "7" for r in rows_o):
+    fail("TEXTCOLOR 7,0 did not put foreground 7 on background 0 into "
+         "the attribute of the cell it then printed")
+# 71 IS THE ONE THAT MATTERS. $47: background 4, and the foreground
+# STILL 7 from the TEXTCOLOR three lines earlier. Setting half of a pair
+# through a kernel call that only takes both is the whole of this
+# statement, and a SETBGCOLOR working from an unseeded shadow -- or one
+# that took the background for the foreground -- lands on almost any
+# other number.
+if not any(r.strip() == "71" for r in rows_o):
+    fail("SETBGCOLOR did not change the background while keeping the "
+         "foreground: the attribute should be $47, background 4 under "
+         "the 7 that TEXTCOLOR set")
+# 5 and 9 out of $9F2C itself, and it is the SAME register both times:
+# SETBORDER and BORDER are one statement under two names, so a 9 that
+# did not follow the 5 would mean one of them writes somewhere else.
+if not any(r.strip() in ("5", "5.00000") for r in rows_o):
+    fail("SETBORDER did not reach VERA's border register")
+if not any(r.strip() in ("9", "9.00000") for r in rows_o):
+    fail("BORDER did not write the same register SETBORDER does -- they "
+         "are meant to be one statement under two names")
+if not any(r.strip() == "CONOK" for r in rows_o):
+    fail("session O did not reach the end")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")
