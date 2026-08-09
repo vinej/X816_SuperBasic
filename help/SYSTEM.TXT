@@ -77,10 +77,12 @@
     statement quietly did nothing. A device that is not there NACKs and
     there is no answer to give - the rule I2CPOKE states.
 
-    POWEROFF IS NOT IN THE TEST SUITE, and that is not an oversight: it
-    ends the emulator, so a session that ran it would have nothing left
-    to check. REBOOT is, because a machine that comes back is something
-    a recording can show.
+    NONE OF THE THREE IS IN THE TEST SUITE, and that is not an
+    oversight: each one ends the session it is run in. POWEROFF exits
+    the emulator outright and the other two restart the machine, so
+    whatever a session had proved is off the screen before it can be
+    read. They are three bytes each over a path I2CPOKE already
+    exercises; what would be tested is the SMC, not this.
 [x] I2CPEEK(dev,reg) / I2CPOKE dev,reg,val - the I2C bus. The SMC is
     device $42, so I2CPEEK($42,$22) asks it for the mouse device ID.
     This is the back door to anything hanging off that bus, including

@@ -50,7 +50,23 @@ coexist and a program can print while it draws.
     name in both is shadowed - a second RECT in the extended table could
     never have been reached. MEMCOPY is a stub that throws; when it is
     built it should compare this token by ID rather than by TYPE.
-[ ] FILL x,y,c - flood fill.
+[x] FILL x,y[,c] - flood fill the area of one colour containing (x,y).
+
+    A SCANLINE flood, not the pixel-at-a-time one everybody writes
+    first: that needs a stack entry per PIXEL and a filled screen is
+    307,200 of them. This fills a whole horizontal run, then looks at
+    the rows above and below it and pushes ONE SEED PER UNBROKEN
+    STRETCH. A rectangle costs a seed a row rather than a seed a pixel.
+
+    THE STACK IS 256 SEEDS AND THE FILL STOPS WHEN IT IS FULL - a
+    screen's worth of rows twice over. A shape convoluted enough to
+    exceed it leaves part of itself unfilled rather than running past
+    the end of the stack, and it does so silently: there is nothing
+    useful a program could do mid-fill, and an error from a statement
+    that has already drawn half of something is worse than none.
+
+    FILLING WITH THE COLOUR ALREADY THERE IS REFUSED, and that is not
+    tidiness: no pixel would change, so no run would ever terminate.
 [x] CIRCLE x,y,r[,c] - circle outline. The midpoint walk: integer
     throughout, no square root and no trigonometry. r=0 is one pixel and
     a negative r draws nothing.
@@ -68,7 +84,20 @@ coexist and a program can print while it draws.
     words the rest of this page uses. One region draws the top and never
     reaches the ends of the other axis - the leftmost pixel was simply
     missing. It wants the incremental form in 32-bit arithmetic.
-[ ] GTEXT x,y,c,s$ - draw a string into the bitmap.
+[x] GTEXT x,y,c,s$ - draw a string into the bitmap, 8x8.
+
+    FROM THE CONSOLE'S OWN FONT, read out of VRAM through the port and
+    located from VERA's tile-base register rather than a constant. So a
+    program that redefined a glyph with GLYPH draws with the glyph it
+    redefined, and one that moved the font with CHARSET draws with the
+    font it moved to.
+
+    The colour comes BEFORE the string, unlike the shapes above, and it
+    has to: the string must be last, so there is nothing after it to
+    peek for and the optional-colour trick cannot apply.
+
+    Clipped like everything else here - a string running off the edge
+    draws the part that fits.
 [x] GCOLOR c - set a pen colour so the drawing statements can omit it.
 
     THE COLOUR IS OPTIONAL on RECT, FRECT, CIRCLE and FCIRCLE, which is

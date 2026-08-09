@@ -1814,6 +1814,7 @@ TOKENS2
             DEFTOK "CIRCLE", TOK_TY_STMNT, 0, S_CIRCLE, 0
             DEFTOK "FCIRCLE", TOK_TY_STMNT, 0, S_FCIRCLE, 0
             DEFTOK "GCOLOR", TOK_TY_STMNT, 0, S_GCOLOR, 0
+            DEFTOK "GTEXT", TOK_TY_STMNT, 0, S_GTEXT, 0
 
 ; The machine itself. Three keywords rather than three I2CPOKEs: a
 ; beginner should not need a device address to turn the machine off, and

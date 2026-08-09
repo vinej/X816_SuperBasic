@@ -114,9 +114,7 @@ S_LOCATE        .proc
 ; bitmap statements. Its token was spent by BASIC816 long ago, so
 ; implementing it cost none.
 
-S_FILL          .proc
-                THROW ERR_ARGUMENT
-                .pend
+; FILL is real now -- X816/gfx2_x816.s, a scanline flood fill.
 
 ;
 ; MEMCOPY src,dst,len -- a block copy anywhere in the 16 MB.

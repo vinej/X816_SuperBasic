@@ -373,6 +373,33 @@ PLY_MS    = $008820         ; dword - and in the note being played
 PLY_NOTE  = $008824         ; word - the note number being assembled
 PLY_CH    = $008826         ; byte - which FM channel it plays on
 
+; GTEXT and FILL (X816/gfx2_x816.s). ABOVE ENV_TAB, which owns
+; $8900-$89FF: the first draft put these inside it, and drawing a string
+; would have quietly rewritten the PSG envelope of every voice.
+GFT       = $008A00         ; word - the pixel GFX_PGET read back
+GTX0      = $008A02         ; word - where the next glyph goes
+GTY0      = $008A04
+GTC       = $008A06         ; word - the character being drawn
+GTB       = $008A08         ; dword - the address of its eight scanlines
+GTROW     = $008A0C         ; 8 bytes - and the scanlines themselves
+GTR       = $008A14         ; word - which of the eight is being drawn
+GTCOL     = $008A16         ; word - and which bit of it
+GTBITS    = $008A18         ; word - the row, shifted left as it is walked
+
+; The flood fill's seed stack. One seed a RUN, not a pixel: 256 of them
+; is a screen of rows twice over, and a shape convoluted enough to want
+; more leaves part of itself unfilled rather than running past the end.
+FIL_MAX   = 256
+FIL_SP    = $008A1A         ; word - seeds on the stack
+FIL_OLD   = $008A1C         ; word - the colour being replaced
+FIL_X1    = $008A1E         ; word - the run being filled
+FIL_X2    = $008A20
+FIL_Y     = $008A22         ; word - its row, kept across the two scans
+FIL_IN    = $008A24         ; word - is the scan inside a run right now
+FIL_SX    = $008A26         ; word - the seed the statement was given
+FIL_SY    = $008A28
+FIL_STK   = $008B00         ; 1 KB - FIL_MAX entries of (x, y)
+
 ; Mouse extras.
 MOUSE_WH  = $0084A0         ; word - wheel movement, signed, cleared by a read
 MOUSE_PK  = $0084A2         ; byte - bytes in one movement packet: 3, or 4
