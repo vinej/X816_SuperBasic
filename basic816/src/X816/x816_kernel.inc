@@ -146,6 +146,11 @@ VERA_L0_HSCR_H  = $009F31       ; low nibble only
 VERA_L0_VSCR_L  = $009F32
 VERA_L0_VSCR_H  = $009F33       ; low nibble only
 
+; SYSCTL, the X816's own control register (MEMORY_MAP.md). Bit 0 is the
+; boot-ROM overlay, bit 1 reads the CPU's live E flag, bit 2 is TURBO --
+; so anything written here is a read-modify-write, never a store.
+SYSCTL          = $009F80
+
 ; Structures that live in VRAM rather than in registers, so they are
 ; reached through the data port like any other video memory.
 VERA_PALETTE    = $01FA00       ; 256 entries, 2 bytes each, $0RGB

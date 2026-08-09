@@ -56,6 +56,7 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "X816/audio_x816.s"     ; VERA PCM and the YM2151
 .include "X816/psgenv_x816.s"    ; ENV/ENVOFF: volume envelopes over the PSG
 .include "X816/adpcm_x816.s"     ; ADPCMPLAY: IMA ADPCM, decoded then fed
+.include "X816/fastmath_x816.s"  ; SIN8/COS8/ATAN2/LERP/MIN/MAX/CLAMP
 .include "X816/input_x816.s"     ; joystick, I2C, mouse
 .include "X816/font_x816.s"      ; the redefinable character set
 .include "X816/graphics_x816.s"  ; bitmap drawing on VERA2

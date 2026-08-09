@@ -7,18 +7,41 @@ rather than a design one.
 
 --- fast math, for games ---
 
-[ ] SIN8(a) / COS8(a) - a 256-entry sine table, angle 0-255, result
-    -127..127. This matters more here than it looks: SIN and COS proper
-    still throw (HELP MATH), and a table lookup is both available NOW and
-    the right answer for anything moving on screen. Floating-point
-    trigonometry per sprite per frame is not affordable at this speed.
-[ ] ATAN2(dx,dy) - direction from one point to another, 0-255, 0 = east.
-    The one function every chase-the-player enemy needs.
-[ ] LERP(a,b,t) - interpolate, t = 0-255. Smooth movement without floats.
-[ ] RNDSEED n - seed the generator so a level can be regenerated. RND
-    works (HELP MATH) but there is no way to control the sequence, which
-    makes a random level impossible to reproduce or to debug.
-[ ] MIN(a,b) / MAX(a,b) / CLAMP(v,lo,hi) - small, missing, used constantly.
+[x] SIN8(a) / COS8(a) - a 256-entry sine table, angle 0-255, result
+    -127..127. It matters more than it looks: SIN and COS proper are
+    floating point (HELP MATH), and one of those per sprite per frame is
+    not affordable at this speed.
+
+    THE ANGLE IS A BYTE AND IT WRAPS, which is the point of the whole
+    group. There is no range reduction to do, because 256 units is one
+    turn and the arithmetic wraps for free - SIN8(300) is SIN8(44).
+
+    0 is EAST and the angle increases the way it does ON A SCREEN, where
+    y grows downwards: 64 south, 128 west, 192 north. That is chosen so
+    that stepping by (COS8(a), SIN8(a)) actually moves in direction a.
+[x] ATAN2(dx,dy) - direction from one point to another, 0-255, 0 = east.
+    The one function every chase-the-player enemy needs, and it answers
+    in the same units SIN8 and COS8 are asked in - a convention that
+    disagreed with itself here would be found by a sprite chasing the
+    player backwards.
+
+    ATAN2(0,0) is 0. There is no direction to give and every other
+    answer would be a lie; test the distance first if it matters.
+[x] LERP(a,b,t) - interpolate, t = 0-255. Smooth movement without
+    floats. t=0 is exactly a and t=255 is one step short of b, which is
+    what an eight-bit fraction means - worth knowing before using it to
+    land something exactly on b.
+[x] RNDSEED n - seed the generator so a level can be regenerated. The
+    state is a 16-bit xorshift and zero is its fixed point, so RNDSEED 0
+    picks something rather than refusing: a program seeding from a score
+    or a frame count should not have to know which number is poison.
+[x] MIN(a,b) / MAX(a,b) / CLAMP(v,lo,hi) - small, missing, used
+    constantly. Signed, and integer like everything else here; a float
+    argument is converted rather than refused.
+
+    CLAMP applies lo and then hi and does not check them against each
+    other, so CLAMP(v,10,0) is 0 for every v. That is arithmetic rather
+    than a decision, and cheaper than the test.
 
 --- images ---
 

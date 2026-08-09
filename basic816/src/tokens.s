@@ -22,27 +22,65 @@ TOKEN_TEXT  .null \name
             .endm
 
 ; ---------------------------------------------------------------------
-; TWO-BYTE TOKENS
+; TOKENS OF ONE, TWO AND THREE BYTES
 ;
 ; A token is a byte with bit 7 set, so there are 128 of them and the
-; base table filled up. $FF is now an ESCAPE: in a tokenized line it
-; means "the next byte selects from TOKENS2 instead". That leaves 127
-; base ids ($80-$FE) and buys 128 more.
+; base table filled up. $FF is an ESCAPE: in a tokenized line it means
+; "the next byte selects from TOKENS2 instead". That left 127 base ids
+; ($80-$FE) and bought 128 more.
 ;
-; Extended sub-ids also start at $80, deliberately. Nothing then has to
-; care whether a byte it is scanning past is an id or a sub-id -- both
-; have bit 7 set -- so the many places that only ask "token, or
-; character?" keep working untouched.
+; THE SECOND ESCAPE, and why it had to come before the next feature
+; group rather than after it. 48 items are still on the help pages and
+; 43 of them want a keyword nobody has spent an id on yet; TOKENS2 has
+; 37 free. So the tables run out before the work does -- and unlike
+; running out of BYTES, which is 18 KB away and not close, there is no
+; version of finishing help/ that fits without this.
 ;
-; A token VALUE, as handed to GETTOKREC and its callers, is 16 bits:
-; $00id for a base token and $FFsub for an extended one. TOKAT builds
-; one from the line; TOKSKIP steps over whichever it is.
+; So sub-id $FF of TOKENS2 is now an escape in its turn: $FF $FF <sub>
+; selects from TOKENS3. It costs one sub-id and buys 128, and it is the
+; same shape as the change that bought TOKENS2 -- deliberately, because
+; the machinery for it already exists and only had to learn to count to
+; three.
+;
+; Sub-ids in every table start at $80, still deliberately: nothing has
+; to care whether a byte it is scanning past is an id or a sub-id --
+; all of them have bit 7 set -- so the many places that only ask
+; "token, or character?" keep working untouched.
+;
+; A token VALUE, as handed to GETTOKREC and its callers, is 16 bits and
+; the high byte says which table:
+;
+;   $00id       the base table, id $80-$FE
+;   $FFsub      TOKENS2, sub $80-$FE  ($FF is the escape below)
+;   $FEsub      TOKENS3, sub $80-$FF
+;
+; $FE is free as a selector because a base VALUE is always $00xx, so
+; the three ranges cannot collide. TOKAT builds a value from the line
+; and TOKSKIP steps over whichever width it is; GETTOKREC is still the
+; single place that maps a value to a record, which is what keeps
+; TOKTYPE, TOKEVAL, TOKPRECED and TOKARITY out of this entirely.
+;
+; A TOKENS3 KEYWORD MUST BE AT LEAST THREE CHARACTERS. TKWRITE closes
+; the line up by (keyword length - bytes written), and for a two-letter
+; keyword written as three bytes that count goes negative and copies
+; 255 bytes of the line over itself. DEFTOK3 refuses at assembly time
+; rather than leaving it to be found at runtime.
 ; ---------------------------------------------------------------------
 TOK_EXTEND = $FF
 
+;
+; Like DEFTOK, but for TOKENS3 -- where a keyword shorter than the
+; token that replaces it would make TKWRITE close the line up by a
+; negative number.
+;
+DEFTOK3     .macro name, type, precedence, evaluate, arity
+            .cerror len(\name) < 3, "A TOKENS3 keyword needs at least three characters: it is written as three bytes"
+            DEFTOK \name, \type, \precedence, \evaluate, \arity
+            .endm
+
 .section globals
 TKTAB       .dword ?        ; the table TKMATCH is currently searching
-TKEXT       .byte ?         ; non-zero once a match came from TOKENS2
+TKEXT       .byte ?         ; which table a match came from: 0, 2 or 3
 .send
 
 
@@ -172,20 +210,38 @@ loop        LDA [CURLINE],Y
             BEQ go_back
 
 .if SYSTEM == SYSTEM_X816
-            ; Say whether this byte is an extended token's SUB-id, which
-            ; is to say whether a $FF escape sits in front of it. The
-            ; minus rule below has to know, because a sub-id and a base
-            ; id can be the same number and mean different keywords.
+            ; Say which TABLE this byte's token came from, by counting
+            ; the $FF escapes in front of it: none is a base id, one is
+            ; a TOKENS2 sub-id, two is a TOKENS3 one. The minus rule
+            ; below has to know, because the same number means a
+            ; different keyword in each table.
+            ;
+            ; Two escapes is unambiguous: sub-id $FF of TOKENS2 is the
+            ; second escape and is never allocated to a keyword, which
+            ; is what the .cerror on that table holds it to.
+            ;
+            ; Y is balanced on every path out of this -- the INY at
+            ; pc_yback undoes the one DEY that is live when it is
+            ; reached.
             PHA
-            CPY #0
-            BEQ pc_notext
+            CPY #1
+            BCC pc_notext           ; nothing in front of it at all
+            DEY
+            LDA [CURLINE],Y
+            CMP #TOK_EXTEND
+            BNE pc_yback
+            LDA #2                  ; one escape: TOKENS2
+            STA @l PREVEXT
+            CPY #1
+            BCC pc_yback            ; no room for a second
             DEY
             LDA [CURLINE],Y
             INY
             CMP #TOK_EXTEND
-            BNE pc_notext
-            LDA #1
+            BNE pc_yback
+            LDA #3                  ; two escapes: TOKENS3
             STA @l PREVEXT
+pc_yback    INY
 pc_notext   PLA
 .endif
             TRACE_A "/PREVCHAR"
@@ -481,6 +537,23 @@ found_base  PLA
             CMP #0                  ; Did we get anything?
             BEQ syntax              ; No: line cannot start with minus... throw error
 
+            ; A COMMA CANNOT END AN EXPRESSION, so a minus after one
+            ; always begins a new one. Without this, every argument list
+            ; with a negative in it was wrong: the test below asks "is
+            ; the previous thing a TOKEN", and a comma is a plain
+            ; character here -- statements compare it with LDA #',' and
+            ; no id was ever spent on it -- so it fell through to
+            ; BINARY minus.
+            ;
+            ; It was quiet because it needs an argument list to show:
+            ; "PRINT A,-2" printed -4 and "PRINT (5),-2" printed -6 on
+            ; every build before this one. An open parenthesis was
+            ; always right, being a real token (TOK_LPAREN), which is
+            ; why "MID$(s$,-1)" was the shape that failed and "(-1)" was
+            ; not.
+            CMP #','
+            BEQ negative
+
             BIT #$80                ; Is it a token?
             BEQ binaryminus         ; No: leave token unchanged
 
@@ -491,7 +564,7 @@ found_base  PLA
             BCS binaryminus
 .endif
 
-            TRACE "make negative"
+negative    TRACE "make negative"
             LDA #TOK_NEGATIVE       ; Otherwise: this should be a unary minus (negation)
             BRA done
 
@@ -537,9 +610,17 @@ TKPREVFN    .proc
             setas
             LDA @l PREVEXT
             BEQ tpf_base
-            setal                   ; an extended sub-id: $FFxx
+            CMP #3
+            BEQ tpf_ext3
+            setal                   ; a TOKENS2 sub-id: $FFxx
             LDA @l TKPF_W
             ORA #$FF00
+            STA @l TKPF_W
+            BRA tpf_base
+
+tpf_ext3    setal                   ; a TOKENS3 sub-id: $FExx
+            LDA @l TKPF_W
+            ORA #$FE00
             STA @l TKPF_W
 
 tpf_base    setal
@@ -564,12 +645,13 @@ tpf_out     STA @l TKPF_R
 .endif
 
 ;
-; Look for the window's keyword in the base table and then, failing
-; that, in the extended one.
+; Look for the window's keyword in the base table, then in TOKENS2,
+; then in TOKENS3.
 ;
 ; Outputs:
-;   A = the id, or the SUB-id when TKEXT is set; 0 if there is no match
-;   TKEXT = 0 for a base token, 1 for an extended one
+;   A = the id, or the SUB-id when TKEXT says which table; 0 if there
+;       is no match anywhere
+;   TKEXT = 0 for a base token, 2 for TOKENS2, 3 for TOKENS3
 ;
 TKSEARCH    .proc
             PHP
@@ -594,10 +676,26 @@ TKSEARCH    .proc
             setas
             CALL TKMATCH
             CMP #0
+            BEQ ts_three            ; Not there either: try the third
+
+            PHA
+            LDA #2
+            STA TKEXT
+            PLA
+            BRA ts_done
+
+ts_three    setal
+            LDA #<>TOKENS3
+            STA TKTAB
+            LDA #`TOKENS3
+            STA TKTAB+2
+            setas
+            CALL TKMATCH
+            CMP #0
             BEQ ts_done             ; Not anywhere
 
             PHA
-            LDA #1
+            LDA #3
             STA TKEXT
             PLA
 
@@ -747,9 +845,9 @@ TKNEXTBIG   .proc
 
             STZ SCRATCH             ; Clear SCRATCH
 
-            ; Both tables have to be walked, or a keyword whose length
-            ; only occurs in the extended table would never be tried and
-            ; the token would simply never be recognised.
+            ; ALL THREE tables have to be walked, or a keyword whose
+            ; length only occurs in one of the later ones would never be
+            ; tried and the token would simply never be recognised.
             LDA #0
             STA SCRATCH2            ; SCRATCH2 = which table we are on
 
@@ -774,14 +872,24 @@ skip        setal                   ; Point INDEX to the next token record
 
             BRA loop                ; And go around for another pass
 
-done        setal                   ; First table finished: go round again
-            LDA SCRATCH2            ;  on the extended one
-            BNE tnb_finish
+done        setal                   ; One table finished: go round again on
+            LDA SCRATCH2            ;  the next, until all three are done
+            BNE tnb_two
             LDA #1
             STA SCRATCH2
             LDA #<>TOKENS2
             STA INDEX
             LDA #`TOKENS2
+            STA INDEX+2
+            BRA loop
+
+tnb_two     CMP #1
+            BNE tnb_finish
+            LDA #2
+            STA SCRATCH2
+            LDA #<>TOKENS3
+            STA INDEX
+            LDA #`TOKENS3
             STA INDEX+2
             BRA loop
 
@@ -814,14 +922,25 @@ TKWRITE     .proc
 
             setas
             setxs
-            LDX TKEXT               ; One byte, or two for an extended token
-            BEQ tw_base
+            LDX TKEXT               ; One byte, two for TOKENS2, three for
+            BEQ tw_base             ;  TOKENS3
+            CPX #3
+            BEQ tw_ext3
 
             LDY #1                  ; $FF then the sub-id
             STA [BIP],Y
             LDA #TOK_EXTEND
             STA [BIP]
             LDA #2
+            BRA tw_written
+
+tw_ext3     LDY #2                  ; $FF $FF then the sub-id. The sub-id
+            STA [BIP],Y             ;  goes down FIRST: A is holding it and
+            LDA #TOK_EXTEND         ;  the escapes are about to overwrite A.
+            LDY #1
+            STA [BIP],Y
+            STA [BIP]
+            LDA #3
             BRA tw_written
 
 tw_base     STA [BIP]               ; Write the token to the line
@@ -877,35 +996,47 @@ done        PLD
 ;   X = the bank relative address for the operator's token record
 ;
 ; Inputs:
-;   A = a 16-bit token VALUE: $00id for a base token, $FFsub for an
-;       extended one. This is the single place that knows there are two
+;   A = a 16-bit token VALUE: $00id base, $FFsub TOKENS2, $FEsub
+;       TOKENS3. This is the single place that knows there are three
 ;       tables, which is why TOKTYPE, TOKEVAL, TOKPRECED and TOKARITY
-;       needed no change at all.
+;       have needed no change through either escape.
 ;
 GETTOKREC   .proc
             PHP
 
             setaxl
-            CMP #$FF00                  ; Extended?
-            BGE gtr_ext
+            CMP #$FE00                  ; A base value is always $00xx, so
+            BCC gtr_base                ;  the three ranges cannot collide
+            CMP #$FF00
+            BCC gtr_ext3
 
-            AND #$007F
-            ASL A
-            ASL A
-            ASL A
-            CLC
-            ADC #<>TOKENS
-            TAX                         ; X is the data-bank relative address
-            PLP
-            RETURN
-
-gtr_ext     AND #$007F
+            AND #$007F                  ; $FFxx: TOKENS2
             ASL A
             ASL A
             ASL A
             CLC
             ADC #<>TOKENS2
             TAX
+            PLP
+            RETURN
+
+gtr_ext3    AND #$007F                  ; $FExx: TOKENS3
+            ASL A
+            ASL A
+            ASL A
+            CLC
+            ADC #<>TOKENS3
+            TAX
+            PLP
+            RETURN
+
+gtr_base    AND #$007F
+            ASL A
+            ASL A
+            ASL A
+            CLC
+            ADC #<>TOKENS
+            TAX                         ; X is the data-bank relative address
             PLP
             RETURN
             .pend
@@ -917,7 +1048,7 @@ gtr_ext     AND #$007F
 ; that is the whole point of it.
 ;
 ; Outputs:
-;   A = $00id, or $FFsub for an extended token
+;   A = $00id, $FFsub for TOKENS2, $FEsub for TOKENS3
 ;
 TOKAT       .proc
             PHP
@@ -936,12 +1067,32 @@ TOKAT       .proc
             AND #$00FF
             BRA ta_done
 
+            ; setas, and it is NOT decoration. This is a branch TARGET,
+            ; and the assembler's idea of the accumulator width here is
+            ; whatever the line ABOVE left -- which is the 16-bit AND on
+            ; the base path, not the 8-bit state the BEQ arrives in. So
+            ; CMP #TOK_EXTEND assembled as a 16-bit immediate, the CPU
+            ; read two of its three bytes and executed the third, $00,
+            ; as a BRK. Every extended token in the language reset the
+            ; machine. PORT.md 14, 15, 19 and now this: the width has to
+            ; be re-declared at a label, not inherited past one.
 ta_ext      setxl
+            setas
             LDY #1
-            LDA [BIP],Y                 ; the sub-id
+            LDA [BIP],Y                 ; the sub-id -- unless it is the
+            CMP #TOK_EXTEND             ;  second escape, in which case the
+            BEQ ta_ext3                 ;  one after it is
             setal
             AND #$00FF
             ORA #$FF00
+            BRA ta_done
+
+ta_ext3     setas                       ; a branch target: see the note above
+            LDY #2
+            LDA [BIP],Y
+            setal
+            AND #$00FF
+            ORA #$FE00
 
 ta_done     PLY
             PLP
@@ -949,16 +1100,25 @@ ta_done     PLY
             .pend
 
 ;
-; Step BIP over the token it points at, whichever kind it is.
+; Step BIP over the token it points at, whichever width it is.
 ;
 TOKSKIP     .proc
             PHP
+            setaxl                      ; WIDTH FIRST, then the push -- the
+            PHY                         ;  same trap TOKAT records above
             setas
             LDA [BIP]
             CMP #TOK_EXTEND
             BNE ts_single
-            CALL INCBIP
+            LDY #1
+            LDA [BIP],Y
+            CMP #TOK_EXTEND
+            BNE ts_two
+            CALL INCBIP                 ; three bytes: $FF $FF sub
+ts_two      CALL INCBIP
 ts_single   CALL INCBIP
+            setaxl
+            PLY
             PLP
             RETURN
             .pend
@@ -1564,6 +1724,29 @@ TOKENS2
 ; feeder -- a decode-to-an-address form would need a second keyword just
 ; to report how long the answer was.
             DEFTOK "ADPCMPLAY", TOK_TY_STMNT, 0, S_ADPCMPLAY, 0
+
+; The machine itself. FRE takes no parentheses, like TIMER and FRAMES.
+; QUIT has no second spelling: help/SYSTEM.TXT lists "QUIT / SYSTEM" and
+; a second name costs a sub-id, which PORT.md 29 established is the
+; ceiling on finishing these pages.
+            DEFTOK "QUIT", TOK_TY_STMNT, 0, S_QUIT, 0
+            DEFTOK "TURBO", TOK_TY_STMNT, 0, S_TURBO, 0
+            DEFTOK "FRE", TOK_TY_FUNC, 0, FN_FRE, 0
+
+; Fast game maths (help/ADVANCED.TXT). Integer, table-driven, and the
+; angle is a BYTE that wraps -- 0 east, 64 south, 128 west, 192 north,
+; which is the convention that makes a step of (COS8(a), SIN8(a)) move
+; in direction a on a screen whose y grows downwards.
+            DEFTOK "SIN8", TOK_TY_FUNC, 0, FN_SIN8, 0
+            DEFTOK "COS8", TOK_TY_FUNC, 0, FN_COS8, 0
+            DEFTOK "ATAN2", TOK_TY_FUNC, 0, FN_ATAN2, 0
+            DEFTOK "LERP", TOK_TY_FUNC, 0, FN_LERP, 0
+            DEFTOK "CLAMP", TOK_TY_FUNC, 0, FN_CLAMP, 0
+            DEFTOK "RNDSEED", TOK_TY_STMNT, 0, S_RNDSEED, 0
+; MIN and MAX are three letters, the shortest a keyword can be and
+; still be written into a line as a two-byte extended token.
+            DEFTOK "MIN", TOK_TY_FUNC, 0, FN_MIN, 0
+            DEFTOK "MAX", TOK_TY_FUNC, 0, FN_MAX, 0
 .endif
 
 ; ENDIF closes the block form of IF. Portable -- it is language, not
@@ -1609,6 +1792,40 @@ TOK_LABEL = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
             DEFTOK "STRING$", TOK_TY_FUNC, 0, FN_STRINGS, 0
             DEFTOK "SPACE$", TOK_TY_FUNC, 0, FN_SPACES, 0
 
-.cerror (* - TOKENS2) / SIZE(TOKEN) > 128, "Extended token table full: sub-ids are $80-$FF"
+; 127, not 128. Sub-ids run $80 + index, so an index of 127 would be
+; sub-id $FF -- and $FF is now the SECOND ESCAPE, the one that selects
+; from TOKENS3. Allocating it to a keyword would make every three-byte
+; token read as that keyword followed by rubbish.
+.cerror (* - TOKENS2) / SIZE(TOKEN) > 127, "TOKENS2 full: sub-ids are $80-$FE, because $FF is the escape into TOKENS3"
+
+            .word 0, 0, 0, 0
+
+;
+; The third table. Reached as $FF $FF <sub-id>, sub-ids running from $80
+; exactly as the other two do -- see the note by TOK_EXTEND.
+;
+; EMPTY ON PURPOSE, for now. The mechanism is here because the counting
+; said it had to be: 43 of the 48 items still on the help pages want a
+; keyword that does not exist, and TOKENS2 had 37 sub-ids left. Building
+; it before the next feature group means the group that needs it does not
+; also have to carry it -- and it means the escape can be proved on its
+; own, with one keyword moved into it and nothing else changing, rather
+; than being debugged underneath a page of new statements.
+;
+; VER is that keyword. It is a real one-line function, it is the first
+; item on help/SYSTEM.TXT, and putting it here rather than in the 37
+; remaining slots of TOKENS2 is what makes the third table something the
+; test suite can see. The same trick VSYNC did for TOKENS2 (PORT.md 12).
+;
+; ANYTHING PUT HERE NEEDS A KEYWORD OF AT LEAST THREE CHARACTERS, and
+; DEFTOK3 is what refuses a shorter one -- see the note by TOK_EXTEND for
+; what TKWRITE does with a two-letter keyword written as three bytes.
+;
+TOKENS3
+.if SYSTEM == SYSTEM_X816
+            DEFTOK3 "VER", TOK_TY_FUNC, 0, FN_VER, 0
+.endif
+
+.cerror (* - TOKENS3) / SIZE(TOKEN) > 128, "TOKENS3 full: sub-ids are $80-$FF"
 
             .word 0, 0, 0, 0

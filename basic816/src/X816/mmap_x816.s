@@ -298,6 +298,23 @@ ADP_RATE  = $008876         ; dword - sample rate out of a WAV header, 0
 ADP_T     = $00887A         ; 8 bytes - the 32-bit clamp, and the chunk
                             ;  walk's length and bytes-remaining
 
+; Fast game maths (X816/fastmath_x816.s). Not VID_A and not ARGUMENT*:
+; every one of these has to survive an EVALEXPR, because the functions
+; take two and three arguments and an expression can call a function
+; that uses either -- the same rule the note beside IRQ_TMP sets out.
+ADV_A     = $008884         ; dword - the first argument, kept
+ADV_B     = $008888         ; dword - the second
+ADV_DX    = $00888C         ; word - ATAN2's arguments, and
+ADV_DY    = $00888E         ; word -  their absolute values
+ADV_AX    = $008890         ; word
+ADV_AY    = $008892         ; word
+ADV_NUM   = $008894         ; word - the smaller of the two, and
+ADV_DEN   = $008896         ; word -  the larger: the ratio's terms
+ADV_FLIP  = $008898         ; word - non-zero in the steep half, where the
+                            ;  answer is 64 minus the table's
+ADV_T     = $00889A         ; word - the angle being assembled, and LERP's
+                            ;  fraction
+
 ; PLAY's parser state.
 PLY_P     = $008810         ; dword - where it is in the string
 PLY_N     = $008814         ; word - characters left

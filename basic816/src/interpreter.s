@@ -404,7 +404,7 @@ SKIPTOTOK   .proc
 loop        LDA [BIP]           ; Get the character
             BEQ end_of_line     ; EOL? Yes: move to the next line
 
-            CMP #TOK_EXTEND     ; A TWO-BYTE token: step over BOTH bytes.
+            CMP #TOK_EXTEND     ; A MULTI-BYTE token: step over all of it.
             BEQ skip_ext        ;  This scanner compares raw bytes, and an
                                 ;  extended token's SUB-ID occupies the same
                                 ;  number space as a base token's id -- so
@@ -429,9 +429,11 @@ loop        LDA [BIP]           ; Get the character
 incloop     CALL INCBIP         ; Otherwise: Point to the next character
             BRA loop            ; and keep scanning
 
-skip_ext    CALL INCBIP         ; the escape, then the sub-id, so neither is
-            CALL INCBIP         ;  ever compared against a base token
-            BRA loop
+skip_ext    CALL TOKSKIP        ; the escape and everything under it, so no
+            setas               ;  sub-id is ever compared against a base id.
+            BRA loop            ;  TOKSKIP rather than two INCBIPs, because a
+                                ;  TOKENS3 token is THREE bytes and counting
+                                ;  them is exactly what it is for.
 
 end_of_line CALL NEXTLINE       ; Go to the next line
             setal

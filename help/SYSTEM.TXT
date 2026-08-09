@@ -25,13 +25,39 @@
     the emulator has a debugger and X816_Calypsi has an assembler.
 
     The C256 build still has it, so that build still reproduces stock.
-[ ] QUIT / SYSTEM - exit to the shell (K_EXIT). Today the only way out
-    is to reset the machine.
-[ ] TURBO on|off - SYSCTL at $9F80 bit 2 switches 8 MHz / 14 MHz. One
-    POKE, and worth a keyword because it is the cheapest speed-up
-    available to a BASIC program.
-[ ] VER - the kernel version (K_SYS_VERSION), major and minor.
-[ ] FRE - free memory. HELP MEMORY.
+[x] QUIT - exit to the shell (K_EXIT). Until this there was no way out
+    but resetting the machine, which is a poor answer on a computer
+    whose whole boot story is "the shell runs an ordinary program".
+
+    QUIT AND NOT ALSO SYSTEM. This page asked for both spellings and
+    one is taken: a second name costs a token, and the token tables are
+    the ceiling on finishing these pages while bytes are not - see
+    PORT.md 29 for the counting.
+[x] TURBO n - 0 for 8 MHz, anything else for 14 MHz. SYSCTL $9F80 bit 2,
+    read-modify-write because bit 0 is the boot-ROM overlay and bit 1
+    reads the CPU's live E flag. It is a clock ENABLE, not a clock
+    switch, so it can be flipped at any moment: nothing glitches and no
+    reset is needed.
+
+    A number rather than the words on|off: a keyword is a token, and
+    two of them for "yes" and "no" is two the rest of this page needs
+    more.
+
+    READING $9F80 BACK GIVES THE EFFECTIVE SPEED, which is this bit
+    ORed with the MiSTer OSD's own Turbo setting. So TURBO 0 does not
+    promise 8 MHz - it releases the software half of the decision. A
+    program that needs to know should read the register rather than
+    remember what it wrote.
+[x] VER - the kernel version, (major << 8) | minor, from K_SYS_VERSION.
+    Takes no parentheses, like TIMER and FRAMES.
+
+    It is also the first keyword in the THIRD token table. The base
+    table has been full since HELP LANGUAGE's two-byte scheme was
+    built, and 43 of the items still on these pages want a keyword that
+    does not exist yet against 37 sub-ids left - so $FF $FF <sub> now
+    selects from a third table, and VER lives there to prove it. The
+    same job VSYNC did for the second one.
+[x] FRE - free memory, one number. HELP MEMORY.
 [ ] REBOOT - restart the machine through the reset vector.
 [ ] RESET - hardware reset via the SMC, the same one Ctrl+Alt+Del raises.
 [ ] POWEROFF - power the machine off, also through the SMC.

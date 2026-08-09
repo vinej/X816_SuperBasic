@@ -214,6 +214,81 @@ frames_ok   STA ARGUMENT1
             .pend
 
 ;
+; VER -- the kernel's version, (major << 8) | minor.
+;
+; Takes no parentheses, like TIMER and FRAMES beside it, which is not a
+; detail here: a no-argument function is the one thing that exercises
+; the minus rule, and the minus rule is the one place that has to know
+; which TABLE a token came from. VER is the first keyword to live in
+; TOKENS3, so "PRINT VER-1" is the check that the third table is
+; understood everywhere and not merely reached -- the same job VSYNC did
+; for TOKENS2 (PORT.md 12).
+;
+; K_SYS_VERSION cannot fail and has no error return; the kernel this was
+; written against answers $0001.
+;
+FN_VER      .proc
+            TRACE "FN_VER"
+            PHP
+            setaxl
+
+            JSL KERN_SYS_VERSION
+            STA ARGUMENT1
+            STZ ARGUMENT1+2
+
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend
+
+;
+; FRE -- bytes still free for the program, its variables and the heap.
+;
+; Takes no parentheses. Classic BASICs want a dummy argument here and
+; throw it away; there is nothing to throw away on this machine and
+; TIMER, FRAMES and VER beside it already set the precedent.
+;
+; ONE number, because there is one space. Variables grow UP from the end
+; of the program at NEXTVAR and strings grow DOWN from the top of BRAM
+; at HEAP, and they meet in the middle -- VAR_ALLOC's collision check is
+; exactly this subtraction, which is why this is the honest number and
+; not a sum of two pools.
+;
+; It does NOT count anything the garbage collector could reclaim, so it
+; is a floor and not a promise.
+;
+FN_FRE      .proc
+            TRACE "FN_FRE"
+            PHP
+            setaxl
+
+            SEC                         ; HEAP - NEXTVAR, 32-bit
+            LDA HEAP
+            SBC NEXTVAR
+            STA ARGUMENT1
+            LDA HEAP+2
+            SBC NEXTVAR+2
+            AND #$00FF                  ; both are 24-bit pointers held in
+                                        ;  four bytes; the top byte of each
+                                        ;  is not part of the address
+            STA ARGUMENT1+2
+            BPL fre_ok                  ; a negative answer would mean they
+            LDA #0                      ;  had already collided, which
+            STA ARGUMENT1               ;  VAR_ALLOC does not allow -- report
+            STA ARGUMENT1+2             ;  nothing left rather than nonsense
+fre_ok
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            PLP
+            RETURN
+            .pend
+
+;
 ; VPEEK(addr) -- read a byte of VRAM. The inverse of VPOKE.
 ;
 FN_VPEEK    .proc

@@ -1835,6 +1835,195 @@ read.
 
 X816 47,164 bytes of the 65,280 cap; the C256 still assembles (§23).
 
+## 29. A third token table, and two bugs it uncovered (2026-08-08)
+
+### Why now, and the counting that settled it
+
+48 items are still on the help pages. **43 of them want a keyword that
+does not exist yet** — eight already have stub tokens from BASIC816
+(`BITMAP` `FILL` `MEMCOPY` `SETTIME` `SETDATE` `RECT` `VPEEK` `VPOKE`) —
+and `TOKENS2` had **37** sub-ids free. The tables run out before the work
+does, and there is no version of finishing `help/` that fits without
+this.
+
+Bytes are not the constraint and were checked before committing to it.
+Measured across the history: 132 B/item over one window, **195 B/item**
+since the monitor was dropped, 349 B/item in the ADPCM-heavy session. A
+bottom-up estimate, itemised page by page and calibrated on real routine
+sizes from the label file, comes to **~8,100 bytes** against **18,116**
+free. Double it and it still fits. So: tokens are the ceiling, bytes are
+not, and the escape is worth its 203 bytes.
+
+### The shape: one more escape, the same as the first
+
+Sub-id **`$FF` of `TOKENS2`** is now an escape in its turn — `$FF $FF
+<sub>` selects from `TOKENS3`. It costs one sub-id and buys 128. A token
+VALUE stays 16 bits, with the high byte naming the table:
+
+| value | table |
+|---|---|
+| `$00id` | base, `$80-$FE` |
+| `$FFsub` | `TOKENS2`, `$80-$FE` |
+| `$FEsub` | `TOKENS3`, `$80-$FF` |
+
+`$FE` is free as a selector because a base value is always `$00xx`, so
+the three ranges cannot collide. As in §12, `GETTOKREC` remains the
+single place that maps a value to a record, so `TOKTYPE`, `TOKEVAL`,
+`TOKPRECED` and `TOKARITY` needed no change through **either** escape —
+which is the payoff of that design showing up a second time.
+
+Changed: `TOKAT`, `TOKSKIP`, `GETTOKREC`, `TKWRITE`, `TKSEARCH`,
+`TKNEXTBIG` (**must walk all three**), `PREVCHAR`/`TKPREVFN` (`PREVEXT`
+counts escapes now: 0, 2 or 3), and `SKIPTOTOK`, which used two `INCBIP`s
+and now calls `TOKSKIP` because counting a token's bytes is exactly what
+that is for.
+
+**`DEFTOK3` refuses a keyword shorter than three characters.** `TKWRITE`
+closes the line up by (keyword length − bytes written); for a two-letter
+keyword written as three bytes that count goes negative and copies 255
+bytes of the line over itself. An assembly-time `.cerror` rather than a
+runtime discovery.
+
+`VER` is the first keyword in it — a real one-line function, and a
+**no-argument** one on purpose, because that is what exercises the minus
+rule, which is the one place that has to know which table a token came
+from. `PRINT VER-1` is the check. The same job `VSYNC` did for `TOKENS2`.
+
+### Bug one: a BRK in the middle of TOKAT
+
+Every extended token in the language reset the machine, and the listing
+said why:
+
+```
+.010f27  c9 ff 00   cmp #$00ff    CMP #TOK_EXTEND
+```
+
+`ta_ext` is a **branch target**, and the assembler's idea of the
+accumulator width at a label is whatever the line **above** it left — the
+16-bit `AND` on the base path, not the 8-bit state the `BEQ` arrives in.
+So the compare assembled three bytes wide, the CPU read two of them and
+executed the third, `$00`, as **BRK**.
+
+This is §4's trap for the fifth time (§14, §15, §19, and the two in §12),
+in its nastiest form yet: the code is *correct* and the *assembler* is
+wrong about it. **Re-declare the width at a label; never let it be
+inherited past one.** `setas` at `ta_ext` and at `ta_ext3` is the whole
+fix.
+
+The bisect that found it is worth keeping: move the new keyword into
+`TOKENS2` and it still failed → not the third table. Replace the kernel
+call with a constant and it still failed → not the function. Then
+`PRINT MX` — an *existing* `TOKENS2` keyword — failed too, which said the
+damage was to the second table's path, and the listing did the rest.
+
+### Bug two: NEXT never parsed its variable, and had been documented as a rule
+
+`FOR I=1 TO 3 ... NEXT I` **printed its results and then reported a
+syntax error.** `S_NEXT` reads its record off the return stack and parsed
+no name at all, so the ` I` was left in the line for the statement
+checker — and only on the pass that ENDS the loop, because every other
+pass resets `BIP` from the record and never looks.
+
+It is pre-existing, not from this work: the committed `8707577` build
+does it too, and so does every build before it. It survived because
+**every emulator session used bare `NEXT`** — the commonest loop in BASIC
+was never once written the commonest way. `help/LANGUAGE.TXT` had even
+written the bug down as a rule: *"NEXT TAKES NO VARIABLE."*
+
+The fix is one call to `VAR_FINDNAME`, which does its own `SKIPWS` and
+`ISALPHA` and consumes nothing when there is no name. The name is
+**not checked** against the loop it closes, and `NEXT I,J` is still a
+syntax error; the page says both plainly now instead of the old rule.
+
+X816 47,375 bytes of the 65,280 cap; the C256 still assembles (§23).
+
+## 30. Fast game maths, QUIT/TURBO/FRE, and the comma bug (2026-08-08)
+
+### The machine: QUIT, TURBO, FRE
+
+`QUIT` (`K_EXIT`) — until now the only way out of SuperBasic was to reset
+the machine, which is a poor answer on a computer whose boot story is
+"the shell runs an ordinary program". **`QUIT` and not also `SYSTEM`**:
+`help/SYSTEM.TXT` asked for both spellings and a second name costs a
+token, which §29 established is the ceiling.
+
+`TURBO n` — SYSCTL `$9F80` bit 2, read-modify-write because bit 0 is the
+boot-ROM overlay and bit 1 reads the CPU's live E flag. A number, not the
+words `on|off`: two keywords for "yes" and "no" is two the rest of the
+pages need more. Reading the register back gives the **effective** speed,
+this bit ORed with the MiSTer OSD's own setting, so `TURBO 0` releases
+the software half of the decision rather than promising 8 MHz.
+
+`FRE` — `HEAP - NEXTVAR`, which is exactly the collision check
+`VAR_ALLOC` makes. **One number, because there is one space**: variables
+grow up from the end of the program and strings grow down from the top of
+BRAM and they meet in the middle. Measured: 196,602 free at the prompt,
+and 225 less after `A$=SPACE$(200)` — the 200 bytes plus a heap header
+plus the variable binding.
+
+### Fast game maths, and the convention that had to agree with itself
+
+`SIN8` `COS8` `ATAN2` `LERP` `MIN` `MAX` `CLAMP` `RNDSEED`, in
+`X816/fastmath_x816.s`. All integer, table-driven, no floats anywhere —
+a floating-point sine per sprite per frame is not affordable at this
+speed, and that is the whole reason this group exists.
+
+**The angle is a byte and it wraps.** There is no range reduction to do
+because 256 units is one turn and the arithmetic wraps for free:
+`SIN8(300)` is `SIN8(44)`, checked.
+
+**0 is east and the angle increases the way it does on a screen**, where
+y grows downwards — 64 south, 128 west, 192 north. Chosen so that
+stepping by `(COS8(a), SIN8(a))` moves in direction a, and so that
+`ATAN2` answers in the units `SIN8` will next be asked in. A convention
+that disagreed with itself here would be found by a sprite chasing the
+player backwards, which is the sort of bug nobody thinks to test for.
+
+`ATAN2` is the classic octant decomposition: a 33-entry table covering
+the first 45° and seven reflections. 33 and not 32 because the ratio
+reaches 1 exactly when `|dy|` equals `|dx|`. `ATAN2(0,0)` is 0 — there is
+no direction to give and any other answer would be a lie.
+
+### Two flag bugs of my own, and the rule they share
+
+**`ADV_CMP` had `PHP`/`PLP`.** Its answer is in the carry and the `PLP`
+put the caller's carry straight back over it, so `MIN` and `MAX`
+answered each other's questions — intermittently, which is worse. This is
+written down twice already (`TKPREVFN`, `X816/input_x816.s`) and it still
+happened: **a routine that returns a flag cannot restore P.**
+
+**`ADV_PUTB` branched on flags `STA` does not set.** It stored the value
+and then tested `BPL` to decide the sign — reading the `CMP`'s N, which
+is set for every value below `$80`. `SIN8(0)` answered −65536. The fix is
+to decide the sign from the carry the `CMP` left, before the store.
+
+Both are the same lesson from a different angle: **know which instruction
+last set the flag you are branching on.**
+
+### The comma bug: every argument list with a negative in it
+
+Pre-existing, on every build back to the beginning, and found only
+because `ATAN2(-10,-10)` and `MAX(-7,-9)` are the first two-argument
+calls in this BASIC where a negative second argument is *meaningful*:
+
+```
+PRINT A,-2      printed -4
+PRINT (5),-2    printed -6
+```
+
+`TKFINDTOKEN`'s minus rule asks *"is the previous thing a token?"* and
+falls through to **binary** minus when it is not. A comma is not a token
+here — statements compare it with `LDA #','` and no id was ever spent on
+it — so `f(a,-b)` tokenized the second minus as a subtraction. An open
+parenthesis was always right, being a real `TOK_LPAREN`, which is why
+`(-1)` worked and `MID$(s$,-1)` did not.
+
+One test settles it: **a comma cannot end an expression, so a minus after
+one always begins a new one.** Portable, unguarded, and a clean patch to
+send upstream.
+
+X816 48,795 bytes of the 65,280 cap; the C256 still assembles (§23).
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

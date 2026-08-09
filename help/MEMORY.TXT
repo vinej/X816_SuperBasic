@@ -10,7 +10,18 @@ an address here is 24 bits and that is all there is to it.
 [x] PEEKL(addr) / POKEL addr,value - 24-bit.
 [ ] MEMCOPY src,dst,len - block copy. Reserved, refuses today; would be
     the place to use the blitter or a hardware fill, HELP VERAFX.
-[ ] FRE - bytes of program and heap space left.
+[x] FRE - bytes still free for the program, its variables and the heap.
+    Takes no parentheses; classic BASICs want a dummy argument and throw
+    it away, and there is nothing here to throw away.
+
+    ONE NUMBER, because there is one space. Variables grow UP from the
+    end of the program and strings grow DOWN from the top of BRAM, and
+    they meet in the middle - the subtraction this reports is exactly
+    the collision check that refuses a new variable, which is why it is
+    the honest number and not a sum of two pools.
+
+    It counts nothing the garbage collector could reclaim, so it is a
+    floor and not a promise.
 [ ] ALLOC(size) / FREE addr - grab a block of SDRAM from the kernel
     (K_MEM_ALLOC). The arena is huge and the allocator has a 32-block
     cap, so the pattern is one big block sub-allocated by hand.

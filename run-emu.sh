@@ -161,6 +161,21 @@
 #                                    whole point of setting half of a
 #                                    pair
 #
+#   session P -- the third token table, and FOR/NEXT with its name
+#    28. VER                      - a keyword in TOKENS3, reached as
+#                                   $FF $FF <sub>. It is a NO-ARGUMENT
+#                                   function on purpose: the minus
+#                                   rule is the one place that has to
+#                                   know which TABLE a token came
+#                                   from, so VER-1 is the check that
+#                                   the third table is UNDERSTOOD and
+#                                   not merely reached
+#    29. FOR ... NEXT I           - the commonest loop in BASIC, which
+#                                   every session before this one
+#                                   wrote as bare NEXT. It ran and
+#                                   then threw a syntax error on the
+#                                   pass that ENDS it
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -770,6 +785,45 @@ PYADP
 # background lights every pixel of the cell -- which is harmless,
 # because what is asserted is the ATTRIBUTE and not the glyph, and is
 # why the colours go back to 0 before anything is printed to be read.
+# The third token table, and the FOR/NEXT bug it turned up.
+#
+# VER answers the kernel's version, (major << 8) | minor, and the
+# kernel this was written against answers 1. It lives in TOKENS3 --
+# three bytes in the line, $FF $FF $80 -- so every number below has
+# come back through an escape that did not exist before.
+#
+# VER-1 is not padding. A minus after a no-argument function is a
+# NEGATION unless the tokenizer asks what kind of token preceded it,
+# and asking means knowing which table the sub-id belongs to: the
+# same number means a different keyword in each. 0 is the answer
+# only if all of that works.
+#
+# The FOR loops are the OTHER half. NEXT I ran correctly and then
+# reported a syntax error, on the pass that ends the loop and only
+# then -- so 6 (three times two, nested, with the inner loop closed
+# by name) and the countdown 5 3 1 are what a fixed NEXT looks like.
+# Bare NEXT is kept beside them because it always worked and must
+# go on working.
+KEYS_P=$(keys_of \
+    '10 PRINT VER' \
+    '20 PRINT VER-1' \
+    '30 T=0' \
+    '40 FOR I=1 TO 3' \
+    '50 FOR J=1 TO 2' \
+    '60 T=T+VER' \
+    '70 NEXT J' \
+    '80 NEXT I' \
+    '90 PRINT T' \
+    '100 FOR K=1 TO 2' \
+    '110 NEXT' \
+    '120 PRINT "BARE"' \
+    '130 FOR L=5 TO 1 STEP -2' \
+    '140 PRINT L' \
+    '150 NEXT L' \
+    '160 PRINT "TOKOK"' \
+    'RUN' \
+    'LIST')
+
 KEYS_O=$(keys_of \
     '10 TEXTCOLOR 7,0' \
     '20 LOCATE 0,40' \
@@ -877,6 +931,7 @@ if [ "$NEG" = "0" ]; then
     run_session M "$KEYS_M" "$OUT/t.wav" T.WAV || { echo "session M produced no recording"; exit 1; }
     run_session N "$KEYS_N" "$OUT/raw.ima" RAW.IMA "$OUT/bad.wav" BAD.WAV || { echo "session N produced no recording"; exit 1; }
     run_session O "$KEYS_O" || { echo "session O produced no recording"; exit 1; }
+    run_session P "$KEYS_P" || { echo "session P produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -892,22 +947,23 @@ else
     cp "$OUT/outA.gif" "$OUT/outM.gif"
     cp "$OUT/outA.gif" "$OUT/outN.gif"
     cp "$OUT/outA.gif" "$OUT/outO.gif"
+    cp "$OUT/outA.gif" "$OUT/outP.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
- gif_k, gif_l, gif_m, gif_n, gif_o, fontinc, adpexp) = (
+ gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, fontinc, adpexp) = (
                     sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
                     sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
                     sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
-                    sys.argv[17])
-negative = sys.argv[18] == "1"
+                    sys.argv[17], sys.argv[18])
+negative = sys.argv[19] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -965,9 +1021,10 @@ rows_l = [] if negative else last_screen(gif_l)
 rows_m = [] if negative else last_screen(gif_m)
 rows_n = [] if negative else last_screen(gif_n)
 rows_o = [] if negative else last_screen(gif_o)
+rows_p = [] if negative else last_screen(gif_p)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
         rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
-        rows_o)
+        rows_o + rows_p)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -1590,6 +1647,44 @@ if not any(r.strip() in ("9", "9.00000") for r in rows_o):
          "are meant to be one statement under two names")
 if not any(r.strip() == "CONOK" for r in rows_o):
     fail("session O did not reach the end")
+
+# ---- session P: the third token table, and NEXT with its name ----------
+# 1 is the kernel's version through a keyword that lives in TOKENS3 --
+# three bytes in the line, $FF $FF <sub>, an escape inside an escape.
+if not any(r.strip() == "1" for r in rows_p):
+    fail("VER did not answer through the third token table: $FF $FF "
+         "<sub> was not decoded, or the record was fetched from the "
+         "wrong table")
+# 0 is VER-1, and it is the check that the third table is UNDERSTOOD
+# rather than merely reached. A minus after a no-argument function is a
+# NEGATION unless the tokenizer asks what kind of token came before it,
+# and asking means knowing which TABLE the sub-id belongs to -- the same
+# number means a different keyword in each of the three.
+if not any(r.strip() in ("0", "0.00000") for r in rows_p):
+    fail("VER-1 did not answer 0: the minus after a no-argument function "
+         "in TOKENS3 was tokenized as a negation, which means PREVEXT "
+         "did not count the escapes")
+# 6 is three times two with the inner loop closed BY NAME, and it is the
+# whole of the NEXT fix: before it, the loop ran correctly and then
+# threw a syntax error on the pass that ENDS it, so the total never
+# printed at all.
+if not any(r.strip() in ("6", "6.00000") for r in rows_p):
+    fail("nested FOR loops closed with NEXT <name> did not complete -- "
+         "NEXT is not consuming its variable, so the name is left in the "
+         "line for the statement checker")
+if not any(r.strip() == "BARE" for r in rows_p):
+    fail("bare NEXT stopped working, which is a regression: it is the "
+         "form every session before this one used")
+# 5, 3, 1: a countdown, so the STEP sign and the end test still agree
+# with each other now that NEXT parses something.
+for want in ("5", "3", "1"):
+    if not any(r.strip() in (want, want + ".00000") for r in rows_p):
+        fail("FOR ... STEP -2 did not count down through %s" % want)
+if not any(r.strip() == "TOKOK" for r in rows_p):
+    fail("session P did not reach the end")
+# And LIST detokenizes a three-byte token back to its keyword.
+if not any(r.strip() == "10 PRINT VER" for r in rows_p):
+    fail("LIST did not turn a TOKENS3 token back into its keyword")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

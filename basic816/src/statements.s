@@ -939,6 +939,32 @@ S_NEXT          .proc
 
                 setaxl
 
+                ; NEXT takes an OPTIONAL variable name, and until now it
+                ; consumed nothing at all. The loop RAN correctly and
+                ; then the name was left sitting in the line for the
+                ; interpreter to read as the start of the next
+                ; statement -- so every "FOR I=1 TO 3 ... NEXT I" in
+                ; this BASIC printed its results and then reported a
+                ; syntax error, on the pass that ENDS the loop and only
+                ; then. Bare NEXT was unaffected, which is how the
+                ; commonest loop in BASIC stayed broken this long: the
+                ; emulator sessions all used the bare form.
+                ;
+                ; VAR_FINDNAME does its own SKIPWS and its own ISALPHA
+                ; and consumes NOTHING when there is no name, so the
+                ; carry is of no interest here -- ":" and end-of-line
+                ; both leave BIP where it was.
+                ;
+                ; THE NAME IS NOT CHECKED against the loop it closes.
+                ; The FOR record keeps a POINTER to where the name was
+                ; written in the program text, and the same variable
+                ; mentioned twice has two different pointers, so telling
+                ; "NEXT I" from "NEXT J" would mean comparing the names
+                ; themselves. help/LANGUAGE.TXT says so rather than
+                ; leaving it to be discovered.
+                CALL VAR_FINDNAME
+
+                setaxl
                 ; Get the final value
 
                 LDY RETURNSP                    ; Y := pointer to first byte of the FOR record

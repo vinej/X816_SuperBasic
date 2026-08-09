@@ -11,11 +11,26 @@ any future target gets it too.
 --- what was already here ---
 
 [x] GOTO line / GOSUB line / RETURN - the classic three.
-[x] FOR v = a TO b [STEP s] ... NEXT - counted loops.
+[x] FOR v = a TO b [STEP s] ... NEXT [v] - counted loops.
 
-    NEXT TAKES NO VARIABLE. "NEXT I" is a syntax error, because NEXT
-    reads its record off the return stack and never parses a name, so
-    the " I" is left over for the statement checker. Write NEXT.
+    NEXT NOW TAKES THE VARIABLE, and this page used to say it did not.
+    That was a bug written down as a rule: NEXT reads its record off
+    the return stack and parsed no name, so the " I" was left in the
+    line for the statement checker - and the loop RAN correctly and
+    then failed on the pass that ends it, which is why it read as "NEXT
+    takes no variable" rather than as something broken. It consumes the
+    name now.
+
+    THE NAME IS NOT CHECKED against the loop it closes. NEXT always
+    closes the innermost one, whatever name is written. The FOR record
+    keeps a pointer to where the name sits in the program text, and the
+    same variable mentioned twice has two different pointers, so
+    telling "NEXT I" from "NEXT J" means comparing the names
+    themselves - worth doing, not done.
+
+    ONE name, not a list: "NEXT I,J" is still a syntax error. In a
+    classic BASIC that closes two loops at once, which is two records
+    off the return stack and a second pass through the statement.
 [x] DO ... LOOP, with WHILE or UNTIL on either end:
 
         DO WHILE A < 10 ... LOOP

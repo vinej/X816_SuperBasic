@@ -451,6 +451,74 @@ S_BORDER        .proc
                 .pend
 
 ;
+; QUIT -- hand the machine back to the shell.
+;
+; Until now the only way out of SuperBasic was to reset the machine,
+; which is a poor answer on a computer whose whole boot story is "the
+; shell runs an ordinary program" (HELP SYSTEM).
+;
+; K_EXIT does not return on success, so nothing follows the call. The
+; RETURN below is for the failure the kernel is entitled to report and
+; which nothing here can do anything about.
+;
+; ONE NAME, not two. help/SYSTEM.TXT lists "QUIT / SYSTEM" and only QUIT
+; is taken: a second spelling costs a token, and PORT.md 29 spent an
+; afternoon establishing that tokens are the ceiling on finishing these
+; pages while bytes are not. SETBORDER below is kept as a second name
+; only because its token was spent by BASIC816 before this port existed.
+;
+S_QUIT          .proc
+                PHP
+                TRACE "S_QUIT"
+                setaxl
+
+                LDA #0                      ; exit status
+                JSL KERN_EXIT
+
+                PLP
+                RETURN
+                .pend
+
+;
+; TURBO n -- 0 for 8 MHz, anything else for 14 MHz.
+;
+; SYSCTL bit 2 (MEMORY_MAP.md). It is a CLOCK ENABLE and not a clock
+; switch, so it may be flipped at any moment: nothing glitches and no
+; reset is needed. Bit 0 is the boot-ROM overlay and bit 1 reads the
+; CPU's live E flag, so this is a read-modify-write and not a store --
+; putting a whole byte here would drop the overlay bit on a machine that
+; still had it.
+;
+; Reading it back gives the EFFECTIVE speed, which is this bit ORed with
+; the MiSTer OSD's own Turbo setting. So TURBO 0 does not guarantee
+; 8 MHz: it releases the software half of the decision. A program that
+; needs to know should read $9F80 rather than remember what it wrote.
+;
+S_TURBO         .proc
+                PHP
+                TRACE "S_TURBO"
+                setaxl
+
+                CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+
+                setas
+                LDA @l SYSCTL
+                AND #$FB                    ; everything but bit 2
+                STA @l VID_A
+                LDA ARGUMENT1
+                BEQ tb_slow
+                LDA #$04
+                ORA @l VID_A
+                BRA tb_put
+tb_slow         LDA @l VID_A
+tb_put          STA @l SYSCTL
+
+                PLP
+                RETURN
+                .pend
+
+;
 ; SETBORDER c -- the colour around the display.
 ;
 ; THE SAME STATEMENT AS BORDER, under the name BASIC816 gave it, and
