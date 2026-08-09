@@ -23,14 +23,26 @@ any future target gets it too.
 
     THE NAME IS NOT CHECKED against the loop it closes. NEXT always
     closes the innermost one, whatever name is written. The FOR record
-    keeps a pointer to where the name sits in the program text, and the
-    same variable mentioned twice has two different pointers, so
-    telling "NEXT I" from "NEXT J" means comparing the names
-    themselves - worth doing, not done.
+    keeps a pointer to where the VARIABLE LIVES rather than to its
+    name, so there is no name there to compare against - and that
+    pointer is also why the loop is fast: NEXT used to search the
+    variable list twice on every pass, and searches nothing now.
 
     ONE name, not a list: "NEXT I,J" is still a syntax error. In a
     classic BASIC that closes two loops at once, which is two records
     off the return stack and a second pass through the statement.
+
+    AN ALL-INTEGER LOOP IS THE FAST ONE. When the variable, the limit
+    and the STEP are all integers - FOR K%=1 TO 1000 - NEXT is a
+    32-bit add and a compare, no float library at all: about twice
+    the speed of the same loop on K. A game's inner loop wants K%.
+
+    FOR K=J TO 4 WORKS NOW, and never did before: the initial value
+    was assigned to the LAST VARIABLE THE EXPRESSION MENTIONED - J
+    here - and the loop variable was never created, so line 30's
+    PRINT K stopped the program with "Variable not found". A literal
+    first, FOR K=1 TO N, is what nearly every program writes, which
+    is how it hid since BASIC816. Fixed 2026-08-09.
 [x] DO ... LOOP, with WHILE or UNTIL on either end:
 
         DO WHILE A < 10 ... LOOP

@@ -858,34 +858,69 @@ S_FOR           .proc
                 CALL SKIPWS
 
 get_name        CALL VAR_FINDNAME   ; Try to find the variable name
-                BCS push_name       ; If we didn't find a name, thrown an error
+                BCS have_name       ; If we didn't get one, throw
 
                 THROW ERR_NOTFOUND
 
-push_name       setas               ; Push the search record for the index variable
-                LDA TOFINDTYPE      ; To the return stack
-                CALL PHRETURNB
-                LDA TOFIND+2
-                CALL PHRETURNB
-                setal
-                LDA TOFIND
-                CALL PHRETURN
-
-else            CALL SKIPWS         ; Scan for an "="
+have_name       CALL SKIPWS         ; Scan for an "="
                 setas
                 LDA [BIP]
                 CMP #TOK_EQ
-                BNE syntax_err      ; If not found: signal an syntax error
+                BEQ eq_ok           ; If not found: signal a syntax error
+                THROW ERR_SYNTAX
+eq_ok
 
-                LDA TOFINDTYPE      ; Verify type of variable
-                CMP #TYPE_INTEGER   ; Is it integer?
-                BEQ process_initial ; Yes: it's ok
-                CMP #TYPE_FLOAT     ; Is it floating point?
-                BEQ process_initial ; Yes: it's ok
+                ; THE NAME IS SAVED ACROSS THE EXPRESSION, exactly as
+                ; S_LET does and for the reason its comment gives: a
+                ; variable reference inside the expression rewrites
+                ; TOFIND. Before this, FOR K=J TO 4 evaluated J and then
+                ; VAR_SET assigned the initial value to J -- the
+                ; variable the expression happened to end on -- and K
+                ; started with whatever it last held.
+                LDA TOFINDTYPE
+                PHA
+                LDA TOFIND+2
+                PHA
+                LDA TOFIND+1
+                PHA
+                LDA TOFIND
+                PHA
 
-process_initial CALL INCBIP         ; Otherwise, skip over it
-                CALL EVALEXPR       ; Evaluate the expression
-                CALL VAR_SET        ; Attempt to set the value of the variable
+                CALL INCBIP         ; Skip over the "="
+                CALL EVALEXPR       ; Evaluate the initial value
+
+                setas
+                PLA                 ; The loop variable's name again
+                STA TOFIND
+                PLA
+                STA TOFIND+1
+                PLA
+                STA TOFIND+2
+                PLA
+                STA TOFINDTYPE
+
+                CALL VAR_SET        ; Set the initial value (creates the
+                                    ;  variable if it did not exist)
+
+                ; THE RECORD KEEPS A POINTER TO THE BINDING, not to the
+                ; name. The variable exists now -- VAR_SET just wrote it
+                ; -- so this lookup is the LAST one the loop ever does:
+                ; S_NEXT increments through the pointer, where it used
+                ; to search the variable list twice per pass, uppercase
+                ; loop and all. That search was a fifth of an empty
+                ; loop iteration, every iteration.
+                CALL VAR_FIND
+                BCS push_bind
+                THROW ERR_NOTFOUND  ; Cannot happen: VAR_SET made it
+
+push_bind       setas
+                LDA TOFINDTYPE      ; The DECLARED type: S_NEXT's fast
+                CALL PHRETURNB      ;  path and its cast both key on it
+                LDA INDEX+2
+                CALL PHRETURNB
+                setal
+                LDA INDEX
+                CALL PHRETURN
 
                 ; Process the limit value
                 setas
@@ -998,26 +1033,112 @@ S_NEXT          .proc
                 CALL VAR_FINDNAME
 
                 setaxl
-                ; Get the final value
 
                 LDY RETURNSP                    ; Y := pointer to first byte of the FOR record
                 INY                             ; RETURNSP points to the first free slot, so move up 2 bytes
                 INY
 
-                ; Get the variable and its current value
+                ; INDEX := the loop variable's BINDING, which S_FOR
+                ; looked up ONCE. This used to be a pointer to the NAME,
+                ; and every NEXT paid two full searches of the variable
+                ; list -- one to read the value, one inside VAR_SET to
+                ; write it back -- each with an upper-casing copy loop
+                ; in front. The C64 has kept the address in the frame
+                ; since 1977, and now so does this.
                 setal
-                LDA #FOR_RECORD.VARIBLE,B,Y     ; TOFIND := FOR_RECORD.VARIABLE
-                STA TOFIND
-                LDA #FOR_RECORD.VARIBLE+2,B,Y
+                LDA #FOR_RECORD.VARIBLE,B,Y
+                STA INDEX
                 setas
-                STA TOFIND+2
-                LDA #FOR_RECORD.VARTYPE,B,Y
-                STA TOFINDTYPE
+                LDA #FOR_RECORD.VARIBLE+2,B,Y
+                STA INDEX+2
 
-                setal
-                PHY
-                CALL VAR_REF                    ; Get the value of the variable
+                ; A NEXT with no FOR under it reads whatever the stack
+                ; holds as a record. When that slot held a name, the
+                ; doomed lookup threw NOTFOUND; a garbage POINTER would
+                ; be a wild write instead, so check that it points at a
+                ; binding of the recorded type before writing anything.
+                LDA [INDEX]                     ; BINDING.TYPE is byte 0
+                CMP #FOR_RECORD.VARTYPE,B,Y
+                BEQ rec_ok
+                THROW ERR_NOTFOUND
+rec_ok
+                ; All three of variable, increment and limit INTEGER is
+                ; the fast path: a 32-bit add and a signed compare, no
+                ; float library. FOR K%=1 TO 1000 lands here; FOR K=...
+                ; does not, because K is a float.
+                LDA #FOR_RECORD.VARTYPE,B,Y
+                CMP #TYPE_INTEGER
+                BEQ fi_chk1
+                BRL slow
+fi_chk1         LDA #FOR_RECORD.INCTYPE,B,Y
+                CMP #TYPE_INTEGER
+                BEQ fi_chk2
+                BRL slow
+fi_chk2         LDA #FOR_RECORD.FINALTYPE,B,Y
+                CMP #TYPE_INTEGER
+                BEQ fi_go
+                BRL slow
+
+                ; ---- the integer fast path --------------------------
+fi_go           setal
+                LDA #FOR_RECORD.INCREMENT,B,Y   ; SCRATCH := increment
+                STA SCRATCH
+                LDA #FOR_RECORD.INCREMENT+2,B,Y
+                STA SCRATCH+2
+
+                PHY                             ; value += increment,
+                LDY #BINDING.VALUE              ;  in place; SCRATCH
+                CLC                             ;  becomes the new value
+                LDA [INDEX],Y
+                ADC SCRATCH
+                STA [INDEX],Y
+                STA SCRATCH
+                INY
+                INY
+                LDA [INDEX],Y
+                ADC SCRATCH+2
+                STA [INDEX],Y
+                STA SCRATCH+2
                 PLY
+
+                LDA #FOR_RECORD.INCREMENT+2,B,Y ; The sign picks the test
+                BMI fi_down
+
+                SEC                             ; Going up: continue while
+                LDA #FOR_RECORD.FINAL,B,Y       ;  value <= final, i.e.
+                SBC SCRATCH                     ;  final - value >= 0,
+                LDA #FOR_RECORD.FINAL+2,B,Y     ;  SIGNED
+                SBC SCRATCH+2
+                BVC fi_up_nv                    ; The true sign of a
+                EOR #$8000                      ;  signed subtract is
+fi_up_nv        BMI fi_end                      ;  N eor V
+                BRL loop_back
+
+fi_down         SEC                             ; Going down: continue
+                LDA SCRATCH                     ;  while value >= final
+                SBC #FOR_RECORD.FINAL,B,Y
+                LDA SCRATCH+2
+                SBC #FOR_RECORD.FINAL+2,B,Y
+                BVC fi_dn_nv
+                EOR #$8000
+fi_dn_nv        BMI fi_end
+                BRL loop_back
+fi_end          BRL end_loop
+
+                ; ---- the float path ---------------------------------
+slow            setal                           ; ARGUMENT1 := the value,
+                PHY                             ;  through the pointer
+                LDY #BINDING.VALUE
+                LDA [INDEX],Y
+                STA ARGUMENT1
+                INY
+                INY
+                LDA [INDEX],Y
+                STA ARGUMENT1+2
+                PLY
+                setas
+                LDA #FOR_RECORD.VARTYPE,B,Y
+                STA ARGTYPE1
 
                 setal
                 LDA #FOR_RECORD.INCREMENT,B,Y   ; ARGUMENT2 := FOR_RECORD.INCREMENT
@@ -1031,7 +1152,35 @@ S_NEXT          .proc
                 setal
                 PHY
                 CALL OP_PLUS                    ; Add the increment to the current value
-                CALL VAR_SET                    ; Assign the new value to the variable
+                PLY
+
+                ; What OP_PLUS answers is stored back AS THE VARIABLE'S
+                ; TYPE, which is what VAR_SET did with its second
+                ; search: an integer step over a float variable comes
+                ; back a float and must not be stored as raw bits.
+                setas
+                LDA #FOR_RECORD.VARTYPE,B,Y
+                CMP ARGTYPE1
+                BEQ store_back
+                CMP #TYPE_INTEGER
+                BNE cast_float
+                PHY
+                CALL ASS_ARG1_INT
+                PLY
+                BRA store_back
+cast_float      PHY
+                CALL ASS_ARG1_FLOAT
+                PLY
+
+store_back      setal
+                PHY
+                LDY #BINDING.VALUE
+                LDA ARGUMENT1
+                STA [INDEX],Y
+                INY
+                INY
+                LDA ARGUMENT1+2
+                STA [INDEX],Y
                 PLY
 
                 setal

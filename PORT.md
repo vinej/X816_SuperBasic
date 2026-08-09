@@ -2479,6 +2479,77 @@ The next suspects are the FOR frame's variable re-lookup per iteration
 and the software float increment. That is phase-2 work, to be measured
 the same way before anything is touched.
 
+## 37. NEXT stops searching, and FOR K=J never worked (2026-08-09)
+
+Two changes to the FOR/NEXT machinery, made together because they touch
+the same record; measured before and after like everything else today.
+
+### The FOR record keeps a pointer now
+
+Every `NEXT` used to pay **two full searches of the variable list** —
+one to read the loop variable, one inside `VAR_SET` to write it back —
+each behind an upper-casing copy loop, because the FOR record stored a
+pointer to the variable's *name*. The C64 has stored the variable's
+*address* in its loop frame since 1977. Now this one does too: `S_FOR`
+looks the binding up once, after the initial assignment creates it, and
+`S_NEXT` increments through the pointer. The record layout is
+unchanged — the binding pointer sits in the same four bytes the name
+pointer used.
+
+`NEXT` without a `FOR` under it used to throw NOTFOUND because the
+garbage it read as a name pointer never named a variable. A garbage
+*binding* pointer would be a wild write, so `S_NEXT` checks that the
+pointed-at binding's type byte matches the record before writing —
+garbage still throws, nothing is silently stored.
+
+### The integer fast path
+
+When variable, increment and limit are all INTEGER, `NEXT` is now a
+32-bit add and a signed compare in place — no float library, no
+argument slots, no cast. The signed compare is the `N eor V` idiom
+after a 32-bit subtract, and the probe drives it through a descending
+STEP, negative bounds, and a loop across 32768.
+
+`FOR K%=1 TO 1000` lands on it. `FOR K=...` does not — K is a float —
+which is why the classic benchmarks don't show it and `BM1I.BAS` was
+added to.
+
+### FOR K=J TO 4 assigned J
+
+Found by reading `S_FOR` while making the change, confirmed by probe
+before touching anything: **the loop variable was never initialized
+when the initial expression ended in a variable reference.** `S_FOR`
+called `VAR_SET` after `EVALEXPR`, and expression evaluation rewrites
+`TOFIND` — the exact hazard `S_LET` documents and guards against, one
+screen up in the same file. Evaluating `J` left `TOFIND` naming J, so
+the initial value was assigned to **J itself** and K was never created:
+
+    10 J=2
+    20 FOR K=J TO 4      before: "Variable not found at 30"
+    30 PRINT K           now: 2 3 4, and J still 2
+
+On every build since BASIC816, on the C256 today, and hidden in plain
+sight because `FOR K=1 TO N` — a literal first — is what every test and
+nearly every program writes. Third upstream-era correctness bug found
+today, after the associativity tie and the comma-minus; all three are
+in portable code and belong upstream.
+
+### The loop, measured
+
+Same benchmark, same emulator, one day:
+
+    FOR K=1 TO 1000 : NEXT K        FOR K%=1 TO 1000 : NEXT K%
+    morning              1235 ms
+    poll gated            871 ms
+    binding pointer       675 ms                303 ms
+
+675 ms is the software float add and compare now — the searches are
+gone. 303 ms is ~2,400 cycles an iteration, which on his hardware
+(+8%) is ~330 ms at 8 MHz and **~190 ms at TURBO's 14 — the "about
+0.2 s" he asked for, reached on K%**. In wall-clock terms the machine
+now runs the canonical empty loop ~4× faster than a C64 at 8 MHz and
+~7× at 14.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public
