@@ -108,9 +108,9 @@ pieces. Keep the palette in an array and save that.
 
 --- interrupts, which most of the above depends on ---
 
-[x] ONVSYNC line-number - run a subroutine every frame.
-[x] ONRASTER line,line-number - run one when the beam passes a scanline.
-[x] ONCOLLISION line-number - sprite collision.
+[x] ONVSYNC line-number or label - run a subroutine every frame.
+[x] ONRASTER line,line-number or label run one when the beam passes a scanline.
+[x] ONCOLLISION line-number or label - sprite collision.
 [x] RETIRQ - return from one. HELP SYSTEM has the full story and the
     limits, which matter here: these are DEFERRED to the next statement
     boundary, so they are for pacing and background work. A colour bar or

@@ -32,6 +32,8 @@ SB_MAXSTR = 255
 SB_I        .word ?             ; a working index
 SB_J        .word ?             ; a second one
 SB_P        .dword ?            ; a pointer into the middle of a string
+SB_K        .word ?             ; a third index, for the one function that
+                        ;  walks three strings at once
 .send
 
 ;
@@ -367,6 +369,173 @@ FN_STRINGS  .proc
             STA SB_J
 
             CALL SB_FILL
+
+            FN_END
+            PLP
+            RETURN
+            .pend
+
+;
+; Append the character in A (8-bit) to the answer being built.
+;
+RP_PUTC     .proc
+            PHP
+            setaxl
+            PHY
+
+            PHA                         ; A is holding the character and the
+            LDA SB_I                    ;  index has to go through it, so the
+            TAY                         ;  character goes on the stack for as
+            PLA                         ;  long as that takes
+            setas
+            STA [STRPTR],Y
+
+            setaxl
+            LDA SB_I
+            INC A
+            STA SB_I
+
+            PLY
+            PLP
+            RETURN
+            .pend
+
+;
+; REPLACE$(s$, old$, new$) -- every occurrence of old$ in s$ replaced.
+;
+; THREE strings alive at once, which is one more than anything else on
+; this page has needed, and [ptr] addressing lives in the direct page:
+; ARGUMENT1 is the source, ARGUMENT2 the needle, MTEMP the replacement
+; and SB_P walks the source. STRPTR is the answer. Nothing here streams
+; a file through MTEMP, so borrowing it is safe -- and it is loaded
+; after the last EVALEXPR, never before.
+;
+; AN EMPTY old$ MATCHES NOTHING and the source comes back unchanged. The
+; alternative is a match at every position and a loop that never
+; advances; "insert between every character" is not what anybody means
+; by replacing nothing.
+;
+; The answer stops at 255 characters like every other string here, and
+; this is the one function where that is easy to reach: the result can
+; GROW, so REPLACE$("aaa","a","xxxx") is twelve characters out of three.
+;
+FN_REPLACE  .proc
+            FN_START "FN_REPLACE"
+            PHP
+            setaxl
+
+            CALL SB_ARGSTR              ; the source
+            LDA ARGUMENT1+2
+            PHA
+            LDA ARGUMENT1
+            PHA
+
+            CALL SB_COMMA
+            CALL SB_ARGSTR              ; what to look for
+            setal
+            LDA ARGUMENT1
+            STA ARGUMENT2
+            LDA ARGUMENT1+2
+            STA ARGUMENT2+2
+
+            CALL SB_COMMA
+            CALL SB_ARGSTR              ; what to put there
+            setal
+            LDA ARGUMENT1
+            STA MTEMP
+            LDA ARGUMENT1+2
+            STA MTEMP+2
+
+            PLA                         ; and the source back
+            STA ARGUMENT1
+            PLA
+            STA ARGUMENT1+2
+
+            CALL TEMPSTRING
+
+            setaxl
+            LDA #0
+            STA SB_I                    ; how much of the answer is built
+            STA SB_J                    ; and how far into the source we are
+
+rp_loop     setaxl                      ; SB_P = source + SB_J
+            LDA SB_J
+            CLC
+            ADC ARGUMENT1
+            STA SB_P
+            LDA ARGUMENT1+2
+            ADC #0
+            STA SB_P+2
+
+            setxl
+            setas
+            LDA [SB_P]                  ; end of the source?
+            BEQ rp_done
+
+            LDA [ARGUMENT2]             ; an empty needle matches nothing, or
+            BEQ rp_copy1                ;  nothing would ever advance
+
+            LDY #0                      ; does it match right here?
+rp_match    LDA [ARGUMENT2],Y
+            BEQ rp_hit                  ; needle exhausted: it does
+            CMP [SB_P],Y
+            BNE rp_copy1
+            INY
+            BRA rp_match
+
+            ; ---- a hit: out goes the replacement ----
+rp_hit      setaxl
+            LDA #0
+            STA SB_K
+rp_put      setaxl
+            LDA SB_I
+            CMP #SB_MAXSTR
+            BCS rp_skip                 ; no room left: stop copying, but
+                                        ;  still step over the needle
+            setxl
+            LDY SB_K
+            setas
+            LDA [MTEMP],Y
+            BEQ rp_skip
+            CALL RP_PUTC
+            setaxl
+            LDA SB_K
+            INC A
+            STA SB_K
+            BRA rp_put
+
+rp_skip     setxl                       ; and step the source past the needle
+            setas
+            LDY #0
+rp_skipl    LDA [ARGUMENT2],Y
+            BEQ rp_skipped
+            INY
+            BRA rp_skipl
+rp_skipped  setaxl
+            TYA
+            CLC
+            ADC SB_J
+            STA SB_J
+            BRA rp_loop
+
+            ; ---- no hit: one character of the source goes out ----
+rp_copy1    setaxl
+            LDA SB_I
+            CMP #SB_MAXSTR
+            BCS rp_done
+            setxl
+            setas
+            LDA [SB_P]
+            CALL RP_PUTC
+            setaxl
+            LDA SB_J
+            INC A
+            STA SB_J
+            BRL rp_loop         ; the function is wider than a branch
+
+rp_done     setaxl
+            LDY SB_I
+            CALL SB_RETSTR
 
             FN_END
             PLP

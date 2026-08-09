@@ -546,6 +546,14 @@ S_CLS           .proc
 S_POKEL         .proc
 
                 CALL EVALEXPR       ; Get the address
+                CALL ASS_ARG1_INT   ; ...AS AN INTEGER. Without this a
+                                    ;  float address was used as its own
+                                    ;  BIT PATTERN: POKE A,77 with A
+                                    ;  holding 2097408 wrote to $000400,
+                                    ;  the exponent and mantissa read as
+                                    ;  an address, silently and in bank 0.
+                                    ;  PEEK has always converted; these
+                                    ;  three never did.
 
                 setal
                 LDA ARGUMENT1+2     ; And save it to the stack
@@ -560,6 +568,9 @@ S_POKEL         .proc
                 CALL INCBIP
 
                 CALL EVALEXPR       ; Get the value
+                CALL ASS_ARG1_INT   ; likewise: the range checks below
+                                    ;  read bytes of ARGUMENT1, and a
+                                    ;  float's bytes are not its value
 
                 setal
                 LDA ARGUMENT1+3
@@ -589,6 +600,14 @@ range_err       THROW ERR_RANGE
 S_POKEW         .proc
 
                 CALL EVALEXPR       ; Get the address
+                CALL ASS_ARG1_INT   ; ...AS AN INTEGER. Without this a
+                                    ;  float address was used as its own
+                                    ;  BIT PATTERN: POKE A,77 with A
+                                    ;  holding 2097408 wrote to $000400,
+                                    ;  the exponent and mantissa read as
+                                    ;  an address, silently and in bank 0.
+                                    ;  PEEK has always converted; these
+                                    ;  three never did.
 
                 setal
                 LDA ARGUMENT1+2     ; And save it to the stack
@@ -603,6 +622,9 @@ S_POKEW         .proc
                 CALL INCBIP
 
                 CALL EVALEXPR       ; Get the value
+                CALL ASS_ARG1_INT   ; likewise: the range checks below
+                                    ;  read bytes of ARGUMENT1, and a
+                                    ;  float's bytes are not its value
 
                 setal
                 LDA ARGUMENT1+2
@@ -627,6 +649,14 @@ range_err       THROW ERR_RANGE
 S_POKE          .proc
 
                 CALL EVALEXPR       ; Get the address
+                CALL ASS_ARG1_INT   ; ...AS AN INTEGER. Without this a
+                                    ;  float address was used as its own
+                                    ;  BIT PATTERN: POKE A,77 with A
+                                    ;  holding 2097408 wrote to $000400,
+                                    ;  the exponent and mantissa read as
+                                    ;  an address, silently and in bank 0.
+                                    ;  PEEK has always converted; these
+                                    ;  three never did.
 
                 setal
                 LDA ARGUMENT1+2     ; And save it to the stack
@@ -641,6 +671,9 @@ S_POKE          .proc
                 CALL INCBIP
 
                 CALL EVALEXPR       ; Get the value
+                CALL ASS_ARG1_INT   ; likewise: the range checks below
+                                    ;  read bytes of ARGUMENT1, and a
+                                    ;  float's bytes are not its value
 
                 setas
                 LDA ARGUMENT1+1     ; Make sure the value is from 0 - 255

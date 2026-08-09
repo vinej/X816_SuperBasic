@@ -58,6 +58,7 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "X816/adpcm_x816.s"     ; ADPCMPLAY: IMA ADPCM, decoded then fed
 .include "X816/fastmath_x816.s"  ; SIN8/COS8/ATAN2/LERP/MIN/MAX/CLAMP
 .include "X816/clock_x816.s"     ; a soft clock over the ms counter
+.include "X816/machine_x816.s"   ; REBOOT/RESET/POWEROFF, ALLOC/FREE
 .include "X816/input_x816.s"     ; joystick, I2C, mouse
 .include "X816/font_x816.s"      ; the redefinable character set
 .include "X816/graphics_x816.s"  ; bitmap drawing on VERA2

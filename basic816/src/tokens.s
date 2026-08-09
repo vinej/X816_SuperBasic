@@ -117,7 +117,9 @@ PARSEINT    .proc
 loop        setas
             LDA [BIP]           ; Get the next character
             CALL ISNUMERAL      ; Is it a numeral?
-            BCC done            ; No, we're done parsing
+            BCS keep            ; the &b arm below pushed 'done' out
+            BRA to_done         ;  of branch range of this one
+keep
                 
             CALL MULINT10       ; Yes: multiply ARGUMENT1 by 10
 
@@ -136,6 +138,9 @@ loop        setas
             CALL INCBIP         ; And move to the next byte
             BRA loop            ; And try to process it
 
+to_done     JMP done            ; past the &b arm, which is wider than a
+                                ;  relative branch reaches
+
 syntaxerr   THROW ERR_SYNTAX    ; Throw a syntax error
 
 check_hex   CALL INCBIP         ; Skip the '&'
@@ -143,7 +148,42 @@ check_hex   CALL INCBIP         ; Skip the '&'
             CMP #'H'            ; Is it 'H'?
             BEQ parse_hex       ; Yes: skip it and parse hex
             CMP #'h'            ; Is it 'h'?
+            BEQ parse_hex
+
+            ; &b is BIN$'s inverse, and a LITERAL rather than a
+            ; function: it costs no token, it reads better in the
+            ; middle of an expression than a call would, and it sits
+            ; beside the &h this machine's help pages are already full
+            ; of. help/STRING.TXT asked for the inverse and this is the
+            ; shape of it.
+            CMP #'B'
+            BEQ parse_bin
+            CMP #'b'
             BNE syntaxerr       ; No: throw an error
+
+parse_bin   CALL INCBIP
+
+binloop     setas
+            LDA [BIP]           ; a binary digit is 0 or 1 and nothing
+            CMP #'0'            ;  else -- 2 ends the number rather than
+            BCC done            ;  being an error, exactly as 'G' ends a
+            CMP #'1'+1          ;  hex one
+            BCS done
+
+            SEC
+            SBC #'0'
+
+            setal
+            ASL ARGUMENT1       ; ARGUMENT1 << 1
+            ROL ARGUMENT1+2
+
+            AND #$0001
+            CLC
+            ADC ARGUMENT1
+            STA ARGUMENT1
+
+            CALL INCBIP
+            BRA binloop
 
 parse_hex   CALL INCBIP
 
@@ -1774,6 +1814,18 @@ TOKENS2
             DEFTOK "CIRCLE", TOK_TY_STMNT, 0, S_CIRCLE, 0
             DEFTOK "FCIRCLE", TOK_TY_STMNT, 0, S_FCIRCLE, 0
             DEFTOK "GCOLOR", TOK_TY_STMNT, 0, S_GCOLOR, 0
+
+; The machine itself. Three keywords rather than three I2CPOKEs: a
+; beginner should not need a device address to turn the machine off, and
+; getting the second byte wrong turns a reboot into a power cut.
+            DEFTOK "REBOOT", TOK_TY_STMNT, 0, S_REBOOT, 0
+            DEFTOK "RESET", TOK_TY_STMNT, 0, S_RESET, 0
+            DEFTOK "POWEROFF", TOK_TY_STMNT, 0, S_POWEROFF, 0
+; The kernel allocator. ALLOC answers -1 rather than throwing: running
+; out is something a program can plan for, and an error gives it nowhere
+; to put the plan.
+            DEFTOK "ALLOC", TOK_TY_FUNC, 0, FN_ALLOC, 0
+            DEFTOK "FREE", TOK_TY_STMNT, 0, S_FREE, 0
 .endif
 
 ; ENDIF closes the block form of IF. Portable -- it is language, not
@@ -1819,6 +1871,7 @@ TOK_LABEL = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
             DEFTOK "STRING$", TOK_TY_FUNC, 0, FN_STRINGS, 0
             DEFTOK "SPACE$", TOK_TY_FUNC, 0, FN_SPACES, 0
             DEFTOK "BIN$", TOK_TY_FUNC, 0, FN_BIN, 0
+            DEFTOK "REPLACE$", TOK_TY_FUNC, 0, FN_REPLACE, 0
 
 ; 127, not 128. Sub-ids run $80 + index, so an index of 127 would be
 ; sub-id $FF -- and $FF is now the SECOND ESCAPE, the one that selects

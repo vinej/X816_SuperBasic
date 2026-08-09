@@ -47,7 +47,16 @@ for want of code. See the note after the list.
 [x] STRING$(n,c$) - n copies of a character, for rules and bar charts.
     A negative count gives "" and an oversized one is clamped to 255.
 [x] SPACE$(n) - n spaces.
-[ ] REPLACE$(s$,old$,new$) - substitution.
+[x] REPLACE$(s$,old$,new$) - substitution, every occurrence.
+
+    AN EMPTY old$ MATCHES NOTHING and gives s$ back. The alternative is
+    a match at every position and a loop that never advances; "insert
+    between every character" is not what anybody means by replacing
+    nothing. An empty new$ deletes, which is the useful half of that.
+
+    It is the one string function here whose result can GROW, so the
+    255-character limit is easy to reach: REPLACE$("aaa","a","xxxx") is
+    twelve characters out of three. It stops there rather than wrapping.
 [ ] SPLIT / JOIN into a string array - parsing a line of input is the
     single most common thing a beginner's program does with text.
 [x] BIN$(n) - the binary form, handy next to HEX$ when poking hardware
@@ -58,10 +67,14 @@ for want of code. See the note after the list.
     them are what a program pokes. A bit is not a byte. BIN$(0) is "0",
     and a negative number comes out as all 32 bits of its two's
     complement, which is what the machine holds.
-[ ] The inverse of BIN$ - reading a binary string back, or a &b literal
-    beside the &h one the tokenizer already has. &h is where it belongs:
-    a literal costs no token and reads better in the middle of an
-    expression than a function call would.
+[x] &b - the inverse of BIN$, as a LITERAL rather than a function:
+    &b101 is 5, and PRINT BIN$(&b101101) gives back "101101".
+
+    A literal because it costs no token, because it reads better in the
+    middle of an expression than a call would, and because it sits
+    beside the &h these help pages are already full of. A digit that is
+    not 0 or 1 ENDS the number rather than being an error, exactly as
+    'G' ends a hex one.
 
 The token table filled up while these were being written, and LCASE$,
 STRING$ and SPACE$ were cut for want of an id. They are back: tokens are
