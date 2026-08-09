@@ -63,6 +63,13 @@ CURCOLOR = $004B1A          ; 1 byte
 ; long addressing.
 CTRL_DOWN = $004B1B         ; 1 byte
 
+; Where the line editor's cursor is, for the keys that have to call
+; something else before they can use it (keyboard_x816.s). Words rather
+; than bytes because every read of them is a 16-bit one on its way into
+; X for K_CON_GOTOXY.
+ED_COL    = $004B1C         ; word
+ED_ROW    = $004B1E         ; word
+
 ; Parameter block for K_FS_READ / K_FS_WRITE. Calls taking more than three
 ; arguments are passed a 24-bit pointer to little-endian fields
 ; (KERNEL.md 5.3); reserved fields must be written as zero.

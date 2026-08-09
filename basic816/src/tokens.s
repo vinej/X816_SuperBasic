@@ -1912,6 +1912,12 @@ TOK_LABEL = $FF00 | ($80 + (* - TOKENS2) / SIZE(TOKEN))
 ; what TKWRITE does with a two-letter keyword written as three bytes.
 ;
 TOKENS3
+; SPLIT and JOIN$ are FUNCTIONS -- N = SPLIT(A$, ",", W$()) -- so the
+; count comes back as the answer rather than through a variable named
+; as a fourth argument. Both take the array as w$(), with nothing
+; between the brackets: the whole array, not a cell of it.
+            DEFTOK3 "SPLIT", TOK_TY_FUNC, 0, FN_SPLIT, 0
+            DEFTOK3 "JOIN$", TOK_TY_FUNC, 0, FN_JOIN, 0
 .if SYSTEM == SYSTEM_X816
             DEFTOK3 "VER", TOK_TY_FUNC, 0, FN_VER, 0
 .endif

@@ -57,8 +57,50 @@ for want of code. See the note after the list.
     It is the one string function here whose result can GROW, so the
     255-character limit is easy to reach: REPLACE$("aaa","a","xxxx") is
     twelve characters out of three. It stops there rather than wrapping.
-[ ] SPLIT / JOIN into a string array - parsing a line of input is the
-    single most common thing a beginner's program does with text.
+[x] SPLIT(s$,sep$,arr$()) - cut a string on a separator, into a string
+    array, and answer how many pieces there were.
+[x] JOIN$(arr$(),sep$,n) - the first n cells glued back together.
+
+        N = SPLIT("10,20,30", ",", W$())
+        PRINT JOIN$(W$(), " + ", N)
+
+    BOTH ARE FUNCTIONS. The obvious shape is a statement - SPLIT a$,
+    ",", w$(), n - but then the count comes back through a variable
+    named as a fourth argument, and every caller writes the extra name.
+    As functions each answers the thing that was actually wanted, and
+    N = SPLIT(...) reads like the assignment it is.
+
+    THE ARRAY IS WRITTEN w$() WITH NOTHING BETWEEN THE BRACKETS: the
+    whole array, not a cell of it. The brackets are what tell the
+    parser to look for the array rather than a scalar of the same name,
+    since A$ and A$() are different variables. One dimension, and a
+    string one; anything else is refused rather than flattened.
+
+    THE SEPARATOR IS A WHOLE STRING, not a set of characters, so
+    SPLIT(s$, ", ", w$()) cuts on comma-space and leaves a bare comma
+    alone. "Cut this line where this text appears" is what a program
+    parsing input is doing.
+
+    EMPTY PIECES ARE PIECES: "a,,b" is three and "," is two empty ones.
+    Dropping them would make the count depend on the data, and a
+    program reading a CSV line needs the blank field to keep its
+    column. An EMPTY separator cuts nothing and the whole string comes
+    back as one piece - the same rule REPLACE$ follows for an empty
+    needle, and for the same reason.
+
+    IT STOPS WHEN THE ARRAY IS FULL rather than throwing, so a program
+    that guessed its DIM too small gets a short answer instead of a
+    stopped program: N equal to the array size means there was probably
+    more. JOIN$ is the strict one - asking for more cells than the
+    array has is a range error, because that is a bug rather than a
+    guess.
+
+    THE PIECES ARE COPIED TO THE HEAP. They have to be: a string
+    function's result is a temporary, and the temporary pages are
+    handed out again at the next statement, so an array of them would
+    be full of pointers to whatever the next PRINT built. Splitting in
+    a loop therefore allocates, and the note at the bottom of this page
+    applies.
 [x] BIN$(n) - the binary form, handy next to HEX$ when poking hardware
     bits, which on this machine is most of what HELP says to do.
 

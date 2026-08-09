@@ -247,6 +247,26 @@
 #                                   then a round trip through a file
 #                                   this program wrote itself
 #
+#   session V -- SPLIT/JOIN, and the NMI break key
+#    47. SPLIT / JOIN$            - a round trip through a string
+#                                   array, including the empty
+#                                   piece, the empty separator, a
+#                                   multi-character one, and an
+#                                   array too small to hold it all
+#    48. Ctrl+Alt+PrtScr          - the NMI raised over I2C, which
+#                                   is the same line the key pulls
+#                                   in hardware. The program must
+#                                   STOP: what it would have
+#                                   printed next is the assertion
+#
+#   ARROW KEYS IN THE LINE EDITOR ARE NOT TESTED HERE AND CANNOT
+#   BE. -autokeys types by looking an ASCII character up in a
+#   keycode table (X816_Emulator src/keyboard.c), so a key that
+#   HAS no character -- an arrow, Home, Insert -- has no way to be
+#   named in the key script. Every session does exercise the
+#   ordinary path through the same routine, which is where a
+#   regression would land; the six special keys need a person.
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -969,6 +989,47 @@ python "C:/Users/jyv/AppData/Local/Temp/claude/c--quartus-projects-X816-SuperBas
 # (HELP PAL), so saving all 256 writes junk over the text palette and
 # the screen goes black on the reload. It did, once. 16,4 is this
 # program saying which entries are its own.
+# SPLIT and JOIN$, and then the break key. Two unrelated programs in
+# one session because both are short and a session costs 90 seconds.
+#
+# The SPLIT cases are chosen one per rule: three ordinary pieces, an
+# EMPTY one in the middle of "a,,b", an empty SEPARATOR (which cuts
+# nothing), a two-character separator, and an array with only two
+# cells for four pieces. The pieces are printed by LATER statements
+# than the split, which is the part that matters -- a piece left as a
+# temporary string would be pointing at whatever the next PRINT built.
+#
+# I2CPOKE &h42,&h03,&h00 is the SMC's NMI command, the same request
+# Ctrl+Alt+PrtScr makes in hardware (X816_core rtl/smc_x16.sv:
+# nmi_req is i2c_nmi_req OR kbd_nmi_req). So the program raises its
+# own break, and NOTBROKEN is what proves it worked by being absent.
+KEYS_V=$(keys_of \
+    '10 DIM W$(8)' \
+    '20 A$="10,20,30"' \
+    '30 N=SPLIT(A$,",",W$())' \
+    '40 PRINT N' \
+    '50 PRINT "["+W$(0)+"]"' \
+    '60 PRINT "["+W$(1)+"]"' \
+    '70 PRINT "["+W$(2)+"]"' \
+    '80 PRINT JOIN$(W$(),"-",N)' \
+    '90 PRINT SPLIT("a,,b",",",W$())' \
+    '100 PRINT "["+W$(1)+"]"' \
+    '110 PRINT SPLIT("abc","",W$())' \
+    '120 PRINT "["+W$(0)+"]"' \
+    '130 PRINT SPLIT("a, b, c",", ",W$())' \
+    '140 PRINT JOIN$(W$(),"",3)' \
+    '150 DIM V$(2)' \
+    '160 PRINT SPLIT("1,2,3,4",",",V$())' \
+    '170 PRINT JOIN$(V$(),"/",2)' \
+    '180 PRINT "VSPLIT"' \
+    'RUN' \
+    'NEW' \
+    '10 I2CPOKE &h42,&h03,&h00' \
+    '20 PRINT "NOTBROKEN"' \
+    '30 PRINT "ALSONOT"' \
+    'RUN' \
+    'PRINT "VOK"')
+
 KEYS_U=$(keys_of \
     '10 BLOAD "T.ZX0",&h50000' \
     '20 E=ZX0(&h50000,&h51000)' \
@@ -1228,6 +1289,7 @@ if [ "$NEG" = "0" ]; then
     run_session S "$KEYS_S" || { echo "session S produced no recording"; exit 1; }
     run_session T "$KEYS_T" || { echo "session T produced no recording"; exit 1; }
     run_session U "$KEYS_U" "$OUT/t.zx0" T.ZX0 "$OUT/t.bmx" T.BMX || { echo "session U produced no recording"; exit 1; }
+    run_session V "$KEYS_V" || { echo "session V produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -1249,9 +1311,10 @@ else
     cp "$OUT/outA.gif" "$OUT/outS.gif"
     cp "$OUT/outA.gif" "$OUT/outT.gif"
     cp "$OUT/outA.gif" "$OUT/outU.gif"
+    cp "$OUT/outA.gif" "$OUT/outV.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$WOUT/outS.gif" "$WOUT/outT.gif" "$WOUT/outU.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$WOUT/outS.gif" "$WOUT/outT.gif" "$WOUT/outU.gif" "$WOUT/outV.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
@@ -1259,15 +1322,15 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
  gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, gif_r, gif_s,
- gif_t, gif_u, fontinc, adpexp) = (
+ gif_t, gif_u, gif_v, fontinc, adpexp) = (
                     sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
                     sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
                     sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
                     sys.argv[17], sys.argv[18], sys.argv[19],
                     sys.argv[20], sys.argv[21], sys.argv[22],
-                    sys.argv[23])
-negative = sys.argv[24] == "1"
+                    sys.argv[23], sys.argv[24])
+negative = sys.argv[25] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -1331,9 +1394,11 @@ rows_r = [] if negative else last_screen(gif_r)
 rows_s = [] if negative else last_screen(gif_s)
 rows_t = [] if negative else last_screen(gif_t)
 rows_u = [] if negative else last_screen(gif_u)
+rows_v = [] if negative else last_screen(gif_v)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
         rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
-        rows_o + rows_p + rows_q + rows_r + rows_s + rows_t + rows_u)
+        rows_o + rows_p + rows_q + rows_r + rows_s + rows_t + rows_u +
+        rows_v)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -2124,6 +2189,47 @@ if not any(x.strip() == "UOK" for x in rows_u):
     fail("session U did not reach the end -- if the screen is blank, the "
          "palette range saved was wider than the entries this program "
          "set, and the junk went over the text colours")
+
+# ---- session V: SPLIT/JOIN$, and the break key ------------------------
+# SPLIT and JOIN$ in order, as an ordered subsequence so the lines the
+# program echoes while being typed do not have to be counted:
+#   3.00000  N, as a float, because N is one
+#   [10] [20] [30]  the pieces, printed by LATER statements than the
+#                   split -- one left as a temporary string would be
+#                   pointing at whatever the next PRINT built
+#   10-20-30 joined back up
+#   3, []    "a,,b" is THREE pieces and the middle one is empty
+#   1, [abc] an empty separator cuts nothing
+#   3, abc   ", " is one two-character separator, not two one-character
+#            ones, and joining with "" puts the string back together
+#   2, 1/2   four pieces into an array of two: it fills what it has and
+#            says so, rather than throwing
+v_want = ["3.00000", "[10]", "[20]", "[30]", "10-20-30", "3", "[]",
+          "1", "[abc]", "3", "abc", "2", "1/2", "VSPLIT"]
+v_seq = [x.strip() for x in rows_v]
+v_i = 0
+for want in v_want:
+    while v_i < len(v_seq) and v_seq[v_i] != want:
+        v_i += 1
+    if v_i == len(v_seq):
+        fail("SPLIT/JOIN$ did not produce %r in order; wanted %r, the "
+             "screen was %r" % (want, v_want, v_seq))
+    v_i += 1
+if not any(x.strip() == "VOK" for x in rows_v):
+    fail("session V did not reach the end")
+# The NMI. The program pokes the SMC's NMI command and then prints; if
+# the handler in KIRQ_NMI did not raise the break flag, or the break
+# check does not read it, the program runs on and NOTBROKEN appears.
+# Its ABSENCE is the assertion, so "Break" is required beside it --
+# otherwise a program that failed to start would pass this.
+# "Break at 20" is the exact form: it stopped BEFORE line 20 ran.
+if not any(x.strip().startswith("Break") for x in rows_v):
+    fail("Ctrl+Alt+PrtScr did not stop the program: the SMC raised the "
+         "NMI and no Break followed, so either KIRQ_NMI has no handler "
+         "or FK_TESTBREAK is not reading KEYFLAG")
+if any(x.strip() in ("NOTBROKEN", "ALSONOT") for x in rows_v):
+    fail("the program printed past the break: the flag was raised but "
+         "the statement boundary went on executing")
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

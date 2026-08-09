@@ -3,11 +3,28 @@
 [x] Ctrl-C - stop a running program. Checked between statements, which
     means a single statement that takes a long time cannot be broken
     into, and the check consumes the keystroke it reads.
-[ ] Ctrl+Alt+PrtScr - this machine's RUN/STOP-RESTORE. The SMC raises a
-    real NMI, so it works exactly where Ctrl-C cannot: a loop wedged
-    inside one statement, or code that never reaches the break check.
-    KIRQ_NMI (slot 8) is the hook and nothing installs it yet. This is
-    the honest fix for Ctrl-C's blind spot rather than a duplicate of it.
+[x] Ctrl+Alt+PrtScr - this machine's RUN/STOP-RESTORE. The SMC raises
+    a real NMI in hardware, a handler in KIRQ_NMI (slot 8) raises the
+    break flag, and the next break check stops the program.
+
+    WHAT IT BUYS OVER Ctrl-C IS THAT IT CANNOT BE MISSED. Ctrl-C is
+    two key events that the break check has to read, and a program
+    reading the keyboard itself - a game loop with GET, or INPUT -
+    takes them first, so the check polls a queue that is already empty
+    and the program runs on. Nothing has to be read for an NMI to
+    arrive.
+
+    IT IS STILL NOTICED AT A BREAK CHECK, which is the statement
+    boundary and the inner loops of WAIT, VSYNC and PLAY. The handler
+    raises a flag and returns; it does not abort the interpreter,
+    because the interpreter is not re-entrant and unwinding a
+    statement that is halfway through building a string is the exact
+    class of bug this port has paid for four times. So machine code
+    entered with CALL still cannot be stopped - that is the honest
+    limit of it.
+
+    The same NMI is what I2CPOKE &h42,&h03,&h00 raises, which is how
+    the test suite presses the key.
 [x] STOP / END - halt a program from inside it.
 [x] CALL addr - call machine code. It runs in native mode; leave with RTL
     and preserve nothing but D and DBR if you also call the kernel.

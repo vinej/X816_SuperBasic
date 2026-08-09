@@ -31,12 +31,22 @@
 ; C256 build makes with its interrupt-set flag: keystrokes typed at a
 ; running program are swallowed by the break check.
 ;
+; Ctrl+Alt+PrtScr comes in FIRST and by another road entirely: the SMC
+; raises a real NMI, NMI_HANDLER below raises KEYFLAG's top bit, and it
+; is read here before a key is polled at all. That covers the case the
+; poll cannot -- a program reading the keyboard itself, where the two
+; events of a Ctrl-C are taken by GET or INKEY and the break check sees
+; a queue that is already empty.
+;
 ; Outputs:
-;   C set if BREAK (Ctrl-C) was pressed, clear otherwise
+;   C set if BREAK (Ctrl-C or Ctrl+Alt+PrtScr) was pressed, clear otherwise
 ;
 FK_TESTBREAK    PHX
                 PHY
                 PHP
+                setas
+                LDA @l KEYFLAG          ; The NMI got here first?
+                BMI nmi_break
                 setaxl
                 JSL KERN_CON_GETKEY     ; Non-blocking key poll
                 BCS no_break            ; Kernel error: treat as no key
@@ -78,11 +88,64 @@ no_break        PLP
                 PLX
                 CLC
                 RTL
+                                        ; setas is NOT redundant: the CPU
+                                        ;  reaches here 8-bit from the top of
+                                        ;  the routine, but the line above in
+                                        ;  the FILE is the 16-bit no_break
+                                        ;  path, so without it LDA #0
+                                        ;  assembles three bytes wide and the
+                                        ;  third is executed as BRK. It was,
+                                        ;  and the machine died on the first
+                                        ;  press. Third time in this port.
+nmi_break       setas
+                LDA #0                  ; Spend it: one press, one break
+                STA @l KEYFLAG
 break_hit       PLP
                 PLY
                 PLX
                 SEC
                 RTL
+
+;
+; The NMI handler: Ctrl+Alt+PrtScr, this machine's RUN/STOP-RESTORE.
+;
+; Installed in KIRQ_NMI (slot 8) by INITIO and entered by the kernel's
+; dispatcher with JSL, D = $0000, DBR = $00 and 16-bit registers
+; (KERNEL.md 5.6), so it must leave by RTL and may assume nothing else.
+; The SMC raises the NMI on Ctrl+Alt+PrtScr in hardware, and on I2C
+; command $03 $00 -- which is how the test suite presses the key.
+;
+; ALL IT DOES IS RAISE A FLAG, and that is a decision rather than
+; laziness. The interpreter is not re-entrant; aborting it from an
+; asynchronous interrupt would mean unwinding a statement that is
+; halfway through building a string or a FOR frame. So the break is
+; NOTICED at the next check -- the statement boundary, or WAIT, VSYNC
+; and PLAY's inner loops -- exactly like Ctrl-C, and what the NMI buys
+; is that it cannot be missed: no keystroke has to be read for it to
+; arrive, so a program eating its own keys with GET is still breakable.
+;
+; What it still cannot do is stop machine code entered with CALL. That
+; is the honest limit and HELP SYSTEM states it.
+;
+; KEYFLAG is the C256's flag byte and this is what its comment in
+; interpreter.s always described: "the interrupt handler will raise MSB
+; if the user presses an interrupt key". On that machine one did. Here
+; nothing had, until now -- and EXECCMD and EXECPROGRAM already clear
+; it as a program starts, so a press left over from the last run cannot
+; break the next one.
+;
+NMI_HANDLER     .proc
+                PHP
+                setal
+                PHA
+                setas
+                LDA #$80
+                STA @l KEYFLAG
+                setal
+                PLA
+                PLP
+                RTL
+                .pend
 
 ;;;
 ;;; Disk: the Foenix FK_* entry points, over the X816 kernel's K_FS_*.

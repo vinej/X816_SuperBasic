@@ -2245,6 +2245,132 @@ caller to borrow.**
 
 X816 51,252 bytes of the 65,280 cap; the C256 still assembles (§23).
 
+## 35. The break key, the line editor, and SPLIT/JOIN (2026-08-09)
+
+Three items that had been standing open in `help/`: the NMI break key
+(`help/SYSTEM.TXT`), the arrow keys in the line editor
+(`help/KEYBOARD.TXT`) and SPLIT/JOIN into a string array
+(`help/STRING.TXT`).
+
+### Ctrl+Alt+PrtScr
+
+The SMC raises a real NMI on that combination in hardware
+(`X816_core rtl/smc_x16.sv`: `nmi_req = i2c_nmi_req | kbd_nmi_req`), the
+kernel dispatches it through `KIRQ_NMI` (slot 8), and nothing had ever
+installed a handler. `INITIO` installs one now.
+
+**All the handler does is raise a flag**, and that is a decision rather
+than laziness. The interpreter is not re-entrant; aborting it from an
+asynchronous interrupt means unwinding a statement that may be halfway
+through building a string or a `FOR` frame — the exact class of bug this
+port has paid for four times. So the press is *noticed* at the next
+break check, which is the statement boundary and the inner loops of
+`WAIT`, `VSYNC` and `PLAY`.
+
+The flag is `KEYFLAG`, and this is what its comment in `interpreter.s`
+has always described: *"the interrupt handler will raise MSB if the user
+presses an interrupt key"*. On the C256 one did. Here nothing had —
+and `EXECCMD` and `EXECPROGRAM` already clear it as a program starts, so
+a press left over from the last run cannot break the next one.
+
+**What it buys over Ctrl-C is that it cannot be missed.** Ctrl-C is two
+key events that the break check has to *read*, so a program reading the
+keyboard itself — a game loop with `GET`, or `INPUT` — takes them first
+and the check polls a queue that is already empty. Nothing has to be
+read for an NMI to arrive. What it still cannot do is stop machine code
+entered with `CALL`; `help/SYSTEM.TXT` says so.
+
+**The bug was the width rule, for the third time in this port.** The
+handler was correct and the machine died on the first press anyway. In
+`FK_TESTBREAK` the new `nmi_break` arm is reached from the *top* of the
+routine, where `A` is 8-bit — but the line above it in the FILE is the
+16-bit `no_break` path, and the assembler reads the file in order. So
+`LDA #0` assembled as `a9 00 00`, the CPU ate two bytes and executed the
+third as `BRK`.
+
+A **negative control** is what named it: the same `I2CPOKE` with the
+handler *not* installed printed everything and returned to the prompt,
+which ruled out the emulator's NMI delivery and left only the fourteen
+bytes I had added. §21's rule again — *the assembler cannot see through
+a branch* — and the listing had the answer in one line both times.
+
+### The line editor
+
+Left, right, Home, End, Insert and Delete. `EDITKEY` replaces
+`GETKEYE` in `IREADLINE`: a character comes back exactly as before, a
+key with no character does its work and comes back as **zero**, which
+the read loop already treats as "nothing yet". Six keys and no state
+machine.
+
+**Moving the cursor is the whole of an arrow key**, because the line
+being edited is the row on the *screen*: the prompt echoes what is typed
+and `ISCRCPYLINE` reads the finished row back out of the text matrix.
+Put the cursor in the middle, type, press Enter, and what gets tokenized
+is the row as it now looks. No buffer has to be kept in step with the
+display, because the display **is** the buffer. So typing overwrites,
+and Insert and Delete — the two things that cannot be had that way —
+shift the row itself, through the same VERA access `ISCRCPYLINE` uses.
+
+Reading and writing glyphs under a live cursor is safe for a reason
+worth writing down: `ccursor.s` draws by writing a reversed **attribute**
+and never touches a glyph, and auto-increment 2 steps over attributes.
+The row read back cannot contain a cursor and the row written back
+cannot rub one out.
+
+The dispatch did not assemble at first — a 65816 conditional branch
+carries a signed byte and the six arms together are longer than that.
+Splitting `INSERT`/`DELETE` out into `ED_SHIFT` is what made it fit, and
+it is better factoring anyway: "open or close a gap in the row" is one
+idea.
+
+### SPLIT and JOIN$
+
+    N = SPLIT(A$, ",", W$())
+    PRINT JOIN$(W$(), ", ", N)
+
+**Both are functions.** The obvious shape is a statement — `SPLIT a$,
+",", w$(), n` — but then the count comes back through a variable named
+as a fourth argument, which means parsing a name, parking it across the
+whole split, and assigning to it at the end. A function parses its own
+arguments from `BIP` anyway (that is all `SB_ARGSTR` and `SB_COMMA`
+are), so an array argument costs a function no more than a statement,
+and `N = SPLIT(...)` reads like the assignment it is.
+
+The array is written `w$()` with nothing between the brackets — the
+whole array, not a cell of it. `VAR_FINDNAME` already sets the "array
+of" bit when a `(` follows, so the parsing is three calls.
+
+**The pieces are copied to the heap, and they have to be.** `STRSUBSTR`
+answers a `TEMPSTRING`, and the temporary pages are handed out again at
+the next statement boundary: an array of them would be full of pointers
+to whatever the next `PRINT` built. `STRCPY` makes each piece a heap
+object and `HEAP_ADDREF` gives the array the reference it is holding.
+The test prints the pieces from *later statements* than the split, which
+is what makes that visible.
+
+Rules, each with a case in the suite: empty pieces are pieces (`"a,,b"`
+is three), an empty separator cuts nothing, the separator is a whole
+string rather than a set of characters, and an array too small is filled
+as far as it goes and says how far — a program that guessed its `DIM`
+wrong gets a short answer instead of a stopped program. `JOIN$` is the
+strict one: asking for more cells than the array has is a range error,
+because that is a bug rather than a guess.
+
+### What the suite cannot press
+
+**The arrow keys are not tested and cannot be.** `-autokeys` types by
+looking an ASCII character up in a keycode table
+(`X816_Emulator src/keyboard.c`), so a key that *has* no character has
+no way to be named in a key script. Every session does drive the
+ordinary path through `EDITKEY`, which is where a regression in typing
+would land; the six special keys need a person. Adding an escape to
+`-autokeys` is the fix, and it was not taken this session because the
+emulator does not rebuild on this machine right now — `-flto=auto` fails
+on the MSYS2 gcc that is installed, on the *unmodified* tree.
+
+X816 55,279 bytes of the 65,280 cap. 247 keywords: base 127/127 full,
+`TOKENS2` 117/127, `TOKENS3` 3/128. The C256 still assembles (§23).
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

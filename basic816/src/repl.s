@@ -195,7 +195,16 @@ IREADLINE       .proc
                 LDA #1
                 CALL SHOWCURSOR
 
+.if SYSTEM == SYSTEM_X816
+                                        ; EDITKEY is GETKEYE plus the keys
+                                        ;  that have no character: arrows,
+                                        ;  Home, End, Insert and Delete. It
+                                        ;  answers 0 for those, which this
+                                        ;  loop already means "keep reading".
+read_loop       CALL EDITKEY
+.else
 read_loop       CALL GETKEYE
+.endif
                 CMP #0
                 BEQ read_loop
                 CMP #CHAR_CR

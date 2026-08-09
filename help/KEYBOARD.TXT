@@ -12,8 +12,26 @@ typing works even with interrupts masked, and why the cursor does not.
 [ ] KEYMAP name$ - choose a keyboard layout. The SMC sends IBM key
     POSITION numbers and the kernel maps them; a layout switch belongs
     in the kernel, not here.
-[ ] Arrow keys and function keys in the line editor. The events already
-    arrive - see below - but the editor ignores them.
+[x] Arrow keys in the line editor. Left and right move within the line,
+    Home and End go to its ends, Insert and Delete open and close a gap.
+
+    THEY MOVE THE CURSOR AND NOTHING ELSE, because the line being
+    edited is the row on the SCREEN: the prompt echoes what is typed
+    and reads the finished row back out of the text matrix. Put the
+    cursor in the middle of a line, type, press Enter, and what is
+    tokenized is the row as it now looks. No buffer has to be kept in
+    step with the display, because the display is the buffer.
+
+    So typing OVERWRITES, as it does on the machines this borrows from.
+    Insert and Delete are the two things that cannot be had that way,
+    and they shift the row itself - a character pushed off column 79
+    is gone, since the row is the whole line.
+
+    A LINE IS ONE ROW, so left stops at the left margin rather than
+    wrapping, and up and down are still ignored: there is no second row
+    to go to and no history buffer for them to mean anything else.
+[ ] Function keys in the line editor. The events arrive - see below -
+    and nothing is bound to them yet.
 
 A key event is SIXTEEN bits and the top byte is what makes it readable:
 

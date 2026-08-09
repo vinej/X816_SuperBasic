@@ -96,14 +96,34 @@ if defined BUILDONLY (
 echo [3/3] booting X816_Emulator ...
 echo.
 echo   The shell is sent "run BASIC.BIN" for you; everything after is yours.
-echo   Worth trying (PORT.md section 11 lists what is still missing):
 echo.
-echo       PRINT 10/4             software float divide       -^> 2.50000
-echo       PRINT 2^^10             integer power               -^> 1.02400E03
-echo       A%%=-20.0 : PRINT A%%    FTOI sign fix               -^> -20
-echo       10 PRINT 1.5           then RUN, float from program -^> 1.50000
-echo       PRINT SIN(1)           transcendentals still THROW
+echo   THE ARROW KEYS ARE THE PART NO TEST CAN REACH. -autokeys types by
+echo   looking an ASCII character up in a keycode table, so a key that HAS
+echo   no character cannot be named in a key script. These need a person:
 echo.
+echo       Type a line, and BEFORE pressing Enter:
+echo         left / right   move within it; typing OVERWRITES
+echo         Home / End     End lands one past the last character
+echo         Insert         opens a gap; column 79 falls off the end
+echo         Delete         closes one
+echo       Then press Enter with the cursor still in the middle: what gets
+echo       tokenized is the row as it now looks. The screen IS the buffer.
+echo       Up and down do nothing - a line is one row, and no history buffer.
+echo.
+echo   THE BREAK KEY, where Ctrl-C cannot help:
+echo.
+echo       10 GET A$ : GOTO 10      RUN it, then Ctrl+Alt+PrtScr.
+echo       Ctrl-C is two key events the break check has to READ, and GET
+echo       takes them first. Nothing has to be read for an NMI to arrive.
+echo.
+echo   SPLIT and JOIN$:
+echo.
+echo       10 DIM W$(8)
+echo       20 N = SPLIT("10, 20, 30", ", ", W$())
+echo       30 FOR I = 0 TO N-1 : PRINT W$(I) : NEXT
+echo       40 PRINT JOIN$(W$(), " + ", N)
+echo.
+echo   HELP KEYBOARD, HELP SYSTEM and HELP STRING carry the rules.
 echo   ESC after BASIC exits reloads the shell; close the window to stop.
 echo.
 

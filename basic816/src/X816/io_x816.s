@@ -79,9 +79,23 @@ INITIO      .proc
             LDA #$10
             STA @lCURCOLOR
 
+            LDA #0                  ; No break pending. STZ has no long form,
+            STA @l KEYFLAG          ;  and the direct page is not ours yet.
+
             setal
             LDA #$2A55              ; Seed the software PRNG (any nonzero)
             STA @lRNDSEED
+
+            ; Ctrl+Alt+PrtScr. The kernel owns the NMI vector and hands
+            ; slot 8 to whoever asks; nothing had asked. A failure here
+            ; is ignored on purpose -- the machine boots and runs fine
+            ; without a break key, and there is nowhere to report it
+            ; from: this is called before the console prompt exists.
+            setaxl
+            LDA #KIRQ_NMI
+            LDX #<>NMI_HANDLER
+            LDY #`NMI_HANDLER
+            JSL KERN_IRQ_SET
 
             PLP
             RETURN

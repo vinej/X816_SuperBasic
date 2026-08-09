@@ -34,6 +34,10 @@ SB_J        .word ?             ; a second one
 SB_P        .dword ?            ; a pointer into the middle of a string
 SB_K        .word ?             ; a third index, for the one function that
                         ;  walks three strings at once
+SB_L        .word ?             ; a fourth, for SPLIT: the separator length
+SB_SRC      .dword ?            ; SPLIT's source string
+SB_SEP      .dword ?            ; the separator, for SPLIT and JOIN$
+SB_ARR      .dword ?            ; the string array either of them is given
 .send
 
 ;
@@ -664,4 +668,421 @@ sf_loop     CPY SB_I
 sf_done     CALL SB_RETSTR
             PLP
             RETURN
+            .pend
+
+;;;
+;;; SPLIT and JOIN$ -- a string and a string array, in both directions.
+;;;
+;;; BOTH ARE FUNCTIONS, and that is the decision worth writing down.
+;;; The obvious shape is a statement -- SPLIT a$, ",", w$(), n -- but
+;;; then the piece count has to come back through a variable named as a
+;;; fourth argument, which means parsing a name, parking it across the
+;;; whole split, and assigning to it at the end. As functions each one
+;;; answers the thing the caller actually wanted:
+;;;
+;;;     N = SPLIT(A$, ",", W$())
+;;;     PRINT JOIN$(W$(), ", ", N)
+;;;
+;;; A function parses its own arguments from BIP (that is what
+;;; SB_ARGSTR and SB_COMMA are), so an array argument costs a function
+;;; no more than it would cost a statement.
+;;;
+;;; THE ARRAY IS WRITTEN AS w$() WITH NOTHING BETWEEN THE BRACKETS. It
+;;; is the whole array being passed, not a cell of it, and the brackets
+;;; are what tell VAR_FINDNAME to look for an array rather than a
+;;; scalar of the same name -- BASIC keeps A$ and A$() apart, so the
+;;; brackets are not decoration.
+;;;
+
+;
+; The array argument: a name, empty brackets, and a one-dimensional
+; string array behind them.
+;
+; Outputs:
+;   SB_ARR = the array's heap block
+;   SB_J   = how many cells it has
+;
+SB_ARRARG   .proc
+            PHP
+            setaxl
+
+            CALL VAR_FINDNAME           ; VAR_FINDNAME sets the "array of"
+            BCC sa_syntax               ;  bit itself when a "(" follows
+
+            setas
+            LDA TOFINDTYPE
+            CMP #(TYPE_STRING | $80)    ; A string ARRAY and nothing else
+            BNE sa_type
+
+            LDA #TOK_LPAREN
+            CALL EXPECT_TOK
+            LDA #TOK_RPAREN
+            CALL EXPECT_TOK             ; Empty brackets: the whole array
+
+            CALL VAR_FIND               ; INDEX = the binding
+            BCC sa_notfound
+
+            setal
+            LDY #BINDING.VALUE
+            LDA [INDEX],Y
+            STA SB_ARR
+            setas
+            INY
+            INY
+            LDA [INDEX],Y
+            STA SB_ARR+2
+
+            setas                       ; One dimension, and how big it is.
+            LDA [SB_ARR]                ; A two-dimensional array is refused
+            CMP #1                      ;  rather than treated as flat: the
+            BNE sa_dim                  ;  answer would be right by accident
+            LDY #1
+            LDA [SB_ARR],Y
+            setal
+            AND #$00FF
+            STA SB_J
+
+            PLP
+            RETURN
+
+sa_syntax   THROW ERR_SYNTAX
+sa_type     THROW ERR_TYPE
+sa_notfound THROW ERR_NOTFOUND
+sa_dim      THROW ERR_ARGUMENT
+            .pend
+
+;
+; Store the piece that starts at SB_I and runs for MCOUNT characters
+; into cell SB_K, and count it.
+;
+; THE PIECE IS COPIED TO THE HEAP. STRSUBSTR answers a TEMPSTRING, and
+; a temporary is exactly what an array cell must not hold: STRPTR is
+; reset at the next statement boundary and the page is handed out
+; again, so the array would be full of pointers to whatever the next
+; PRINT built. STRCPY makes it a heap object and HEAP_ADDREF gives the
+; array the reference it is now holding.
+;
+SB_PIECE    .proc
+            PHP
+            setaxl
+
+            LDA SB_SRC                  ; The slice of the source
+            STA ARGUMENT1
+            LDA SB_SRC+2
+            STA ARGUMENT1+2
+            LDA SB_I
+            STA ARGUMENT2
+            STZ ARGUMENT2+2
+            CALL STRSUBSTR
+
+            CALL STRCPY                 ; ... on the heap, where it survives
+            CALL HEAP_GETHED
+            CALL HEAP_ADDREF
+
+            setas
+            LDA #TYPE_STRING
+            STA ARGTYPE1
+
+            setal                       ; The cell it goes in
+            LDA SB_ARR
+            STA CURRBLOCK
+            LDA SB_ARR+2
+            STA CURRBLOCK+2
+            setas
+            LDA #1                      ; One index, and it is SB_K
+            STA @l ARRIDXBUF
+            setal
+            LDA SB_K
+            STA @l ARRIDXBUF+1
+            CALL ARR_SET
+
+            setal
+            LDA SB_K
+            INC A
+            STA SB_K
+
+            PLP
+            RETURN
+            .pend
+
+;
+; SPLIT(s$, sep$, arr$()) -- cut a string on a separator, into a string
+; array, and answer how many pieces there were.
+;
+;     N = SPLIT("10,20,30", ",", W$())
+;
+; THE SEPARATOR IS A WHOLE STRING, not a set of characters: SPLIT(s$,
+; ", ", w$()) cuts on comma-space and leaves a bare comma alone. A set
+; would be the other reasonable choice and is not this one, because
+; "cut this line where this text appears" is the thing a beginner's
+; program is doing when it parses input.
+;
+; EMPTY PIECES ARE PIECES. "a,,b" is three, the middle one empty, and
+; "," is two empty ones. Dropping them would make the count depend on
+; the data in a way no caller can predict, and a program reading a CSV
+; line needs the blank field to stay in its column.
+;
+; AN EMPTY SEPARATOR CUTS NOTHING and the whole string comes back as
+; one piece, which is the same rule REPLACE$ follows for an empty
+; needle and for the same reason: a match at every position is a loop
+; that never advances.
+;
+; IT STOPS WHEN THE ARRAY IS FULL rather than throwing. The count comes
+; back so the caller can see it filled -- N = the array size means
+; there was probably more -- and a program that guessed its DIM too
+; small gets a short answer instead of a stopped program. The pieces it
+; did store are the first ones, in order.
+;
+FN_SPLIT    .proc
+            FN_START "FN_SPLIT"
+            PHP
+            setaxl
+
+            CALL SB_ARGSTR              ; The string to cut
+            LDA ARGUMENT1
+            STA SB_SRC
+            LDA ARGUMENT1+2
+            STA SB_SRC+2
+
+            CALL SB_COMMA
+            CALL SB_ARGSTR              ; The separator
+            LDA ARGUMENT1
+            STA SB_SEP
+            LDA ARGUMENT1+2
+            STA SB_SEP+2
+
+            CALL SB_COMMA
+            CALL SB_ARRARG              ; SB_ARR, SB_J = its size
+
+            setxl                       ; How long the separator is
+            setas
+            LDY #0
+sp_slen     LDA [SB_SEP],Y
+            BEQ sp_slend
+            INY
+            BRA sp_slen
+sp_slend    setal
+            TYA
+            STA SB_L
+
+            STZ SB_I                    ; The first piece starts at 0
+            STZ SB_K                    ;  and none are stored yet
+
+sp_loop     setal
+            LDA SB_K
+            CMP SB_J
+            BGE sp_done                 ; The array is full
+
+            LDA SB_L
+            BEQ sp_tail                 ; Nothing to cut on: one piece
+
+            setxl                       ; Look for the separator from SB_I
+            LDA SB_I
+            TAY
+
+sp_try      setal                       ; SB_P = the source at Y
+            TYA
+            CLC
+            ADC SB_SRC
+            STA SB_P
+            LDA SB_SRC+2
+            ADC #0
+            STA SB_P+2
+
+            setas
+            PHY
+            LDY #0
+sp_match    LDA [SB_SEP],Y              ; Separator exhausted: it matched
+            BEQ sp_hit
+            CMP [SB_P],Y
+            BNE sp_next
+            INY
+            BRA sp_match
+
+sp_next     PLY
+            LDA [SB_P]                  ; Source exhausted: no more of them
+            BEQ sp_tail
+            INY
+            BRA sp_try
+
+sp_hit      PLY                         ; Y = where the separator starts
+            setal
+            TYA
+            SEC
+            SBC SB_I
+            STA MCOUNT                  ; The piece is what lies before it
+            TYA
+            CLC
+            ADC SB_L                    ; The next one starts after it, and
+            PHA                         ;  SB_PIECE is about to use Y
+            CALL SB_PIECE
+            setal
+            PLA
+            STA SB_I
+            BRA sp_loop
+
+            ; The last piece: everything left, however long that is.
+sp_tail     setal
+            LDA SB_I
+            TAY
+            setas
+sp_tlen     LDA [SB_SRC],Y
+            BEQ sp_tlend
+            INY
+            BRA sp_tlen
+sp_tlend    setal
+            TYA
+            SEC
+            SBC SB_I
+            STA MCOUNT
+            CALL SB_PIECE
+
+sp_done     setal
+            LDA SB_K                    ; The answer is how many there were
+            STA ARGUMENT1
+            STZ ARGUMENT1+2
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+            setal
+
+            FN_END
+            PLP
+            RETURN
+            .pend
+
+;
+; Append the NUL-terminated string at SB_P to the answer being built,
+; stopping at SB_MAXSTR characters.
+;
+; Inputs:
+;   Y = how much is already there
+;
+; Outputs:
+;   Y = how much there is now
+;
+; SB_P IS CONSUMED: it walks rather than being indexed, because
+; [dp],Y is the only long-indirect this processor has and Y is already
+; the answer's length. A caller reloads it before the next call.
+;
+SB_APPEND   .proc
+            PHP
+ap_loop     setxl
+            CPY #SB_MAXSTR
+            BGE ap_done                 ; Full: what is left is dropped
+            setas
+            LDA [SB_P]
+            BEQ ap_done                 ; The source ran out
+            STA [STRPTR],Y
+            setxl
+            INY
+            setal                       ; Step the source pointer, carrying
+            INC SB_P                    ;  into its bank byte
+            BNE ap_loop
+            INC SB_P+2
+            BRA ap_loop
+
+ap_done     PLP
+            RETURN
+            .pend
+
+;
+; JOIN$(arr$(), sep$, n) -- the first n cells of a string array, glued
+; back together with a separator between them.
+;
+;     PRINT JOIN$(W$(), ", ", N)
+;
+; THE COUNT IS AN ARGUMENT because an array does not know how much of
+; itself is in use. DIM W$(20) and SPLIT filling three of them leaves
+; seventeen empty cells, and joining all twenty would answer three
+; words followed by seventeen separators. N is what SPLIT just handed
+; back, which is what makes the pair read as a round trip.
+;
+; The answer is a temporary string and stops at 255 characters like
+; every other string function here.
+;
+FN_JOIN     .proc
+            FN_START "FN_JOIN"
+            PHP
+            setaxl
+
+            CALL SB_ARRARG              ; SB_ARR, SB_J = its size
+            CALL SB_COMMA
+            CALL SB_ARGSTR              ; The separator
+            LDA ARGUMENT1
+            STA SB_SEP
+            LDA ARGUMENT1+2
+            STA SB_SEP+2
+
+            CALL SB_COMMA
+            CALL SB_ARGINT              ; How many cells to take
+            setal
+            LDA ARGUMENT1+2
+            BEQ jn_small
+            BMI jn_none                 ; NEGATIVE joins nothing, rather
+            BRA jn_range                ;  than wrapping round to 65535
+
+jn_small    LDA ARGUMENT1
+            CMP SB_J
+            BEQ jn_ok                   ; All of it is allowed
+            BGE jn_range                ; More than there is, is not
+jn_ok       STA SB_I
+            BRA jn_build
+
+jn_none     LDA #0
+            STA SB_I
+
+jn_build    CALL TEMPSTRING
+            setxl
+            LDY #0                      ; Y = the length so far
+            setal
+            STZ SB_K                    ; SB_K = the cell being read
+
+jn_loop     setal
+            LDA SB_K
+            CMP SB_I
+            BGE jn_done
+
+            LDA SB_K                    ; Before every cell but the first,
+            BEQ jn_cell                 ;  the separator goes in. Its own
+            LDA SB_SEP                  ;  load, because the compare above
+            STA SB_P                    ;  left the flags of a different
+            LDA SB_SEP+2                ;  question
+            STA SB_P+2
+            CALL SB_APPEND
+
+jn_cell     setal                       ; Read the cell
+            LDA SB_ARR
+            STA CURRBLOCK
+            LDA SB_ARR+2
+            STA CURRBLOCK+2
+            setas
+            LDA #1
+            STA @l ARRIDXBUF
+            setal
+            LDA SB_K
+            STA @l ARRIDXBUF+1
+            PHY                         ; ARR_REF has its own use for Y
+            CALL ARR_REF
+            setaxl
+            PLY
+
+            LDA ARGUMENT1               ; ... and append it
+            STA SB_P
+            LDA ARGUMENT1+2
+            STA SB_P+2
+            CALL SB_APPEND
+
+            setal
+            LDA SB_K
+            INC A
+            STA SB_K
+            BRA jn_loop
+
+jn_done     CALL SB_RETSTR              ; Y is the length; it terminates it
+            FN_END
+            PLP
+            RETURN
+
+jn_range    THROW ERR_RANGE
             .pend
