@@ -3,15 +3,39 @@
 Two separate pieces of hardware sit under this page, and neither is
 reachable from SuperBasic yet.
 
-VERA FX adds a 16x16 multiplier, a 32-bit write cache for fast VRAM
-fills, transparent writes, and address helpers for lines, polygons and
-affine sampling. Its registers are at $9F29-$9F2C, banked behind DCSEL.
+NEITHER OF THEM CAN TOUCH THE BITMAP, and that is the first thing to
+know, because it is the question anybody arrives here with. Both work on
+VRAM. The bitmap is not in VRAM: the VERA2 framebuffer is ordinary CPU
+memory at $E0:0000 (HELP GRAPHIC), which is why drawing on it is plain
+stores rather than a data port.
+
+That does not make either of them useless, and it does not make them
+useless in the same way. What each is still good for is below, and the
+last section is what the bitmap's own fast path is instead.
+
+--- VERA FX ---
+
+A 16x16 multiplier, a 32-bit write cache for fast VRAM fills,
+transparent writes, and address helpers for lines, polygons and affine
+sampling. The registers are at $9F29-$9F2C, banked behind DCSEL.
+
+THE CORE IMPLEMENTS THE REAL THING, not a subset: DCSEL 2-6 select the
+FX registers (X816_core vera/fpga/source/addr_data.v, and mult_accum.v
+is the multiplier), and the emulator carries the whole set - cache,
+4-bit mode, polygon fill and affine included.
 
 [ ] DCSEL n - select the register bank 0-63 so the FX registers can be
     reached at all.
-[ ] FXMULT(a,b) - signed 16x16 to 32-bit multiply, in hardware. Worth a
-    keyword of its own: SuperBasic's integer multiply is a software
-    shift-add loop (X816/ints_x816.s) and this is far faster.
+[ ] FXMULT(a,b) - signed 16x16 to 32-bit multiply, in hardware.
+
+    THE GRAPHICS MODE IS IRRELEVANT TO THIS ONE. It is arithmetic, not
+    drawing, and it is the most valuable item on the page for that
+    reason: SuperBasic's integer multiply is a software shift-add loop
+    (X816/ints_x816.s) and this is far faster.
+
+    The product lands in the FX 32-bit cache, and the cache READS BACK
+    at DCSEL 6, so there is no VRAM round trip to pay for on the way to
+    the answer.
 [ ] FXFILL byte,bank,addr,count - fill VRAM through the write cache,
     roughly four times a plain loop. A count that is not a multiple of
     four is fine; the leftover bytes go out plain.
@@ -19,16 +43,58 @@ affine sampling. Its registers are at $9F29-$9F2C, banked behind DCSEL.
 [ ] FXOFF - put the helpers back so ordinary VRAM writes work. Forgetting
     this is the classic way to corrupt the next thing you draw.
 
-BLIT816 is the core's own blitter - see X816_core/doc/BLIT816.md. It is
-not VERA FX and it is not on the X16; it moves rectangles around SDRAM,
-which is where the VERA2 framebuffer lives (HELP GRAPHIC).
+    THE FILLS ARE FOR VRAM, WHICH IS NOT THE BITMAP BUT IS NOT EMPTY
+    EITHER. Everything on HELP TILE, HELP SPRITE and HELP PAL lives
+    there, and so do the text matrix and everything VPOKE and BMXLOAD
+    write. Clearing a tilemap or blanking a sprite sheet is what these
+    would be for here. Nothing drawn by PSET, LINE, CIRCLE, FILL, RECT
+    or BITMAP is.
 
-[ ] BLIT sx,sy,dx,dy,w,h - copy a rectangle.
-[ ] BLITMASK - the same with a transparent colour, which is what makes
-    it useful for drawing characters over a background.
+--- BLIT816, this core's own engine ---
 
-For a BASIC these two matter more than they would for assembly. An
+Not VERA FX, and not on the X16. X816_core/doc/BLIT816.md is the
+contract and says so of itself; this section follows it rather than
+describing what a blitter usually is.
+
+IT IS A LINEAR VRAM COPY AND FILL, NOT A RECTANGLE BLITTER. The
+parameter file is SRC, DST and LEN - byte-granular 17-bit VRAM addresses
+and a byte count, with no width, no height and no stride - plus one fill
+byte. Section 1: "The engine is VRAM->VRAM only." Section 4: "Writes go
+through as plain byte writes. No FX transparency, no 4-bit mode, no
+cache interaction."
+
+[-] BLIT sx,sy,dx,dy,w,h - NOT THIS HARDWARE, and an earlier version of
+    this page said otherwise. It described a rectangle move through
+    SDRAM with a source and destination in pixels, and both halves were
+    wrong: the engine never leaves VRAM, and it copies a run of bytes
+    rather than a rectangle. A statement of that shape has to be written
+    against whatever memory it is meant to move, and for the bitmap that
+    is CPU memory - see below.
+[-] BLITMASK - NOT THIS HARDWARE either, for the same reason and one
+    more: the engine has no transparent colour at all. Drawing a
+    character over a background is a software job here.
+[ ] A VRAM copy and a VRAM fill, of the shape the hardware actually has
+    - one source, one destination, a length - are what BLIT816 could
+    reasonably be given keywords for. Moving a tile set into place or
+    clearing a tilemap is worth roughly 50x a loop through the data
+    port, which is the whole reason this engine survived the return to
+    stock VERA.
+
+--- what the bitmap's fast path actually is ---
+
+MVN, the CPU's own block move. The framebuffer is ordinary memory, so a
+copy is about 7 cycles a byte with no port in the way - and that is why
+the upstream data port and copy blitter were DELIBERATELY not ported
+into the core's vera2_regs.sv, which says as much in its header.
+
+So a BLIT for the bitmap, and a fast CLS for it, are both worth having
+and are both an MVN routine rather than a hardware call. Nothing on this
+page is a prerequisite for either.
+
+For a BASIC all of this matters more than it would for assembly. An
 interpreted per-pixel loop is hopeless for anything full-screen, so any
-statement that fills, scrolls or draws a shape should end up calling one
-of these rather than looping - the difference is the whole gap between a
-usable graphics BASIC and a slideshow.
+statement that fills, scrolls or draws a shape should end in one bulk
+move rather than a loop - the difference is the whole gap between a
+usable graphics BASIC and a slideshow. Only the instrument changes with
+where the pixels are: MVN for the bitmap, BLIT816 or the FX cache for
+VRAM.
