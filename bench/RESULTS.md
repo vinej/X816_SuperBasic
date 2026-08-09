@@ -32,29 +32,34 @@ on `K%`; only BM1 has that twin today.
 | BM5   |       5785 |           — |        671 |   8.6×   | + an empty subroutine call each pass |
 | BM6   |      10337 |           — |        793 |    13×   | + an empty inner loop of 5 |
 | BM7   |      14990 |           — |       1961 |   7.6×   | + an array store inside that loop |
-| BM8   |      11791 |           — |      17418 | BASIC 1.5×† | `K^2`, `LN(K)`, `SIN(K)` × 1000 |
-| AHL   |       9230 |           — |      15619 | BASIC 1.7×† | Ahl: 1000 SQR, 1000 ^, 2000 RND |
+| BM8   |      11791 |           — |      11098 |  parity† | `K^2`, `LN(K)`, `SIN(K)` × 1000 |
+| AHL   |       9230 |           — |       9920 |  parity† | Ahl: 1000 SQR, 1000 ^, 2000 RND |
 
 \* the honest BM1 ratio is against SB int (both integer loops).
 Against BASIC's float loop as the 1977 program wrote it: 27×.
 
-† same float engine on both sides now. BASIC still wins these two
-because its `^` takes the integer-exponent fast path (`K^2` is one
-multiply) where Forth's `F**` runs the full `exp(2·ln x)`, and each
-Forth float word pays a few dozen cells of marshalling around the
-engine call. With MFLPT these rows read 525,759 and 382,919 ms —
-the engine is 30× and 24× faster than the Forth-coded library it
-replaced, and correct where it was not (below).
+† same float engine, and now the same `^` too: Forth's `F**` gained
+BASIC's integral-exponent fast path (repeated multiply, the same
+16-bit bound), after the first engine bench showed BASIC winning these
+rows solely because `K^2` there was one multiply against Forth's full
+`exp(2·ln x)`. What remains is language overhead against marshalling,
+and it nets out within 7% either way — Forth edges BM8, BASIC edges
+Ahl. For the record: the Forth-coded MFLPT these rows replaced read
+525,759 and 382,919 ms, wrong (below); the engine before the `F**`
+fast path read 17,418 and 15,619 ms, right but unfair.
 
 ## Ahl's accuracy (0 is perfect)
 
 | | SuperBasic | durexForth (fpengine) | durexForth (old MFLPT) |
 |---|---:|---:|---:|
-| arithmetic error | **0.176** | **0.180** | 3.4e+37 |
+| arithmetic error | **0.17572** | **0.17572** | 3.4e+37 |
 | RND sum error    | 13.0 | 20.4 | 20.4 |
 
-0.176 vs 0.180 is the same engine giving the same truncation error
-through two different languages — the point of sharing it. The old
+The arithmetic errors are IDENTICAL TO NINE DIGITS — 0.175720192 on
+both sides — because with `F**` taking the same multiply road as `^`,
+the two languages now execute the same engine operations in the same
+order on the same bits. That column is the proof of "same
+implementation"; no ratio could say it as plainly. The old
 MFLPT's 3.4e+37 was a real defect: its `F**` exploded for bases near
 1.0 (`fln`/`fexp` range reduction), which ten squarings amplify without
 mercy. X816_Library's `f_ln`/`f_exp` share those algorithms verbatim
