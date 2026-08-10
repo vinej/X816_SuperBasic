@@ -267,6 +267,47 @@
 #   ordinary path through the same routine, which is where a
 #   regression would land; the six special keys need a person.
 #
+#   session W -- bulk VRAM: the port, the cache, and a glyph read
+#    49. VADDR / VDATA           - point the port once, then stream a
+#                                  list. VPEEK reads the bytes back
+#                                  through a fresh pointer, so the
+#                                  auto-increment is what is being
+#                                  checked and not the values.
+#    50. FXCLEAR over 16 bytes   - a fence at $4810 outside it must
+#                                  survive, and a byte written at
+#                                  $480F INSIDE it must go to zero.
+#                                  The fence catches a fill that runs
+#                                  long; $480F catches the opposite,
+#                                  a cache write that laid down one
+#                                  byte per port write instead of
+#                                  four and stopped a quarter of the
+#                                  way in.
+#    51. FXFILL from $4801       - UNALIGNED ON PURPOSE, and $4800 is
+#                                  the assertion. Cache-write masks
+#                                  the address to a multiple of four
+#                                  in hardware, so a fill that did
+#                                  not write its head plainly would
+#                                  begin three bytes early and put a
+#                                  7 in a byte nobody named. All
+#                                  three passes -- head, cache, tail
+#                                  -- run in that one statement.
+#    52. FXOFF, then VPOKE       - an ordinary one-byte write after
+#                                  the mode bits are cleared. If FX
+#                                  were still on, this write would
+#                                  spray four bytes.
+#    53. GLYPH then GLYPHGET     - written by the statement that was
+#                                  already tested and read back by
+#                                  the new function, so the two do
+#                                  not share an implementation. Row
+#                                  0 and row 7: the ends are where
+#                                  an off-by-one in code*8+row lands.
+#
+#   FXMULT IS NOT HERE BECAUSE IT DOES NOT EXIST. The multiplier's
+#   result cannot be read back by the CPU on either the core or the
+#   emulator -- X816/verafx_x816.s sets out the evidence -- so there
+#   is nothing to test and nothing was written. help/VERAFX.TXT
+#   claimed otherwise and has been corrected.
+#
 #   ./run-emu.sh              build and run
 #   ./run-emu.sh --negative   corrupt the image magic: EXEC must refuse
 #                             it and no banner may print, proving check
@@ -1035,6 +1076,33 @@ KEYS_V=$(keys_of \
     'RUN' \
     'PRINT "VOK"')
 
+KEYS_W=$(keys_of \
+    '10 VADDR &h4800' \
+    '20 VDATA 65,66,67,68' \
+    '30 PRINT VPEEK(&h4800)' \
+    '40 PRINT VPEEK(&h4803)' \
+    '50 VPOKE &h4810,99' \
+    '55 VPOKE &h480F,42' \
+    '60 FXCLEAR &h4800,16' \
+    '70 PRINT VPEEK(&h4800)' \
+    '80 PRINT VPEEK(&h4803)' \
+    '85 PRINT VPEEK(&h480F)' \
+    '90 PRINT VPEEK(&h4810)' \
+    '100 FXFILL 7,&h4801,10' \
+    '110 PRINT VPEEK(&h4800)' \
+    '120 PRINT VPEEK(&h4801)' \
+    '130 PRINT VPEEK(&h480A)' \
+    '140 PRINT VPEEK(&h480B)' \
+    '150 PRINT VPEEK(&h4810)' \
+    '160 FXOFF' \
+    '170 VPOKE &h4820,5' \
+    '180 PRINT VPEEK(&h4820)' \
+    '190 GLYPH &h4800,65,1,2,3,4,5,6,7,8' \
+    '200 PRINT GLYPHGET(&h4800,65,0)' \
+    '210 PRINT GLYPHGET(&h4800,65,7)' \
+    '220 PRINT "WOK"' \
+    'RUN')
+
 KEYS_U=$(keys_of \
     '10 BLOAD "T.ZX0",&h50000' \
     '20 E=ZX0(&h50000,&h51000)' \
@@ -1295,6 +1363,7 @@ if [ "$NEG" = "0" ]; then
     run_session T "$KEYS_T" || { echo "session T produced no recording"; exit 1; }
     run_session U "$KEYS_U" "$OUT/t.zx0" T.ZX0 "$OUT/t.bmx" T.BMX || { echo "session U produced no recording"; exit 1; }
     run_session V "$KEYS_V" || { echo "session V produced no recording"; exit 1; }
+    run_session W "$KEYS_W" || { echo "session W produced no recording"; exit 1; }
 else
     cp "$OUT/outA.gif" "$OUT/outB.gif"      # unused: the check ends early
     cp "$OUT/outA.gif" "$OUT/outC.gif"
@@ -1317,9 +1386,10 @@ else
     cp "$OUT/outA.gif" "$OUT/outT.gif"
     cp "$OUT/outA.gif" "$OUT/outU.gif"
     cp "$OUT/outA.gif" "$OUT/outV.gif"
+    cp "$OUT/outA.gif" "$OUT/outW.gif"
 fi
 
-python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$WOUT/outS.gif" "$WOUT/outT.gif" "$WOUT/outU.gif" "$WOUT/outV.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
+python - "$WOUT/outA.gif" "$WOUT/outB.gif" "$WOUT/outC.gif" "$WOUT/outD.gif" "$WOUT/outE.gif" "$WOUT/outF.gif" "$WOUT/outG.gif" "$WOUT/outH.gif" "$WOUT/outI.gif" "$WOUT/outJ.gif" "$WOUT/outK.gif" "$WOUT/outL.gif" "$WOUT/outM.gif" "$WOUT/outN.gif" "$WOUT/outO.gif" "$WOUT/outP.gif" "$WOUT/outQ.gif" "$WOUT/outR.gif" "$WOUT/outS.gif" "$WOUT/outT.gif" "$WOUT/outU.gif" "$WOUT/outV.gif" "$WOUT/outW.gif" "$RT/font_cp437.s" "$WOUT/adpexp.txt" "$NEG" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
@@ -1327,15 +1397,15 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 (gif_a, gif_b, gif_c, gif_d, gif_e, gif_f, gif_g, gif_h, gif_i, gif_j,
  gif_k, gif_l, gif_m, gif_n, gif_o, gif_p, gif_q, gif_r, gif_s,
- gif_t, gif_u, gif_v, fontinc, adpexp) = (
+ gif_t, gif_u, gif_v, gif_w, fontinc, adpexp) = (
                     sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4],
                     sys.argv[5], sys.argv[6], sys.argv[7], sys.argv[8],
                     sys.argv[9], sys.argv[10], sys.argv[11], sys.argv[12],
                     sys.argv[13], sys.argv[14], sys.argv[15], sys.argv[16],
                     sys.argv[17], sys.argv[18], sys.argv[19],
                     sys.argv[20], sys.argv[21], sys.argv[22],
-                    sys.argv[23], sys.argv[24])
-negative = sys.argv[25] == "1"
+                    sys.argv[23], sys.argv[24], sys.argv[25])
+negative = sys.argv[26] == "1"
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -1400,10 +1470,11 @@ rows_s = [] if negative else last_screen(gif_s)
 rows_t = [] if negative else last_screen(gif_t)
 rows_u = [] if negative else last_screen(gif_u)
 rows_v = [] if negative else last_screen(gif_v)
+rows_w = [] if negative else last_screen(gif_w)
 rows = (rows_a + rows_b + rows_c + rows_d + rows_e + rows_f + rows_g +
         rows_h + rows_i + rows_j + rows_k + rows_l + rows_m + rows_n +
         rows_o + rows_p + rows_q + rows_r + rows_s + rows_t + rows_u +
-        rows_v)
+        rows_v + rows_w)
 
 def fail(msg):
     print("FAIL:", msg)
@@ -2240,6 +2311,51 @@ if not any(x.strip().startswith("Break") for x in rows_v):
 if any(x.strip() in ("NOTBROKEN", "ALSONOT") for x in rows_v):
     fail("the program printed past the break: the flag was raised but "
          "the statement boundary went on executing")
+
+# ---- session W: bulk VRAM, and a glyph read back ----------------------
+# In order, and every one of them a byte VPEEK fetched back through a
+# freshly pointed port rather than a value the fill routine reported:
+#
+#   65, 68   VADDR pointed once and VDATA streamed four bytes. The
+#            auto-increment is what this checks; the values are only how
+#            it is visible.
+#   0, 0     FXCLEAR cleared what it was asked to clear.
+#   0        $480F, the LAST byte of the sixteen. A cache write laying
+#            down one byte per port write instead of four would have
+#            stopped at $4803 and left the 42 written there.
+#   99       $4810, one past the end, still standing. The other half of
+#            the same question: a fill running long would have taken it.
+#   0        $4800 after FXFILL 7,$4801,10 -- THE ALIGNMENT ASSERTION.
+#            Cache-write masks the address to a multiple of four in
+#            hardware, so a fill without a plain head pass writes from
+#            $4800 and this reads 7.
+#   7, 7     the first and last of the ten bytes actually asked for.
+#   0        $480B, one past them.
+#   99       the fence again, now after a fill with a head and a tail.
+#   5        an ordinary VPOKE after FXOFF. With the mode bits still set
+#            that one write would have laid down four bytes.
+#   1, 8     rows 0 and 7 of a glyph, written by GLYPH and read by
+#            GLYPHGET -- two separate routines, so neither is checking
+#            its own arithmetic. The ends are where an off-by-one in
+#            code*8+row shows up.
+w_want = ["65", "68", "0", "0", "0", "99",
+          "0", "7", "7", "0", "99",
+          "5", "1", "8"]
+w_seq = [x.strip() for x in rows_w]
+w_i = 0
+for want in w_want:
+    while w_i < len(w_seq) and w_seq[w_i] != want:
+        w_i += 1
+    if w_i == len(w_seq):
+        fail("session W did not produce %r in order; wanted %r, the screen "
+             "was %r. A 7 where $4800 must be 0 is the unaligned fill "
+             "writing its head through the cache; a 42 surviving at $480F "
+             "is the cache write not covering four bytes."
+             % (want, w_want, w_seq))
+    w_i += 1
+if not any(x.strip() == "WOK" for x in rows_w):
+    fail("session W did not reach the end")
+
 
 print("PASS: SuperBasic booted from the card, ran the language and float")
 print("      checks, round-tripped programs through SAVE, LOAD, DIR, DEL,")

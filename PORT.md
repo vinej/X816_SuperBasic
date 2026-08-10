@@ -2641,6 +2641,93 @@ formatter. Filed as the next fix.
 MFLPT algorithms verbatim (same author, same comments), and the blowup
 near 1.0 has not been probed there. `1.000677^1024` is the test.
 
+## 40. Bulk VRAM, and the accelerator that cannot answer (2026-08-10)
+
+Six keywords, and the interesting part is the seventh that was not
+written.
+
+**`VADDR` and `VDATA`.** `VPOKE` sends three address bytes for every
+value because it has no memory of where it was. `VADDR` points the port
+once and `VDATA` streams a list through it, so sixteen bytes cost sixteen
+port writes and one statement instead of forty-eight and sixteen — and in
+an interpreter the statement dispatch is the expensive half. `VADDR` sets
+auto-increment and `VPOKE` deliberately leaves it clear, so interleaving
+the two stops the stream rather than quietly walking on from an unrelated
+address.
+
+**`GLYPHGET(addr, code, row)` is a function, not the statement the help
+page asked for.** The page wanted `GLYPHGET addr,n,a()` on the grounds
+that eight bytes need somewhere to go. They do, but an array argument
+needs integer-array plumbing that does not exist here — the language's
+one array parameter, `SPLIT`'s, takes a string array and checks for
+exactly that — and a function answering one row needs none:
+
+```
+FOR R = 0 TO 7 : D(R) = GLYPHGET($4000, 65, R) : NEXT
+```
+
+It also reads back into anything rather than only into an array.
+
+**`FXFILL`, `FXCLEAR`, `FXOFF`.** VERA's write cache is four bytes wide:
+with cache-write set, one store to the data port lays down four bytes.
+SuperBasic had no bulk VRAM write at all before this, so the gain over
+the alternative — a `FOR` loop of `VPOKE`s — is not the four times, it is
+the difference between a statement and a wait.
+
+The alignment is the part worth keeping in mind. Cache-write masks the
+address to a multiple of four **in hardware** (`video.c`: `address &=
+0x1fffc`), so a fill from `$4801` done naively starts at `$4800` and
+overwrites three bytes nobody named. Refusing unaligned addresses would
+have been easier and wrong — a tilemap row is 80 or 128 bytes and starts
+where it starts — so the head and tail go out plainly and only the middle
+is accelerated. Session W fills ten bytes from `$4801` and asserts that
+`$4800` is still zero; that one byte is the whole test.
+
+**`FXMULT` was not written, and the help page was wrong about why it
+should be.** The page called it the most valuable item on the page
+because the product lands in the 32-bit cache and "the cache READS BACK
+at DCSEL 6, so there is no VRAM round trip". Neither implementation does
+that:
+
+| | |
+|---|---|
+| the core | `addr_data.v` exposes the cache as `ib_cache8`; `top.v` hands it to `vram_if.v`, whose only use of it is `if0_wrdata_to_use` — VRAM **write** data. No path to the CPU bus. |
+| the emulator | `video.c` reads `$9F29-$9F2C` at DCSEL 6 through a switch that resets the accumulator on one register and multiplies on the next, then falls out and returns a byte of the **version string**. `video_get_fx_accum` has exactly one caller: the debugger. |
+
+So a product must be written into VRAM and read back through the port:
+about twenty register accesses plus four bytes of VRAM the caller has to
+nominate and lose. Against that, `OP_INT_MUL` is a 32-iteration shift-add
+— and it is 32x32 where the hardware is 16x16, so the hardware path would
+cover one special case and hand the general one back to the loop. A
+keyword whose contract is "faster, unless your numbers are large, and it
+eats four bytes of VRAM you must choose" is not worth having. If the
+read-back is ever added to the core, `X816/verafx_x816.s` is where it
+goes and its header note is what to delete.
+
+`DCSEL` is not exposed either. It selects a register bank, which puts
+every FX register one typo away from a display that has stopped working
+for reasons the typo does not explain. The three statements select the
+banks they need and put them back.
+
+**`SCREEN` stays postponed**, and not for want of the register writes. A
+mode is only usable if the kernel brings a font with it: the console's
+glyphs live in VRAM where the current mode put them, and a statement that
+changed the mode without moving the font would leave a machine that
+cannot print the error message saying so. It waits on the kernel
+supporting every mode with its font.
+
+New scratch at `$00:4A10` — `CPU_REGISTERS` uses sixteen bytes of its
+page and the block at `$4B00` is full to `$4BFF`. The FX values are
+globals rather than stack locals because two statements share one fill
+routine and a called proc cannot reach the caller's frame.
+
+Six tokens, all in TOKENS3 though ten sub-ids are still free in TOKENS2.
+A TOKENS3 keyword costs three bytes in a tokenized line against two, and
+every one of these is setup: `VADDR` once before a run of `VDATA`,
+`GLYPHGET` inside a loop over eight rows, a fill once per screen. None is
+what a tight loop is made of, and the cheap ids are worth keeping for
+something that is.
+
 ## 13. Open decisions (carried from the feasibility study)
 
 1. **GPLv3 — DECIDED 2026-08-06: accepted.** The repo is public

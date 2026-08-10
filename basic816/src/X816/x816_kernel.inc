@@ -139,6 +139,18 @@ VERA_DATA1      = $009F24       ; the SECOND data port. CTRL bit 0 selects
                                 ;  to VRAM copy is a load and a store.
 VERA_CTRL       = $009F25       ; bit 0 = data port, bits 1-6 = DCSEL
 
+; VERA FX. THE SAME FOUR ADDRESSES AS THE COMPOSER REGISTERS BELOW, and
+; DCSEL is the whole difference: $9F29 is DC_VIDEO at DCSEL 0, FX_CTRL at
+; DCSEL 2 and the write cache at DCSEL 6. Separate names for the same
+; address are worth it here -- a store to "VERA_DC_VIDEO" that meant the
+; cache reads as a layer being switched off, which is not a clue.
+VERA_FX_CTRL    = $009F29       ; DCSEL 2: bit 6 = 4-byte cache write,
+                                ;  bit 5 cache fill, bit 7 transparency
+VERA_FX_MULT    = $009F2C       ; DCSEL 2: bits 2-3 cache byte index,
+                                ;  bit 4 multiplier, bit 5 subtract
+VERA_FX_CACHE   = $009F29       ; DCSEL 6: the four cache bytes, at ONE
+                                ;  address -- the index auto-advances
+
 ; Composer and layer registers, verified against the emulator's video.c
 ; rather than assumed from the X16: the border is reg_composer[3] and
 ; the layer scroll is reg_layer[0][3..4], of which only the LOW NIBBLE

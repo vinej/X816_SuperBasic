@@ -1,7 +1,8 @@
 === VERAFX - the accelerators ===
 
-Two separate pieces of hardware sit under this page, and neither is
-reachable from SuperBasic yet.
+Two separate pieces of hardware sit under this page. One of them now has
+three keywords; the other still has none, and the multiplier that looked
+like the prize turns out not to be reachable at all.
 
 NEITHER OF THEM CAN TOUCH THE BITMAP, and that is the first thing to
 know, because it is the question anybody arrives here with. Both work on
@@ -24,31 +25,70 @@ FX registers (X816_core vera/fpga/source/addr_data.v, and mult_accum.v
 is the multiplier), and the emulator carries the whole set - cache,
 4-bit mode, polygon fill and affine included.
 
-[ ] DCSEL n - select the register bank 0-63 so the FX registers can be
-    reached at all.
-[ ] FXMULT(a,b) - signed 16x16 to 32-bit multiply, in hardware.
+[-] DCSEL n - NOT EXPOSED, and not an oversight. It selects a register
+    bank, which means every FX register in the machine is one typo away
+    from a display that has stopped working for reasons the typo does not
+    explain. The three statements below select the banks they need and put
+    them back; a program that wants the rest can still reach them with
+    VPOKE, and FXOFF is here to undo it.
+[-] FXMULT(a,b) - NOT WRITTEN, because the answer cannot be read back.
 
-    THE GRAPHICS MODE IS IRRELEVANT TO THIS ONE. It is arithmetic, not
-    drawing, and it is the most valuable item on the page for that
-    reason: SuperBasic's integer multiply is a software shift-add loop
-    (X816/ints_x816.s) and this is far faster.
+    This page used to call it the most valuable item here, on the grounds
+    that the product lands in the 32-bit cache and the cache reads back at
+    DCSEL 6 with no VRAM round trip. That last part is not true, of either
+    implementation, and it was the whole argument:
 
-    The product lands in the FX 32-bit cache, and the cache READS BACK
-    at DCSEL 6, so there is no VRAM round trip to pay for on the way to
-    the answer.
-[ ] FXFILL byte,bank,addr,count - fill VRAM through the write cache,
-    roughly four times a plain loop. A count that is not a multiple of
-    four is fine; the leftover bytes go out plain.
-[ ] FXCLEAR bank,addr,count - zero a region.
-[ ] FXOFF - put the helpers back so ordinary VRAM writes work. Forgetting
-    this is the classic way to corrupt the next thing you draw.
+      the core     addr_data.v exposes the cache as ib_cache8; top.v
+                   hands it to vram_if.v, where its only use is
+                   if0_wrdata_to_use - VRAM WRITE DATA. No path runs from
+                   the cache to the CPU bus.
+      the emulator video.c reads $9F29-$9F2C at DCSEL 6 through a switch
+                   that resets the accumulator on one register and
+                   performs the multiply on the next, then falls out and
+                   returns a byte of the VERA VERSION STRING. Only the
+                   debugger can see the cache.
+
+    So a product has to be written into VRAM and read back through the
+    port: about twenty register accesses, plus four bytes of VRAM the
+    caller must nominate and lose. Against that, the software loop it was
+    meant to beat is a 32-iteration shift-add - and it is 32x32 where the
+    hardware is 16x16, so the fast path would cover one special case and
+    hand the general one back to the loop anyway.
+
+    A keyword whose contract is "faster, unless your numbers are large,
+    and it eats four bytes of VRAM you have to choose" is not worth
+    having. If the read-back is ever added to the core this is a small
+    piece of work, and X816/verafx_x816.s is where it goes.
+[x] FXFILL byte,addr,count - fill VRAM through the write cache, four
+    bytes per port write. No bank argument: VRAM is 17 bits and one flat
+    space, the same address VPOKE takes.
+
+    An unaligned start is fine and is handled rather than refused, which
+    matters more than it sounds. Cache-write masks the address to a
+    multiple of four IN HARDWARE, so a fill from $4801 done naively begins
+    at $4800 and overwrites three bytes nobody named. The head and the
+    tail go out plainly and only the aligned middle is accelerated - a
+    tilemap row is 80 or 128 bytes and starts wherever it starts.
+[x] FXCLEAR addr,count - zero a region, which is what the fill is mostly
+    for.
+[x] FXOFF - put the helpers back so ordinary VRAM writes work. FXFILL and
+    FXCLEAR already restore what they touch, so this is for a program
+    that has been poking $9F29-$9F2C itself: forgetting it corrupts the
+    next thing anything draws, and the symptom is four bytes appearing
+    where one was asked for.
 
     THE FILLS ARE FOR VRAM, WHICH IS NOT THE BITMAP BUT IS NOT EMPTY
     EITHER. Everything on HELP TILE, HELP SPRITE and HELP PAL lives
     there, and so do the text matrix and everything VPOKE and BMXLOAD
     write. Clearing a tilemap or blanking a sprite sheet is what these
-    would be for here. Nothing drawn by PSET, LINE, CIRCLE, FILL, RECT
-    or BITMAP is.
+    are for here. Nothing drawn by PSET, LINE, CIRCLE, FILL, RECT or
+    BITMAP is.
+
+    And the four times is the smaller half of what they buy. SuperBasic
+    had no bulk VRAM write at all before these: the alternative was a FOR
+    loop of VPOKEs, three port writes a byte with a statement dispatch
+    around each. From BASIC the difference is not four times, it is the
+    difference between a statement and a wait.
 
 --- BLIT816, this core's own engine ---
 

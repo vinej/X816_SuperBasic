@@ -494,6 +494,18 @@ CPUDP            = CPU_REGISTERS + $C       ;2 Bytes Direct Page Register (D)
 CPUDBR           = CPU_REGISTERS + $E       ;1 Byte  Data Bank Register (B)
 CPUFLAGS         = CPU_REGISTERS + $F       ;1 Byte  Flags (P)
 
+; VERA FX working values (X816/verafx_x816.s). The monitor's register
+; block above uses sixteen bytes of its page and nothing else claims the
+; rest, so this is the free space below the scratch block at $4B00 --
+; which is full to $4BFF, and the reason these are not there.
+;
+; They are globals rather than stack locals because two statements share
+; one fill routine, and a called proc cannot see the caller's frame.
+FX_BYTE          = $004A10                  ; word  - the fill byte, low 8
+FX_ADDR          = $004A12                  ; dword - VRAM address, walked
+FX_LEFT          = $004A16                  ; dword - bytes still to write
+FX_END           = $004A1A                  ; dword - addr + count, range check
+
 ; Non bank 0 memory spaces
 
 LOADBLOCK = $050000         ; File loading will start here (SDRAM; phase 3)

@@ -68,6 +68,7 @@ CLSCREEN        JML ICLSCREEN           ; Clear the screen
 .include "X816/bmx_x816.s"       ; BMX v1 images
 .include "X816/irq_x816.s"       ; IRQ, and the deferred ONVSYNC handlers
 .include "X816/vramio_x816.s"    ; VRAM readback, and VRAM to and from files
+.include "X816/verafx_x816.s"    ; the VERA FX write cache: bulk VRAM fills
 .endif
 .include "commands.s"
 .include "variables.s"

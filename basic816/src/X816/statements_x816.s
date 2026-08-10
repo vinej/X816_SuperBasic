@@ -541,6 +541,76 @@ S_VPOKE         .proc
                 .pend
 
 ;
+; VADDR addr -- point the data port once, with auto-increment.
+;
+; VPOKE sends three address bytes for every value, because it has to: one
+; statement, one byte, no memory of where it was. A bulk write does not
+; need that, and paying it turns four port writes into one. VADDR sets the
+; pointer; VDATA below streams through it.
+;
+; AUTO-INCREMENT IS SET HERE AND VPOKE LEAVES IT CLEAR, deliberately. A
+; VPOKE between two VDATAs re-points the port and stops the increment, so
+; the two cannot be interleaved by accident -- VDATA after a VPOKE writes
+; the VPOKE'd address again rather than walking on from somewhere
+; unrelated, which is the failure that says what happened.
+;
+S_VADDR         .proc
+                PHP
+                TRACE "S_VADDR"
+                setaxl
+
+                CALL EVALEXPR               ; the VRAM address
+                CALL ASS_ARG1_INT
+
+                setas
+                LDA #0
+                STA @l VERA_CTRL            ; data port 0, DCSEL 0
+                LDA ARGUMENT1
+                STA @l VERA_ADDR_L
+                LDA ARGUMENT1+1
+                STA @l VERA_ADDR_M
+                LDA ARGUMENT1+2
+                AND #$01                    ; VRAM is 17 bits
+                ORA #$10                    ; increment nibble 1 = step of one
+                STA @l VERA_ADDR_H
+
+                PLP
+                RETURN
+                .pend
+
+;
+; VDATA v [, v ...] -- write bytes where VADDR left the port.
+;
+; The list is the point. One VDATA with sixteen values is sixteen port
+; writes and one statement dispatch; sixteen VPOKEs are forty-eight port
+; writes and sixteen dispatches, and in BASIC the dispatch is the
+; expensive half. This is the shape every bulk-write page here asks for --
+; a statement that ends in one run of stores rather than a FOR loop.
+;
+S_VDATA         .proc
+                PHP
+                TRACE "S_VDATA"
+                setaxl
+
+vd_value        CALL EVALEXPR
+                CALL ASS_ARG1_BYTE
+                setas
+                LDA ARGUMENT1
+                STA @l VERA_DATA0           ; the port auto-increments
+
+                CALL SKIPWS                 ; another one after a comma?
+                LDA [BIP]
+                CMP #','
+                BNE vd_done
+                CALL INCBIP
+                setal
+                BRA vd_value
+
+vd_done         PLP
+                RETURN
+                .pend
+
+;
 ; BORDER c -- the colour around the display.
 ;
 S_BORDER        .proc

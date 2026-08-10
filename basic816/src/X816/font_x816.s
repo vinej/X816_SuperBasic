@@ -278,3 +278,99 @@ fc_byte         setas                   ;  DATA0 always steps pointer 0 and
                 PLP
                 RETURN
                 .pend
+
+;
+; GLYPHGET(addr, code, row) -- read one scanline of a glyph back.
+;
+; A FUNCTION OF THREE ARGUMENTS, NOT A STATEMENT WITH AN ARRAY. The help
+; page asked for GLYPHGET addr,n,a() on the grounds that eight bytes need
+; somewhere to go, and an array is somewhere. It also needs integer-array
+; plumbing that nothing in SuperBasic has yet -- SB_ARRARG takes a STRING
+; array and only that -- where a function that answers one row needs none
+; and composes with what a beginner already knows:
+;
+;   FOR R = 0 TO 7 : D(R) = GLYPHGET($4000, 65, R) : NEXT
+;
+; It also reads back into anything, not just an array: PRINT it, compare
+; it, or edit one scanline without a nine-element statement.
+;
+; ALL THREE ARGUMENTS ARE PARSED BEFORE VERA IS TOUCHED, for the reason
+; S_GLYPH gives above: EVALEXPR is a whole interpreter and the port is
+; three registers of global state, so an expression containing VPEEK
+; would re-point the address this had latched.
+;
+FN_GLYPHGET .proc
+            FN_START "FN_GLYPHGET"
+            PHP
+            setaxl
+
+locals      .virtual 1,S
+L_FONT      .dword ?
+L_CODE      .word ?
+L_ROW       .word ?
+            .endv
+            SALLOC SIZE(locals)
+
+            setaxl
+            CALL EVALEXPR           ; the font
+            CALL ASS_ARG1_INT
+            LDA ARGUMENT1
+            STA L_FONT
+            LDA ARGUMENT1+2
+            AND #$0001              ; VRAM is 17 bits
+            STA L_FONT+2
+
+            setas
+            LDA #','
+            CALL EXPECT_TOK
+            setal
+            CALL EVALEXPR           ; the character code
+            CALL ASS_ARG1_BYTE
+            LDA ARGUMENT1
+            AND #$00FF
+            STA L_CODE
+
+            setas
+            LDA #','
+            CALL EXPECT_TOK
+            setal
+            CALL EVALEXPR           ; the scanline
+            CALL ASS_ARG1_BYTE
+            LDA ARGUMENT1
+            AND #$0007              ; a glyph is eight rows and no more
+            STA L_ROW
+
+            setal                   ; nothing runs between here and the read
+            LDA L_FONT
+            STA @l VID_A
+            LDA L_FONT+2
+            STA @l VID_A+2
+            LDA L_CODE
+            STA ARGUMENT1
+            STZ ARGUMENT1+2
+            CALL FNT_GLYPHAT        ; VID_A := font + code*8, port pointed
+
+            LDA L_ROW               ; on to the scanline asked for
+            CLC
+            ADC @l VID_A
+            STA @l VID_A
+            LDA @l VID_A+2
+            ADC #0
+            STA @l VID_A+2
+            CALL VRAM_PORT
+
+            setas
+            LDA @l VERA_DATA0
+            setal
+            AND #$00FF
+            STA ARGUMENT1
+            STZ ARGUMENT1+2
+            setas
+            LDA #TYPE_INTEGER
+            STA ARGTYPE1
+
+            SFREE SIZE(locals)
+            FN_END
+            PLP
+            RETURN
+            .pend

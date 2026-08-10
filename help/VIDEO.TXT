@@ -13,12 +13,26 @@ sprite pixels, the palette, the font - lives behind that port.
     bit 16 lives on its own in ADDR_H, whose upper nibble is the
     auto-increment and is left at zero here.
 [x] VPEEK(addr) - read one back.
-[ ] VADDR addr - point the port once, then stream. Worth having as well
+[x] VADDR addr - point the port once, then stream. Worth having as well
     as VPOKE: a bulk copy that re-sends the address for every byte does
-    three writes where it needs one.
+    three writes where it needs one. Sets auto-increment; VPOKE leaves it
+    clear, so a VPOKE between two VDATAs re-points the port and stops the
+    stream rather than quietly walking on from somewhere unrelated.
+[x] VDATA v [,v ...] - write bytes where VADDR left the port. THE LIST IS
+    THE POINT: one VDATA of sixteen values is sixteen port writes and one
+    statement, where sixteen VPOKEs are forty-eight port writes and
+    sixteen statements - and in BASIC the statement is the expensive half.
 [ ] SCREEN mode - 0 the text console, 128 the 320x240 bitmap. The X16's
     other text modes (80x30, 40x60, 40x30) are scale settings and could
     follow. HELP GRAPHIC for the VERA2 alternative at 640x480.
+
+    POSTPONED ON PURPOSE, and not for want of the register writes. A mode
+    is only usable if the kernel brings a font with it: the console's
+    glyphs live in VRAM at a place the current mode put them, and a
+    statement that changed the mode without moving the font would leave a
+    machine that cannot print the error message telling you so. It waits
+    on the kernel supporting every mode with its font, and then it is
+    small.
 [x] BORDER c - the border colour.
 [x] CURSORX / CURSORY - read the cursor position back. Written since
     phase 5 and unreachable until the tokenizer learned to tell a
@@ -57,8 +71,18 @@ $00000-$03FFF; $4800 is the next free slot.
     bytes is awkward as arguments, and READing them from DATA in a loop
     is the friendlier form; but this spelling needs nothing else to
     exist, so it is the one that got written.
-[ ] GLYPHGET addr,n - read a glyph back. Needs somewhere to put eight
-    bytes, so it wants an array argument.
+[x] GLYPHGET(addr,n,row) - read one scanline of a glyph back. A
+    FUNCTION OF THREE ARGUMENTS, where this page used to ask for a
+    statement taking an array, because eight bytes need somewhere to go
+    and an array is somewhere. An array also needs integer-array plumbing
+    that nothing here has yet - the one array argument in the language,
+    SPLIT's, takes a STRING array and only that - where a function that
+    answers one row needs none:
+
+        FOR R = 0 TO 7 : D(R) = GLYPHGET($4000, 65, R) : NEXT
+
+    and it reads back into anything rather than only into an array: PRINT
+    it, compare it, edit one scanline without a nine-argument statement.
 [x] FONTCOPY src,dst - duplicate 2 KB of font. VERA has TWO address
     pointers with a data port each, and DATA0 always steps pointer 0
     while DATA1 always steps pointer 1 - so this needs no buffer in main

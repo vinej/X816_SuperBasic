@@ -1920,6 +1920,25 @@ TOKENS3
             DEFTOK3 "SPLIT", TOK_TY_FUNC, 0, FN_SPLIT, 0
             DEFTOK3 "JOIN$", TOK_TY_FUNC, 0, FN_JOIN, 0
             DEFTOK3 "VER", TOK_TY_FUNC, 0, FN_VER, 0
+
+; Bulk VRAM: point the port once and stream, and read a glyph back.
+;
+; TOKENS3 AND NOT TOKENS2, though ten sub-ids are still free there. A
+; TOKENS3 keyword costs three bytes in a tokenized line against two, and
+; these are all setup: VADDR once before a run of VDATA, GLYPHGET inside
+; a loop over eight rows, a fill once per screen. None of them is what a
+; tight loop is made of, and the ten cheap ids are worth keeping for
+; something that is.
+            DEFTOK3 "VADDR", TOK_TY_STMNT, 0, S_VADDR, 0
+            DEFTOK3 "VDATA", TOK_TY_STMNT, 0, S_VDATA, 0
+            DEFTOK3 "GLYPHGET", TOK_TY_FUNC, 0, FN_GLYPHGET, 0
+
+; VERA FX. The write cache only -- see X816/verafx_x816.s for why the
+; multiplier is not here, which is that its result cannot be read back on
+; either the core or the emulator.
+            DEFTOK3 "FXFILL", TOK_TY_STMNT, 0, S_FXFILL, 0
+            DEFTOK3 "FXCLEAR", TOK_TY_STMNT, 0, S_FXCLEAR, 0
+            DEFTOK3 "FXOFF", TOK_TY_STMNT, 0, S_FXOFF, 0
 .endif
 
 .cerror (* - TOKENS3) / SIZE(TOKEN) > 128, "TOKENS3 full: sub-ids are $80-$FF"
