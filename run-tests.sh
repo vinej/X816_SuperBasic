@@ -22,7 +22,7 @@
 #                               so the obvious grep silently passes.
 #
 # Requires: pip install pillow pyfatfs, and a built X816_Calypsi
-# examples/shell/kernel.bin (sh build.sh there).
+# programs/shell/kernel.bin (sh build.sh there).
 set -u
 
 . "$(dirname "$0")/../X816_Calypsi/runtime/calypsi.sh"
@@ -31,8 +31,8 @@ OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 WOUT=$(cygpath -m "$OUT" 2>/dev/null || echo "$OUT")
 
-KERNEL="../X816_Calypsi/examples/shell/kernel.bin"
-[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/examples/shell"; exit 1; }
+KERNEL="../X816_Calypsi/programs/shell/kernel.bin"
+[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/programs/shell"; exit 1; }
 
 NEG=0
 SRC="basic816/src/tests/floattests.s"

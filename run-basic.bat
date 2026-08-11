@@ -16,7 +16,7 @@ REM  The sibling X816 projects are located relative to this file, so a moved
 REM  checkout moves once (same rule as runtime/calypsi.sh).
 REM
 REM  Needs: python with pyfatfs (pip install pyfatfs), and a built
-REM  X816_Calypsi\examples\shell\kernel.bin (sh build.sh there).
+REM  X816_Calypsi\programs\shell\kernel.bin (sh build.sh there).
 REM ===========================================================================
 setlocal EnableExtensions
 
@@ -27,7 +27,7 @@ for %%I in ("%PROJ%\..") do set "SIBLINGS=%%~fI"
 set "EMUEXE=%SIBLINGS%\X816_Emulator\build\x16emu.exe"
 set "BOOTROM=%SIBLINGS%\X816_core\boot\boot.rom"
 set "FATIMG=%SIBLINGS%\X816_core\boot\fat32.img"
-set "KERNEL=%SIBLINGS%\X816_Calypsi\examples\shell\kernel.bin"
+set "KERNEL=%SIBLINGS%\X816_Calypsi\programs\shell\kernel.bin"
 set "TASS=%PROJ%\64tass\64tass.exe"
 set "CARD=%PROJ%\build\card.img"
 set "BIN=%PROJ%\build\basic.bin"
@@ -46,7 +46,7 @@ for %%F in ("%EMUEXE%" "%BOOTROM%" "%FATIMG%" "%TASS%") do (
 )
 if not exist "%KERNEL%" (
     echo [X] missing: %KERNEL%
-    echo     Build it first:  sh build.sh   in X816_Calypsi\examples\shell
+    echo     Build it first:  sh build.sh   in X816_Calypsi\programs\shell
     goto :fail
 )
 

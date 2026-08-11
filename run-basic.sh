@@ -18,14 +18,14 @@
 # ESC after BASIC exits reloads the shell.
 #
 # Requires: pip install pyfatfs, and a built X816_Calypsi
-# examples/shell/kernel.bin (sh build.sh there).
+# programs/shell/kernel.bin (sh build.sh there).
 set -eu
 
 . "$(dirname "$0")/../X816_Calypsi/runtime/calypsi.sh"
 cd "$(dirname "$0")"
 
-KERNEL="../X816_Calypsi/examples/shell/kernel.bin"
-[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/examples/shell"; exit 1; }
+KERNEL="../X816_Calypsi/programs/shell/kernel.bin"
+[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/programs/shell"; exit 1; }
 
 ./build.sh
 

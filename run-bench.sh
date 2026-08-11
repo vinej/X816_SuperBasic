@@ -67,10 +67,10 @@ if [ "${1:-}" = "--raw" ]; then RAW=1; shift; fi
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 WOUT=$(cygpath -m "$OUT" 2>/dev/null || echo "$OUT")
-KERNEL="../X816_Calypsi/examples/shell/kernel.bin"
+KERNEL="../X816_Calypsi/programs/shell/kernel.bin"
 TAGS="${*:-BM1 BM1I BM2 BM3 BM4 BM5 BM6 BM7 BM8 AHL}"
 
-[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/examples/shell"; exit 1; }
+[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/programs/shell"; exit 1; }
 
 ./build.sh >/dev/null 2>&1 || { echo "build failed"; exit 1; }
 cp build/basic.bin "$OUT/basic.bin"

@@ -330,7 +330,7 @@
 # see any of them. .run-frozen.sh is gitignored.
 #
 # Requires: pip install pillow numpy pyfatfs, and a built X816_Calypsi
-# examples/shell/kernel.bin (sh build.sh there).
+# programs/shell/kernel.bin (sh build.sh there).
 set -u
 
 # EMU, CORE and RT come from the same place every X816_Calypsi script
@@ -341,8 +341,8 @@ OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 WOUT=$(cygpath -m "$OUT" 2>/dev/null || echo "$OUT")
 
-KERNEL="../X816_Calypsi/examples/shell/kernel.bin"
-[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/examples/shell"; exit 1; }
+KERNEL="../X816_Calypsi/programs/shell/kernel.bin"
+[ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/programs/shell"; exit 1; }
 
 ./build.sh || exit 1
 cp build/basic.bin "$OUT/basic.bin"
