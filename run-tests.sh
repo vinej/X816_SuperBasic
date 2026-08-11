@@ -27,9 +27,51 @@ set -u
 
 . "$(dirname "$0")/../X816_Calypsi/runtime/calypsi.sh"
 cd "$(dirname "$0")"
-OUT=$(mktemp -d)
+
+hostpath () {
+    case "$1" in
+        /c/*) printf '/mnt/c/%s\n' "${1#/c/}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
+winpath () {
+    cygpath -m "$1" 2>/dev/null || wslpath -m "$(hostpath "$1")" 2>/dev/null || echo "$1"
+}
+
+CORE_HOST=$(hostpath "$CORE")
+EMU_HOST=$(hostpath "$EMU")
+
+PYTHON_USER=${USER:-$(id -un 2>/dev/null || echo jyv)}
+PYTHON_LOCAL=$(hostpath "/c/Users/$PYTHON_USER/AppData/Local/Programs/Python/Python312/python.exe")
+PYTHON_CMD=
+PYTHON_WIN=0
+for candidate in ${PYTHON:-} python python3 python.exe "$PYTHON_LOCAL" py.exe; do
+    [ -n "$candidate" ] || continue
+    command -v "$candidate" >/dev/null 2>&1 || continue
+    if "$candidate" -c "import numpy, PIL; from pyfatfs.PyFatFS import PyFatFS" >/dev/null 2>&1; then
+        PYTHON_CMD=$candidate
+        case "$candidate" in
+            *.exe) PYTHON_WIN=1 ;;
+        esac
+        break
+    fi
+done
+[ -n "$PYTHON_CMD" ] || { echo "python with pillow, numpy and pyfatfs missing"; exit 1; }
+EMU_TIMEOUT=${EMU_TIMEOUT:-30}
+
+pypath () {
+    if [ "$PYTHON_WIN" -eq 1 ]; then
+        winpath "$1"
+    else
+        hostpath "$1"
+    fi
+}
+
+mkdir -p build
+OUT=$(mktemp -d -p "$(pwd)/build" test-run.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT
-WOUT=$(cygpath -m "$OUT" 2>/dev/null || echo "$OUT")
+WOUT=$(winpath "$OUT")
 
 KERNEL="../X816_Calypsi/programs/shell/kernel.bin"
 [ -f "$KERNEL" ] || { echo "kernel.bin missing -- run sh build.sh in X816_Calypsi/programs/shell"; exit 1; }
@@ -50,19 +92,36 @@ if [ "${1:-}" = "--negative" ]; then
     echo "negative control: asserting 20.0+5.0=26, expecting a failure line"
 fi
 
-64tass/64tass.exe \
-    -D SYSTEM=3 -D UNITTEST=1 -D TRACE_LEVEL=0 -D UARTSUPPORT=0 \
-    --long-address --flat -b --m65816 \
-    -o "$OUT/tests.bin" \
-    --list=build/tests.lst --labels=build/tests.lbl \
-    -I basic816/src \
-    basic816/src/basic816.s 2>&1 | grep -E "^basic816.*error|Error messages" && exit 1
-[ -f "$OUT/tests.bin" ] || { echo "assembly produced no binary"; exit 1; }
-ls -l "$OUT/tests.bin"
+if [ "$NEG" -eq 1 ]; then
+    SUITES="floats:2"
+else
+    SUITES="eval:1 floats:2 tokens:3 ops-int:4 ops-float:7 ops-str:8 statements:5 funcs:6"
+fi
 
-cp "$CORE/boot/fat32.img" "$OUT/scratch.img"
-python - "$WOUT/scratch.img" "$WOUT/tests.bin" <<'PY'
-import sys
+for pair in $SUITES; do
+    SUITE=${pair%%:*}
+    TEST_SUITE=${pair##*:}
+    echo "suite: $SUITE"
+
+    ASMLOG="$OUT/asm-$SUITE.log"
+    64tass/64tass.exe \
+        -D SYSTEM=3 -D UNITTEST=1 -D TEST_SUITE="$TEST_SUITE" -D TRACE_LEVEL=0 -D UARTSUPPORT=0 \
+        --long-address --flat -b --m65816 \
+        -o "$WOUT/tests-$SUITE.bin" \
+        --list="build/tests-$SUITE.lst" --labels="build/tests-$SUITE.lbl" \
+        -I basic816/src \
+        basic816/src/basic816.s >"$ASMLOG" 2>&1
+    if grep -Eq "^basic816.*error|Error messages" "$ASMLOG"; then
+        cat "$ASMLOG"
+        exit 1
+    fi
+    [ -f "$OUT/tests-$SUITE.bin" ] || { echo "assembly produced no binary for $SUITE"; exit 1; }
+    ls -l "$OUT/tests-$SUITE.bin"
+
+    cp "$CORE_HOST/boot/fat32.img" "$OUT/scratch-$SUITE.img"
+    "$PYTHON_CMD" - "$(pypath "$OUT/scratch-$SUITE.img")" "$(pypath "$OUT/tests-$SUITE.bin")" <<'PY'
+import sys, warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 from pyfatfs.PyFatFS import PyFatFS
 img, binpath = sys.argv[1], sys.argv[2]
 fs = PyFatFS(img)
@@ -73,22 +132,22 @@ with fs.open("/TESTS.BIN", "wb") as g:
 fs.close()
 print("card: TESTS.BIN = %d bytes" % len(data))
 PY
-[ $? -eq 0 ] || exit 1
+    [ $? -eq 0 ] || exit 1
 
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 420 \
-    "$EMU/build/x16emu.exe" -boot "$(cygpath -m "$CORE/boot/boot.rom")" \
-    -load "F00000,$(cygpath -m "$(pwd)/$KERNEL")" \
-    -sdcard "$WOUT/scratch.img" \
-    -autokeys 'run TESTS.BIN\n' \
-    -warp -gif "$WOUT/out.gif" >/dev/null 2>&1
+    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout "$EMU_TIMEOUT" \
+        "$EMU_HOST/build/x16emu.exe" -boot "$(winpath "$CORE_HOST/boot/boot.rom")" \
+        -load "F00000,$(winpath "$(pwd)/$KERNEL")" \
+        -sdcard "$WOUT/scratch-$SUITE.img" \
+        -autokeys 'run TESTS.BIN\n' \
+        -warp -gif "$WOUT/out-$SUITE.gif" >/dev/null 2>&1
 
-python - "$WOUT/out.gif" "$RT/font_cp437.s" "$NEG" <<'PY'
+    "$PYTHON_CMD" - "$(pypath "$OUT/out-$SUITE.gif")" "$(pypath "$(hostpath "$RT")/font_cp437.s")" "$NEG" "$SUITE" <<'PY'
 import sys, re, io
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-gif, fontinc, negative = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+gif, fontinc, negative, suite = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
 
 vals = []
 for line in io.open(fontinc, encoding='utf-8'):
@@ -134,6 +193,7 @@ def frame_rows(img):
 # glyph decode when the picture actually changed.
 seen, log, frames, decoded = set(), [], 0, 0
 prev = None
+stop_decode = False
 while True:
     try:
         im.seek(frames); im.load()
@@ -149,6 +209,12 @@ while True:
         if t and t not in seen:
             seen.add(t)
             log.append(t)
+            if negative and ("FAILED" in t or re.search(r"\[[0-9A-F]{2,8}\]", t)):
+                stop_decode = True
+            if not negative and "TST_BASIC" in t and "PASSED" in t:
+                stop_decode = True
+    if stop_decode:
+        break
 
 if frames == 0:
     sys.exit("no decodable frame -- did the emulator run?")
@@ -181,15 +247,21 @@ if negative:
     sys.exit(0)
 
 if failed:
-    print("FAIL: %d failing assertion(s) in the corpus" % len(failed))
+    print("FAIL: %d failing assertion(s) in the %s suite" % (len(failed), suite))
     dump()
     sys.exit(1)
 if not finished:
-    print("FAIL: the corpus did not run to completion (no TST_BASIC PASSED)")
+    print("FAIL: the %s suite did not run to completion (no TST_BASIC PASSED)" % suite)
     dump()
     sys.exit(1)
 
-print("PASS: BASIC816's unit-test corpus is green on the X816")
+print("PASS: BASIC816's %s suite is green on the X816" % suite)
 print("      (%d frames, %d distinct screens, %d log lines)" % (frames, decoded, len(log)))
 dump()
 PY
+    [ $? -eq 0 ] || exit 1
+done
+
+if [ "$NEG" -eq 0 ]; then
+    echo "PASS: BASIC816's split unit-test corpus is green on the X816"
+fi

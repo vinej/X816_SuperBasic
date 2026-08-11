@@ -370,10 +370,10 @@ TST_IMMFOR      .proc
 
                 CALL INITBASIC
 
-                RUNCMD "FOR I=1 TO 1024:X=I:NEXT"
+                RUNCMD "FOR I%=1 TO 1024:X%=I%:NEXT"
 
-                ; Validate that X=10
-                UT_VAR_EQ_W "X",TYPE_INTEGER,1024
+                ; Validate that X%=1024
+                UT_VAR_EQ_W "X%",TYPE_INTEGER,1024
 
                 UT_END
                 .pend
@@ -389,10 +389,10 @@ TST_STEPDOWN    .proc
 
                 CALL INITBASIC
 
-                RUNCMD "FOR I=10 TO 1 STEP -1:X=I:NEXT"
+                RUNCMD "FOR I%=10 TO 1 STEP -1:X%=I%:NEXT"
 
-                ; Validate that X=10
-                UT_VAR_EQ_W "X",TYPE_INTEGER,1
+                ; Validate that X%=1
+                UT_VAR_EQ_W "X%",TYPE_INTEGER,1
 
                 UT_END
                 .pend

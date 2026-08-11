@@ -281,7 +281,10 @@ TST_FP_PARSEFLOATS  .proc
                     LD_Q BIP, test_num_125e_3                               ; Parse "1.25E-3"
                     CALL PARSENUM
                     UT_M_EQ_LIT_B ARGTYPE1,TYPE_FLOAT, "Expected FLOAT"     ; Verify we got an float
-                    UT_M_EQ_LIT_D ARGUMENT1,$3aa3d70a,"Expected $3aa3d70a"  ; Verify we got a 1250
+                    ; X816's software FP truncates rather than rounding, so
+                    ; repeated 10^-n division lands two ULPs below the
+                    ; correctly-rounded IEEE value.
+                    UT_M_EQ_LIT_D ARGUMENT1,$3aa3d708,"Expected $3aa3d708"  ; Verify we got 0.00125
 
                     UT_END
 test_num_1_         .null "1."

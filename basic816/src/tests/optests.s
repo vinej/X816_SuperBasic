@@ -432,20 +432,25 @@ TST_EVALSTRCAT  .proc
                 .pend
 
 TST_OPS         .proc
+.if TEST_SUITE == TST_SUITE_ALL || TEST_SUITE == TST_SUITE_OPS
                 CALL TST_EQ_INT
                 CALL TST_LT_INT
                 CALL TST_GT_INT
                 CALL TST_GTE_INT
                 CALL TST_LTE_INT
                 CALL TST_NE_INT
+.endif
 
+.if TEST_SUITE == TST_SUITE_ALL || TEST_SUITE == TST_SUITE_OPS_FLOAT
                 CALL TST_EQ_FLOAT
                 CALL TST_LT_FLOAT
                 CALL TST_GT_FLOAT
                 CALL TST_GTE_FLOAT
                 CALL TST_LTE_FLOAT
                 CALL TST_NE_FLOAT
+.endif
 
+.if TEST_SUITE == TST_SUITE_ALL || TEST_SUITE == TST_SUITE_OPS_STR
                 CALL TST_EQ_STR
                 CALL TST_LT_STR
                 CALL TST_GT_STR
@@ -454,6 +459,7 @@ TST_OPS         .proc
                 CALL TST_NE_STR
 
                 CALL TST_EVALSTRCAT
+.endif
 
                 UT_LOG "TST_OP: PASSED"
                 RETURN

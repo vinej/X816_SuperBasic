@@ -490,7 +490,7 @@ TST_EVAL_NEG2   .proc
 
                 CALL EVALEXPR
 
-                UT_M_EQ_LIT_W ARGUMENT1,0,"EXPECTED 0"
+                UT_M_EQ_LIT_W ARGUMENT1,$FFFF,"EXPECTED TRUE"
 
                 UT_END
 TEST1           .null TOK_NEGATIVE, "1", TOK_NE, "1"
