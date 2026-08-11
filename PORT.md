@@ -80,7 +80,21 @@ feasibility study §4:
 | CPU stack | `$0100-$1FFF` (top `$1FFF`) | kernel convention; load S **16-bit only** — an 8-bit `txs` zeroes SH |
 | Interpreter code | `$01:0000` + 8-byte header, entry `$01:0004` | banks `$01-$04` are single-cycle BRAM |
 | Program text + heap | end of code … `$04:FFFF` | ≈190 KB BRAM after a ~64 KB interpreter |
-| Bulk/expansion later | `K_MEM_ALLOC` arena `$20:0100-$DF:FFFF` | 32-block cap → grab one big block, sub-allocate; SDRAM is ~4.5× slower than BRAM |
+| Bulk/expansion later | `K_MEM_ALLOC` arena, `$20:0100` up to **whatever `K_MEM_TOP` reports** | 32-block cap → grab one big block, sub-allocate; SDRAM is ~4.5× slower than BRAM |
+
+**The top of the arena is not a constant — ask `K_MEM_TOP` (call 42).** This row
+used to say `$20:0100-$DF:FFFF`, and that is now wrong: `$C0:0000-$DF:FFFF` is
+the kernel writable-data region (the resident editor's page pool,
+[MEMORY_MAP.md §1.1](../X816_core/doc/MEMORY_MAP.md)), reserved at boot, so the
+arena ends at **`$BF:FFFF`** — and at `$DF:FFFF` only after a one-way
+`K_MEM_RELEASE`. Two ceilings, neither of them safe to compile in.
+
+Nothing here is affected today, because SuperBasic's heap is BRAM
+(`HEAP_TOP := $04FFFF`) and `mmap_x816.s` carries no SDRAM ceiling at all. That
+is exactly why this is written down now: **whatever first reaches SDRAM must be
+born asking**, not retrofitted. durexForth had to be — its `sdram-size` was
+`$e00000 sdram - constant`, a compile-time copy that is silently wrong on one
+side of a release, and it is a `VALUE` set from `MEM-TOP` at COLD now.
 
 Standing carve-outs to respect (bank 0): `$0000-$0021` C-runtime pseudo-regs
 (kernel's VSYNC cursor handler uses them at interrupt time), `$0022-$0031`
@@ -1560,10 +1574,31 @@ Numbers do four jobs. Three are now answered:
 The last two are one thing, and it is **a port of X16Edit** — decided
 2026-08-08: a real full-screen editor for the X816, callable from
 SuperBasic or durexForth and useful for any file, not a line editor
-built into the interpreter. Reference source is checked out at
-`X16Edit_ref`. The question to settle first is hand-off: `K_EXEC`
-replaces the running program, so either the editor returns through the
-shell or SuperBasic re-enters and re-`LOAD`s the file.
+built into the interpreter.
+
+**The hand-off question is settled (2026-08-11), and neither of the two
+options above is the answer.** Both lose the interpreter's state: `K_EXEC`
+overwrites `$01:0000` and `K_EXIT` restarts the kernel, so returning
+"through the shell" or re-`LOAD`ing means SuperBasic has already died. The
+third option is that **the editor is resident in the kernel firmware and
+reached by `jsl`, leaving by `rtl`** — so the interpreter is never unloaded
+and gets control back with everything intact.
+
+Work happens in its own repo, **`../X816_Edit`** — a real fork of
+`stefan-b-jakobsson/x16-edit` with upstream history, branch `x816`.
+`../X16Edit_ref` stays pinned and untouched as the oracle.
+
+What already exists on the kernel side, done and green: the editor's 2 MB
+page pool at `X816_EDIT_BASE` = `$C1:0000`, inside the releasable kernel
+writable-data region (see the memory table in §3). What blocks the rest:
+**Ctrl and Alt never reach a program** — `console.c` tracks shift only, and
+X16Edit's whole UI is Ctrl+letter. That is an ABI addition to the console,
+not editor work.
+
+For SuperBasic the eventual call is `EDIT [filename]` → `jsl $00:FE88`
+(`K_EDIT`, slot 34), then re-`LOAD` the file. The slot is **not** in
+`contract.py` yet, deliberately: the argument block should be settled first,
+because a jump-table slot is ABI the moment it ships.
 
 `RENUM` is deliberately **not** being built. It tidies visible numbers,
 which is the thing this direction is removing; its design is in §24 if

@@ -30,6 +30,23 @@ CHN_P       .dword ?            ; the selected channel record
 CHN_B       .dword ?            ; the selected channel buffer
 .send
 
+; FOUR, AND IT IS BOUNDED BY THE KERNEL'S HANDLE POOL, NOT BY BUFFER SPACE.
+; Every open channel holds one K_FS_* handle for as long as it is open, and
+; KFS_FILES (X816_Calypsi runtime/kfs.h) is 8. LOAD/SAVE/BLOAD/BSAVE take one
+; more while they run (the FK_* entry points in kernel_x816.s), so the worst
+; case is CHN_COUNT + 1 concurrent handles.
+;
+; At 4 that is 5, and the pool WAS 5 -- exactly at the limit, zero margin: four
+; channels open plus a LOAD used the last handle, and one more open would have
+; failed. It is 8 now, which is why this is a comment rather than a bug: raising
+; CHN_COUNT above 7 puts it back on the edge, and the kernel pool cannot simply
+; be raised to match (9 does not link -- kfs.h has the measurement and says what
+; freeing bank $00 would take).
+;
+; A refused open must be REPORTED, never assumed. The kernel distinguishes
+; KERR_NOSPACE (no handle left) from KERR_NOTFOUND (no such file), and printing
+; one as the other sends the reader hunting for a file that is right there --
+; which is precisely how this limit cost durexForth a week of red test suite.
 CHN_COUNT   = 4                 ; channels 1-4
 CHN_BUFSZ   = 256
 
