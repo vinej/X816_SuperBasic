@@ -85,6 +85,13 @@ FK_TESTBREAK    PHX
                 CMP #0
                 BEQ no_break            ; Nothing waiting: the latch survives
 
+                CMP #(KEY_CTRL | 'c')   ; Current kernels report Ctrl-C as
+                BEQ break_hit           ;  one composite key event.
+                CMP #(KEY_CTRL | 'C')
+                BEQ break_hit
+                CMP #(KEY_CTRL | CHAR_CTRL_C)
+                BEQ break_hit
+
                 CMP #KEY_LCTRL          ; Ctrl itself: arm the latch
                 BEQ arm_latch
                 CMP #KEY_RCTRL

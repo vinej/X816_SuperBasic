@@ -661,6 +661,34 @@ S_QUIT          .proc
                 .pend
 
 ;
+; EDIT [path] -- launch the resident editor and return to SuperBasic after exit.
+;
+S_EDIT          .proc
+                PHP
+                TRACE "S_EDIT"
+
+                CALL SKIPWS
+                setas
+                CALL PEEK_TOK
+                CMP #0
+                BEQ no_path
+                CALL PATHARG
+                BRA launch
+
+no_path         setaxl
+                LDA #0
+                TAX
+
+launch          JSL KERN_EDIT
+                BCS edit_failed
+
+                PLP
+                RETURN
+
+edit_failed     THROW ERR_ARGUMENT
+                .pend
+
+;
 ; TURBO n -- 0 for 8 MHz, anything else for 14 MHz.
 ;
 ; SYSCTL bit 2 (MEMORY_MAP.md). It is a CLOCK ENABLE and not a clock

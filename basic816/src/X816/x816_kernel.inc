@@ -59,6 +59,7 @@ KERN_FS_RMDIR   = KERN_TABLE + 30*4
 
 KERN_EXEC       = KERN_TABLE + 32*4 ; C:X = path; no return on success
 KERN_EXIT       = KERN_TABLE + 33*4 ; C = status; no return
+KERN_EDIT       = KERN_TABLE + 34*4 ; C:X = filename pointer, or 0; returns after exit
 
 KERN_MEM_ALLOC  = KERN_TABLE + 40*4 ; C = size lo16, X = size hi16
 KERN_MEM_FREE   = KERN_TABLE + 41*4 ; C:X = address
@@ -95,14 +96,16 @@ KIRQ_COP        = 10
 ;   $0000          nothing waiting (GETKEY only)
 ;   $0001-$00FF    a CP437/ASCII character
 ;   $0100 | n      a key with no character; n = IBM key position number
+;   $0200 | c      Ctrl held for a character key
+;   $0300 | n      Ctrl held for a key with no character
+;   $0400 | c      Alt held for a character key
+;   $0500 | n      Alt held for a key with no character
 KEY_SPECIAL     = $0100
+KEY_CTRL        = $0200
+KEY_ALT         = $0400
 
-; Ctrl is reported as a key of its own and never folds into a character:
-; the kernel tracks Shift on both edges inside con_getkey, but leaves
-; Ctrl/Alt/GUI/CapsLock to the caller ("making Ctrl-C a character is a
-; design step, not a mapping one" — X816_Calypsi runtime/console.h). So
-; there is no $03 to poll for; FK_TESTBREAK pairs these with the 'C'
-; that follows. IBM key positions, per KERNEL.md.
+; Raw Ctrl key positions, kept for compatibility with older kernels.
+; Current kernels return KEY_CTRL|'c' for Ctrl-C instead.
 KEY_LCTRL       = KEY_SPECIAL | 58
 KEY_RCTRL       = KEY_SPECIAL | 64
 

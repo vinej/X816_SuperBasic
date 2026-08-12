@@ -1588,17 +1588,16 @@ Work happens in its own repo, **`../X816_Edit`** — a real fork of
 `stefan-b-jakobsson/x16-edit` with upstream history, branch `x816`.
 `../X16Edit_ref` stays pinned and untouched as the oracle.
 
-What already exists on the kernel side, done and green: the editor's 2 MB
-page pool at `X816_EDIT_BASE` = `$C1:0000`, inside the releasable kernel
-writable-data region (see the memory table in §3). What blocks the rest:
-**Ctrl and Alt never reach a program** — `console.c` tracks shift only, and
-X16Edit's whole UI is Ctrl+letter. That is an ABI addition to the console,
-not editor work.
+What exists now: the editor's 2 MB page pool at `X816_EDIT_BASE` =
+`$C1:0000`, inside the releasable kernel writable-data region (see the memory
+table in §3); Ctrl/Alt key events reach programs; the editor blob is resident
+in the Calypsi kernel image; and `K_EDIT` is slot 34 at `$00:FE88`.
 
-For SuperBasic the eventual call is `EDIT [filename]` → `jsl $00:FE88`
-(`K_EDIT`, slot 34), then re-`LOAD` the file. The slot is **not** in
-`contract.py` yet, deliberately: the argument block should be settled first,
-because a jump-table slot is ABI the moment it ships.
+SuperBasic has `EDIT [path]` now. It calls `K_EDIT` and resumes in the
+interpreter after the editor exits, without reloading BASIC. The optional path
+is copied into the resident editor's filename state. Current editor file I/O is
+still pending, so opening/saving that named file and the save-then-`LOAD` loop
+come when `file.inc` is on `K_FS_*`.
 
 `RENUM` is deliberately **not** being built. It tidies visible numbers,
 which is the thing this direction is removing; its design is in §24 if

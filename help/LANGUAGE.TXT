@@ -170,19 +170,15 @@ any future target gets it too.
     A file may still have them, and may mix the two: a line that brings
     its own number keeps it and the numbering carries on from there. So
     every file that worked before works unchanged.
-[ ] An editor. THE PLAN IS A PORT OF X16EDIT, not a line editor built
-    into BASIC: a real full-screen editor for the X816, callable from
-    SuperBasic or from durexForth, and useful for any kind of file
-    rather than only for programs. The reference source is in
-    X16Edit_ref.
+[x] EDIT [path] - launch the resident full-screen editor and return to
+    BASIC after exit. It is a port of X16Edit in the X816 firmware, not a
+    line editor inside BASIC, so the interpreter state survives the trip.
+    The optional path is copied into the editor session as the current
+    filename.
 
-    That is a better shape than an editor inside the interpreter, and it
-    is what finishes the line-number story. Numbers do four jobs here:
-    somewhere to jump to (LABEL replaced it), something to type (AUTO
-    replaced it), how you address a line in order to CHANGE it, and how
-    the prompt tells "store this" from "run this now". The last two are
-    what an editor replaces - edit the text, save it, LOAD it back, and
-    no number is ever seen.
+    Current limitation: editor file load/save is still being ported to
+    the X816 kernel filesystem calls. Named-file save/LOAD is the next
+    part of the line-number story; the launch/return path is in place now.
 
 --- a note on why the line numbers are still here ---
 

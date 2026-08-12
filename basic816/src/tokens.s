@@ -1939,6 +1939,7 @@ TOKENS3
             DEFTOK3 "FXFILL", TOK_TY_STMNT, 0, S_FXFILL, 0
             DEFTOK3 "FXCLEAR", TOK_TY_STMNT, 0, S_FXCLEAR, 0
             DEFTOK3 "FXOFF", TOK_TY_STMNT, 0, S_FXOFF, 0
+            DEFTOK3 "EDIT", TOK_TY_STMNT, 0, S_EDIT, 0
 .endif
 
 .cerror (* - TOKENS3) / SIZE(TOKEN) > 128, "TOKENS3 full: sub-ids are $80-$FF"
