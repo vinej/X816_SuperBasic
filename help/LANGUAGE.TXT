@@ -173,12 +173,16 @@ any future target gets it too.
 [x] EDIT [path] - launch the resident full-screen editor and return to
     BASIC after exit. It is a port of X16Edit in the X816 firmware, not a
     line editor inside BASIC, so the interpreter state survives the trip.
-    The optional path is copied into the editor session as the current
-    filename.
+    With a path the editor OPENS that file; with no argument it comes up
+    on an empty buffer. The path is resolved against the working
+    directory, the same one LOAD and the prompt's CD share, so
+    EDIT "BM1.BAS" from /BASIC edits the benchmark next to you.
 
-    Current limitation: editor file load/save is still being ported to
-    the X816 kernel filesystem calls. Named-file save/LOAD is the next
-    part of the line-number story; the launch/return path is in place now.
+    Inside the editor: Ctrl+O writes the buffer to a file, Ctrl+X exits,
+    Ctrl+G shows its own help. Press and release ESC instead of holding
+    Ctrl if that is easier. Saving is a plain text write, so a program
+    edited there is one LOAD away from running - line numbers optional,
+    as everywhere else in this BASIC.
 
 --- a note on why the line numbers are still here ---
 

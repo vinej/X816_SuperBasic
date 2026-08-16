@@ -29,7 +29,7 @@ works today, which the upstream documentation cannot.
  FILE        the SD card              LOAD SAVE DIR BLOAD BSAVE
  TIME        clocks and waiting       TIMER FRAMES WAIT VSYNC
  SYSTEM      the machine itself       CALL CLR NEW TURBO IRQ QUIT
- LANGUAGE    structure               IF ELSE ENDIF DO LOOP PROC
+ LANGUAGE    structure               IF ELSE ENDIF DO LOOP PROC EDIT
  MATH        arithmetic, and why it is software
  STRING      text handling            LEN MID$ INSTR SPLIT
  ADVANCED    game math, images, IRQ   SIN8 ATAN2 BMXLOAD ONVSYNC

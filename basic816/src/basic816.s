@@ -120,7 +120,15 @@ START       CLC                 ; Go to native mode
             TCS
 
             ; Clear the screen and print the welcome message
-            ; CALL CLSCREEN
+            ;
+            ; THE CLEAR IS NOT DECORATION. BASIC is launched from the desktop
+            ; and from the prompt, and both leave a full screen behind them --
+            ; the tile grid, or a page of shell output. Printing the greeting
+            ; over the top of that reads as a crash rather than as a start.
+            ; This call was commented out while the line above still claimed
+            ; it happened; ICLSCREEN (X816/screen_x816.s) brackets its own
+            ; P/DBR/registers and homes the cursor, so it is safe here.
+            CALL CLSCREEN
 
             setdbr `GREET
             LDX #<>GREET
